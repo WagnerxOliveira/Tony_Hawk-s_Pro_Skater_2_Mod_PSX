@@ -1,6 +1,6 @@
-# Tony Hawk's Pro Skater 2 Mod - PSX
+# Tony Hawk's Pro Skater 2 (Arquivos Originais) - PSX
 
-<ul>Nesta pasta contém os arquivos .bin e .cue necessários para o trabalho de modding:
+<ul>Nesta pasta contém os arquivos originais do game THPS2 de Psx, que são .bin e .cue necessários para o trabalho de modding:
     <li>Tony Hawk's Pro Skater 2 (USA).bin</li>
     <li>Tony Hawk's Pro Skater 2 (USA).cue</li>
 </ul>
