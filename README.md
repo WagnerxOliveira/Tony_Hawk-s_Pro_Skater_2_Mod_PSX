@@ -29,4 +29,3 @@ O projeto utiliza um ecossistema variado de ferramentas de extração e análise
 
 ---
 *Aviso Legal: Este é um projeto de pesquisa independente, estritamente didático e sem fins lucrativos. Todos os direitos da marca Tony Hawk's Pro Skater e seus respectivos ativos originais pertencem à Activision.*
-
