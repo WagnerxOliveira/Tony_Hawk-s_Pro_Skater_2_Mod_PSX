@@ -56,7 +56,7 @@ Para extrair tudo, selecione todos os ficheiros que apareceram no painel da dire
   <img src="https://drive.google.com/uc?export=view&id=1vlYXvuo39pcC6S2sIlaAuTXVY2wpBy4Z" alt="Selecionando todos os arquivos da lista" width="800">
 </div>
 
-Com tudo selecionado, clique com o botão direito do rato em cima de qualquer ficheiro da seleção e escolha a opção **Extract Files...** (Extrair Ficheiros...).
+Com tudo selecionado, clique com o botão direito do mouse em cima de qualquer ficheiro da seleção e escolha a opção **Extract Files...** (Extrair Ficheiros...).
 
 <div align="center">
   <img src="https://drive.google.com/uc?export=view&id=1ekJ568uDrlIouqVlVSBPqvVoIg254zil" alt="Opção Extract Files no menu" width="600">
@@ -84,7 +84,7 @@ Quando o processo terminar, uma pequena janela aparecerá com a mensagem **"Extr
 </div>
 
 ### Passo 8: Verificação Final
-Pronto! Agora pode fechar o CDMage e abrir o explorador de ficheiros (ou o seu VS Code). Todos os ficheiros originais do jogo estarão lá, prontos para serem analisados e modificados nos próximos passos do nosso projeto.
+Pronto! Agora pode fechar o CDMage e abrir o explorador de ficheiros. Todos os ficheiros originais do jogo estarão dentro da pasta escolhida para armazenar os arquivos extraídos, prontos para serem analisados e modificados nos próximos passos do nosso projeto.
 
 <div align="center">
   <img src="https://drive.google.com/uc?export=view&id=1AyyY-Q_QYofqEemwNl4PWQHRVE1kwjuQ" alt="Arquivos extraídos na pasta de destino" width="800">
