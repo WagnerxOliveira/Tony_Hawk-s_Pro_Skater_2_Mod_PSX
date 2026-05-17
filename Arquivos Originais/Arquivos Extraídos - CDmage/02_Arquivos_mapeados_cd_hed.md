@@ -22,15 +22,15 @@ Cada arquivo embutido no `CD.WAD` responde a este contrato de memória exato:
 
 *Nota técnica: Transcrever as 1.531 linhas manualmente é redundante. A tabela abaixo mapeia os limites estruturais (Início, Meio e Fim) que validam a lógica iterativa do nosso script extrator.*
 
-| ID do Ficheiro | Bloco Bruto (Hex 12 Bytes) | 🔑 Hash (Little Endian) | 📍 Offset (Início no WAD) | 📦 Tamanho (Decimal) |
-| :--- | :--- | :--- | :--- | :--- |
-| **0001 (Head)** | `31 18 7D B5 00 00 00 00 38 E4 01 00` | `B57D1831` | `0x00000000` (Byte 0) | `0x0001E438` (123.960 bytes) |
-| **0002** | `01 48 8B 26 00 E8 01 00 B0 11 00 00` | `268B4801` | `0x0001E800` (Byte 124.928) | `0x000011B0` (4.528 bytes) |
+| ID do Ficheiro | Bloco Bruto (12 Bytes) | 🔑 Hash (Little Endian) | 📍 Offset (Início no WAD) | 📦 Tamanho (Decimal) |
+| :--- | :---: | :---: | :---: | :---: |
+| **0001 (Head)** | `31187DB5 00000000 38E40100` | `B57D1831` | `0x00000000`<br>*(Byte 0)* | `0x0001E438`<br>*(123.960 bytes)* |
+| **0002** | `01488B26 00E80100 B0110000` | `268B4801` | `0x0001E800`<br>*(Byte 124.928)* | `0x000011B0`<br>*(4.528 bytes)* |
 | **...** | `...` | `...` | `...` | `...` |
-| **Aleatório (Mid)** | `89 CD FD 4F 00 48 E2 00 F4 02 00 00` | `4FFDCD89` | `0x00E24800` (Byte 14.829.568) | `0x000002F4` (756 bytes) |
+| **Aleatório (Mid)** | `89CDFD4F 0048E200 F4020000` | `4FFDCD89` | `0x00E24800`<br>*(Byte 14.829.568)* | `0x000002F4`<br>*(756 bytes)* |
 | **...** | `...` | `...` | `...` | `...` |
-| **1531 (Tail)** | *(Bloco final extraído na Offset 0x47B8)* | `[Hash Final]` | `[Último Offset Múltiplo]` | `[Último Tamanho]` |
-| **EOF / Null** | `00 00 00 00 00 00 00 00 00 00 00 00` | `N/A` | *Fim da Leitura* (`0x47C4`) | `N/A` |
+| **1531 (Tail)** | *(Extraído na Offset `0x47B8`)* | `[Hash Final]` | `[Último Múltiplo]` | `[Último Tamanho]` |
+| **EOF / Null** | `00000000 00000000 00000000` | `N/A` | *Fim da Leitura*<br>*(Byte 18.372)* | `N/A` |
 
 ---
 
