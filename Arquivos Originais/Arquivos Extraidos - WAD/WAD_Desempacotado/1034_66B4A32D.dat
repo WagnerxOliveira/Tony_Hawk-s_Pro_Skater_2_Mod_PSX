@@ -1,0 +1,60 @@
+#ifndef _SECRE1_L_PSH
+#define _SECRE1_L_PSH
+#define SECRE1_LPART_FATCOP2_PELVIS			0
+//   parent: Scene Root
+
+#define SECRE1_LPART_FATCOP2_RIGHT_SHOE			1
+//   parent: fatcop2_right_shin
+
+#define SECRE1_LPART_FATCOP2_RIGHT_SHIN			2
+//   parent: fatcop2_right_thigh
+
+#define SECRE1_LPART_FATCOP2_LEFT_SHOE			3
+//   parent: fatcop2_left_shin
+
+#define SECRE1_LPART_FATCOP2_LEFT_SHIN			4
+//   parent: fatcop2_left_thigh
+
+#define SECRE1_LPART_FATCOP2_LEFT_THIGH			5
+//   parent: fatcop2_pelvis
+
+#define SECRE1_LPART_FATCOP2_RIGHT_THIGH			6
+//   parent: fatcop2_pelvis
+
+#define SECRE1_LPART_FATCOP2_STOMACH			7
+//   parent: fatcop2_pelvis
+
+#define SECRE1_LPART_FATCOP2_CHEST			8
+//   parent: fatcop2_stomach
+
+#define SECRE1_LPART_FATCOP2_LEFT_HAND			9
+//   parent: fatcop2_left_forearm
+
+#define SECRE1_LPART_FATCOP2_LEFT_FOREARM			10
+//   parent: fatcop2_left_bicep
+
+#define SECRE1_LPART_FATCOP2_LEFT_BICEP			11
+//   parent: fatcop2_chest
+
+#define SECRE1_LPART_FATCOP2_RIGHT_HAND			12
+//   parent: fatcop2_right_forearm
+
+#define SECRE1_LPART_FATCOP2_RIGHT_FOREARM			13
+//   parent: fatcop2_right_bicep
+
+#define SECRE1_LPART_FATCOP2_RIGHT_BICEP			14
+//   parent: fatcop2_chest
+
+#define SECRE1_LPART_FATCOP2_HEAD			15
+//   parent: fatcop2_chest
+
+#define SECRE1_LPART_FATCOP2_BOARD			16
+//   parent: Scene Root
+
+#define SECRE1_LPART_FATCOP2_FRONT_WHEEL			17
+//   parent: fatcop2_board
+
+#define SECRE1_LPART_FATCOP2_BACK_WHEEL			18
+//   parent: fatcop2_board
+
+#endif

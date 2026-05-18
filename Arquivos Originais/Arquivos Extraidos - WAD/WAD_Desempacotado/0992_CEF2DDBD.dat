@@ -1,0 +1,60 @@
+#ifndef _MUSKA2BL_PSH
+#define _MUSKA2BL_PSH
+#define MUSKA2BLPART_HAWK_PELVIS			0
+//   parent: Scene Root
+
+#define MUSKA2BLPART_HAWK_RIGHT_SHOE			1
+//   parent: hawk_right_shin
+
+#define MUSKA2BLPART_HAWK_RIGHT_SHIN			2
+//   parent: hawk_right_thigh
+
+#define MUSKA2BLPART_HAWK_RIGHT_THIGH			3
+//   parent: hawk_pelvis
+
+#define MUSKA2BLPART_HAWK_LEFT_SHOE			4
+//   parent: hawk_left_shin
+
+#define MUSKA2BLPART_HAWK_LEFT_SHIN			5
+//   parent: hawk_left_thigh
+
+#define MUSKA2BLPART_HAWK_LEFT_THIGH			6
+//   parent: hawk_pelvis
+
+#define MUSKA2BLPART_HAWK_STOMACH			7
+//   parent: hawk_pelvis
+
+#define MUSKA2BLPART_HAWK_CHEST			8
+//   parent: hawk_stomach
+
+#define MUSKA2BLPART_HAWK_LEFT_HAND			9
+//   parent: hawk_left_forearm
+
+#define MUSKA2BLPART_HAWK_LEFT_FOREARM			10
+//   parent: hawk_left_bicep
+
+#define MUSKA2BLPART_HAWK_LEFT_BICEP			11
+//   parent: hawk_chest
+
+#define MUSKA2BLPART_HAWK_RIGHT_HAND			12
+//   parent: hawk_right_forearm
+
+#define MUSKA2BLPART_HAWK_RIGHT_FOREARM			13
+//   parent: hawk_right_bicep
+
+#define MUSKA2BLPART_HAWK_RIGHT_BICEP			14
+//   parent: hawk_chest
+
+#define MUSKA2BLPART_HAWK_HEAD			15
+//   parent: hawk_chest
+
+#define MUSKA2BLPART_HAWK_BOARD			16
+//   parent: Scene Root
+
+#define MUSKA2BLPART_HAWK_FRONT_WHEEL			17
+//   parent: hawk_board
+
+#define MUSKA2BLPART_HAWK_BACK_WHEEL			18
+//   parent: hawk_board
+
+#endif

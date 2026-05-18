@@ -1,0 +1,60 @@
+#ifndef _GLIF_L_PSH
+#define _GLIF_L_PSH
+#define GLIF_LPART_GLIFBERG_PELVIS			0
+//   parent: Scene Root
+
+#define GLIF_LPART_BURNQ_RIGHT_SHOE			1
+//   parent: glifberg_right_shin
+
+#define GLIF_LPART_GLIFBERG_RIGHT_SHIN			2
+//   parent: glifberg_right_thigh
+
+#define GLIF_LPART_GLIFBERG_RIGHT_THIGH			3
+//   parent: glifberg_pelvis
+
+#define GLIF_LPART_BURNQ_LEFT_SHOE			4
+//   parent: glifberg_left_shin
+
+#define GLIF_LPART_GLIFBERG_LEFT_SHIN			5
+//   parent: glifberg_left_thigh
+
+#define GLIF_LPART_GLIFBERG_LEFT_THIGH			6
+//   parent: glifberg_pelvis
+
+#define GLIF_LPART_GLIFBERG_STOMACH			7
+//   parent: glifberg_pelvis
+
+#define GLIF_LPART_GLIFBERG_CHEST			8
+//   parent: glifberg_stomach
+
+#define GLIF_LPART_GLIFBERG_LEFT_HAND			9
+//   parent: glifberg_left_forearm
+
+#define GLIF_LPART_GLIFBERG_LEFT_FOREARM			10
+//   parent: glifberg_left_bicep
+
+#define GLIF_LPART_GLIFBERG_LEFT_BICEP			11
+//   parent: glifberg_chest
+
+#define GLIF_LPART_GLIFBERG_RIGHT_HAND			12
+//   parent: glifberg_right_forearm
+
+#define GLIF_LPART_GLIFBERG_RIGHT_FOREARM			13
+//   parent: glifberg_right_bicep
+
+#define GLIF_LPART_GLIFBERG_RIGHT_BICEP			14
+//   parent: glifberg_chest
+
+#define GLIF_LPART_GLIFBERG_HEAD			15
+//   parent: glifberg_chest
+
+#define GLIF_LPART_GLIFBERG_BOARD			16
+//   parent: Scene Root
+
+#define GLIF_LPART_GLIFBERG_FRONT_WHEEL			17
+//   parent: glifberg_board
+
+#define GLIF_LPART_GLIFBERG_BACK_WHEEL			18
+//   parent: glifberg_board
+
+#endif

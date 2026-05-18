@@ -1,0 +1,60 @@
+#ifndef _THOMAS2_PSH
+#define _THOMAS2_PSH
+#define THOMAS2PART_BURNQ_PELVIS			0
+//   parent: Scene Root
+
+#define THOMAS2PART_THOMAS_RIGHT_SHOE			1
+//   parent: thomas_right_shin
+
+#define THOMAS2PART_THOMAS_RIGHT_SHIN			2
+//   parent: thomas_right_thigh
+
+#define THOMAS2PART_THOMAS_RIGHT_THIGH			3
+//   parent: burnq_pelvis
+
+#define THOMAS2PART_THOMAS_LEFT_SHOE			4
+//   parent: thomas_left_shin
+
+#define THOMAS2PART_THOMAS_LEFT_SHIN			5
+//   parent: thomas_left_thigh
+
+#define THOMAS2PART_THOMAS_LEFT_THIGH			6
+//   parent: burnq_pelvis
+
+#define THOMAS2PART_THOMAS_STOMACH			7
+//   parent: burnq_pelvis
+
+#define THOMAS2PART_THOMAS_CHEST			8
+//   parent: thomas_stomach
+
+#define THOMAS2PART_BURNQ_LEFT_HAND			9
+//   parent: thomas_left_forearm
+
+#define THOMAS2PART_THOMAS_LEFT_FOREARM			10
+//   parent: thomas_left_bicep
+
+#define THOMAS2PART_THOMAS_LEFT_BICEP			11
+//   parent: thomas_chest
+
+#define THOMAS2PART_REYNOLDS_RIGHT_HAND			12
+//   parent: thomas_right_forearm
+
+#define THOMAS2PART_THOMAS_RIGHT_FOREARM			13
+//   parent: thomas_right_bicep
+
+#define THOMAS2PART_THOMAS_RIGHT_BICEP			14
+//   parent: thomas_chest
+
+#define THOMAS2PART_THOMAS_HEAD			15
+//   parent: thomas_chest
+
+#define THOMAS2PART_THOMAS_BOARD			16
+//   parent: Scene Root
+
+#define THOMAS2PART_THOMAS_FRONT_WHEEL			17
+//   parent: thomas_board
+
+#define THOMAS2PART_THOMAS_BACK_WHEEL			18
+//   parent: thomas_board
+
+#endif

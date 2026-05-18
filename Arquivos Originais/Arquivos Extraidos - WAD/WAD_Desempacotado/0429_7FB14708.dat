@@ -1,0 +1,60 @@
+#ifndef _SECRET4_PSH
+#define _SECRET4_PSH
+#define SECRET4PART_HAWKX_PELVIS			0
+//   parent: Scene Root
+
+#define SECRET4PART_HAWKX_RIGHT_SHOE			1
+//   parent: hawkx_right_shin
+
+#define SECRET4PART_HAWKX_RIGHT_SHIN			2
+//   parent: hawkx_right_thigh
+
+#define SECRET4PART_HAWKX_LEFT_SHOE			3
+//   parent: hawkx_left_shin
+
+#define SECRET4PART_HAWKX_LEFT_SHIN			4
+//   parent: hawkx_left_thigh
+
+#define SECRET4PART_HAWKX_LEFT_THIGH			5
+//   parent: hawkx_pelvis
+
+#define SECRET4PART_HAWKX_RIGHT_THIGH			6
+//   parent: hawkx_pelvis
+
+#define SECRET4PART_HAWKX_STOMACH			7
+//   parent: hawkx_pelvis
+
+#define SECRET4PART_HAWKX_CHEST			8
+//   parent: hawkx_stomach
+
+#define SECRET4PART_HAWKX_LEFT_HAND			9
+//   parent: hawkx_left_forearm
+
+#define SECRET4PART_HAWKX_LEFT_FOREARM			10
+//   parent: hawkx_left_bicep
+
+#define SECRET4PART_HAWKX_LEFT_BICEP			11
+//   parent: hawkx_chest
+
+#define SECRET4PART_HAWKX_RIGHT_HAND			12
+//   parent: hawkx_right_forearm
+
+#define SECRET4PART_HAWKX_RIGHT_FOREARM			13
+//   parent: hawkx_right_bicep
+
+#define SECRET4PART_HAWKX_RIGHT_BICEP			14
+//   parent: hawkx_chest
+
+#define SECRET4PART_HAWKX_HEAD			15
+//   parent: hawkx_chest
+
+#define SECRET4PART_HAWKX_BOARD			16
+//   parent: Scene Root
+
+#define SECRET4PART_HAWKX_FRONT_WHEEL			17
+//   parent: hawkx_board
+
+#define SECRET4PART_HAWKX_BACK_WHEEL			18
+//   parent: hawkx_board
+
+#endif
