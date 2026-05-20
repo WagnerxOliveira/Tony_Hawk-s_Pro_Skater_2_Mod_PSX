@@ -2,10 +2,10 @@ import os
 from collections import Counter
 
 def censo_magic_numbers():
-    # 1. Configuração de Caminhos
+    # 1. Configuração de Caminhos (Atualizados para snake_case)
     diretorio_script = os.path.dirname(os.path.abspath(__file__))
-    pasta_originais = os.path.join(diretorio_script, "..", "Arquivos Originais")
-    pasta_alvo = os.path.join(pasta_originais, "Arquivos Extraidos - WAD", "WAD_Desempacotado")
+    pasta_originais = os.path.join(diretorio_script, "..", "Arquivos_Originais")
+    pasta_alvo = os.path.join(pasta_originais, "Arquivos_Extraidos_WAD", "WAD_Desempacotado")
 
     if not os.path.exists(pasta_alvo):
         print(f"Erro Crítico: A pasta alvo não foi encontrada:\n{pasta_alvo}")

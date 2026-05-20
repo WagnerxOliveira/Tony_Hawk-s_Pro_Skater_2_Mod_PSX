@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0395_03715AE2.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1482 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _GLIF2_PSH
+-> define _GLIF2_PSH
+-> define GLIF2PART_GLIFBERG_PELVIS
+-> parent
+-> Scene Root
+-> define GLIF2PART_BURNQ_RIGHT_SHOE
+-> glifberg_right_shin
+-> define GLIF2PART_GLIFBERG_RIGHT_SHIN
+-> glifberg_right_thigh
+-> define GLIF2PART_GLIFBERG_RIGHT_THIGH
+-> glifberg_pelvis
+-> define GLIF2PART_BURNQ_LEFT_SHOE
+-> glifberg_left_shin
+-> define GLIF2PART_GLIFBERG_LEFT_SHIN
+-> glifberg_left_thigh
+-> define GLIF2PART_GLIFBERG_LEFT_THIGH
+-> define GLIF2PART_GLIFBERG_STOMACH
+-> define GLIF2PART_GLIFBERG_CHEST
+-> glifberg_stomach
+-> define GLIF2PART_GLIFBERG_LEFT_HAND
+-> glifberg_left_forearm
+-> define GLIF2PART_GLIFBERG_LEFT_FOREARM
+-> glifberg_left_bicep
+-> define GLIF2PART_GLIFBERG_LEFT_BICEP
+-> glifberg_chest
+-> define GLIF2PART_GLIFBERG_RIGHT_HAND
+-> glifberg_right_forearm
+-> define GLIF2PART_GLIFBERG_RIGHT_FOREARM
+-> glifberg_right_bicep
+-> define GLIF2PART_GLIFBERG_RIGHT_BICEP
+-> define GLIF2PART_GLIFBERG_HEAD
+-> define GLIF2PART_GLIFBERG_BOARD
+-> define GLIF2PART_GLIFBERG_FRONT_WHEEL
+-> glifberg_board
+-> define GLIF2PART_GLIFBERG_BACK_WHEEL

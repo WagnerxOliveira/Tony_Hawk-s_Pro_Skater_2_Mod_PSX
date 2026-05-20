@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0017_9AC27C8D.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1422 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _SK2ANIM_PSH
+-> define _SK2ANIM_PSH
+-> define SK2ANIMPART_BURNQ_PELVIS
+-> parent
+-> Scene Root
+-> define SK2ANIMPART_BURNQ_RIGHT_THIGH
+-> burnq_pelvis
+-> define SK2ANIMPART_BURNQ_RIGHT_SHOE
+-> burnq_right_shin
+-> define SK2ANIMPART_BURNQ_RIGHT_SHIN
+-> burnq_right_thigh
+-> define SK2ANIMPART_BURNQ_LEFT_THIGH
+-> define SK2ANIMPART_BURNQ_LEFT_SHOE
+-> burnq_left_shin
+-> define SK2ANIMPART_BURNQ_LEFT_SHIN
+-> burnq_left_thigh
+-> define SK2ANIMPART_BURNQ_STOMACH
+-> define SK2ANIMPART_BURNQ_CHEST
+-> burnq_stomach
+-> define SK2ANIMPART_BURNQ_LEFT_HAND
+-> burnq_left_forearm
+-> define SK2ANIMPART_BURNQ_LEFT_FOREARM
+-> burnq_left_bicep
+-> define SK2ANIMPART_BURNQ_LEFT_BICEP
+-> burnq_chest
+-> define SK2ANIMPART_BURNQ_RIGHT_HAND
+-> burnq_right_forearm
+-> define SK2ANIMPART_BURNQ_RIGHT_FOREARM
+-> burnq_right_bicep
+-> define SK2ANIMPART_BURNQ_RIGHT_BICEP
+-> define SK2ANIMPART_BURNQ_HEAD
+-> define SK2ANIMPART_BURNQ_BOARD
+-> define SK2ANIMPART_BURNQ_FRONT_WHEEL
+-> burnq_board
+-> define SK2ANIMPART_BURNQ_BACK_WHEEL

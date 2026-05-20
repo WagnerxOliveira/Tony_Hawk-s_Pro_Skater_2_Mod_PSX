@@ -6,12 +6,14 @@ import re
 def decodificar_audio_psx():
     print("🎵 Iniciando a Engenharia Reversa do Áudio (VAG/VAB -> WAV) com Rastreabilidade...")
     
-    # 1. Configuração de Caminhos
+    # 1. Configuração de Caminhos (Atualizados para a nova arquitetura)
     diretorio_script = os.path.dirname(os.path.abspath(__file__))
-    pasta_base = os.path.join(diretorio_script, "..", "Arquivos Originais", "Arquivos Classificados")
     
-    pasta_origem = os.path.join(pasta_base, "Audio_VAG")
-    pasta_destino = os.path.join(pasta_base, "Audio_WAV_Convertidos")
+    # Origem: Busca os arquivos originais dentro do cofre classificado
+    pasta_origem = os.path.join(diretorio_script, "..", "Arquivos_Originais", "Arquivos_Classificados", "Audio_VAG")
+    
+    # Destino: Salva os áudios convertidos na área de trabalho limpa
+    pasta_destino = os.path.join(diretorio_script, "..", "Arquivos_Trabalho", "Audio_WAV_Convertidos")
     
     if not os.path.exists(pasta_origem):
         print(f"Erro Crítico: A pasta de origem não foi encontrada:\n{pasta_origem}")

@@ -1,0 +1,20 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1060_D90B544F.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 1808 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> SkB1_O
+-> SkB1_O
+-> Re_Start_Skate
+-> SkB1
+-> Re_Start_Dist
+-> SkB1
+-> =-VM
+-> =-VM

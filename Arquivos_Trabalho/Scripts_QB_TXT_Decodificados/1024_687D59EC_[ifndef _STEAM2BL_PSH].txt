@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 1024_687D59EC.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1515 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _STEAM2BL_PSH
+-> define _STEAM2BL_PSH
+-> define STEAM2BLPART_STEAMER_PELVIS
+-> parent
+-> Scene Root
+-> define STEAM2BLPART_STEAMER_RIGHT_SHOE
+-> steamer_right_shin
+-> define STEAM2BLPART_STEAMER_RIGHT_SHIN
+-> steamer_right_thigh
+-> define STEAM2BLPART_STEAMER_LEFT_SHOE
+-> steamer_left_shin
+-> define STEAM2BLPART_STEAMER_LEFT_SHIN
+-> steamer_left_thigh
+-> define STEAM2BLPART_STEAMER_LEFT_THIGH
+-> steamer_pelvis
+-> define STEAM2BLPART_STEAMER_RIGHT_THIGH
+-> define STEAM2BLPART_STEAMER_STOMACH
+-> define STEAM2BLPART_STEAMER_CHEST
+-> steamer_stomach
+-> define STEAM2BLPART_STEAMER_LEFT_HAND
+-> steamer_left_forearm
+-> define STEAM2BLPART_STEAMER_LEFT_FOREARM
+-> steamer_left_bicep
+-> define STEAM2BLPART_STEAMER_LEFT_BICEP
+-> steamer_chest
+-> define STEAM2BLPART_STEAMER_RIGHT_HAND
+-> steamer_right_forearm
+-> define STEAM2BLPART_STEAMER_RIGHT_FOREARM
+-> steamer_right_bicep
+-> define STEAM2BLPART_STEAMER_RIGHT_BICEP
+-> define STEAM2BLPART_STEAMER_HEAD
+-> define STEAM2BLPART_STEAMER_BOARD
+-> define STEAM2BLPART_STEAMER_FRONT_WHEEL
+-> steamer_board
+-> define STEAM2BLPART_STEAMER_BACK_WHEEL

@@ -1,0 +1,122 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 0013_CD8D0D3F.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 23680 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Start
+-> Start
+-> Heli Side
+-> SkHan
+-> Start
+-> 2P Start 1
+-> SkHan_l
+-> SkHan_O
+-> SkHan_O
+-> Z3|k
+-> Dummy
+-> Start
+-> Heli Side
+-> Start
+-> Heli Side
+-> SkHan
+-> Control Room
+-> Start
+-> Heli Side
+-> SkHan
+-> g\qd
+-> Start
+-> 2P Start 1
+-> SkHan_l2
+-> SkHan_O2
+-> SkHan_O2
+-> TM^{
+-> Re_2P
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkMar_2
+-> Re_Start_2P_NY
+-> Re_Start_2P_NY
+-> SkNY_2
+-> 2P Start 1
+-> 2P Start 1
+-> SkHan_2
+-> /!ma
+-> O1+:
+-> 2T/B
+-> B)!P
+->  A4!
+-> Ho_Rollin
+-> Ho_Rollin
+-> Ho_HalfPipe
+-> Ho_Coping
+-> Ho_Wind_Tunnel
+-> Ho_Heli_Ramp01
+-> Ho_Heli_Ramp02
+-> Ho_Rotor
+-> skhan_2
+-> Ho_HalfPipe
+-> Ho_Rollin
+-> Ho_HalfPipe
+-> Ho_Coping
+-> Ho_Wind_Tunnel
+-> Ho_Heli_Ramp01
+-> Ho_Heli_Ramp02
+-> Ho_Rotor
+-> skhan_2
+-> Ho_Coping
+-> Ho_Rollin
+-> Ho_HalfPipe
+-> Ho_Coping
+-> Ho_Wind_Tunnel
+-> Ho_Heli_Ramp01
+-> Ho_Heli_Ramp02
+-> Ho_Rotor
+-> skhan_2
+-> Ho_Wind_Tunnel
+-> Ho_Rollin
+-> Ho_HalfPipe
+-> Ho_Coping
+-> Ho_Wind_Tunnel
+-> Ho_Heli_Ramp01
+-> Ho_Heli_Ramp02
+-> Ho_Rotor
+-> skhan_2
+-> Ho_Heli_Ramp01
+-> Ho_Rollin
+-> Ho_HalfPipe
+-> Ho_Coping
+-> Ho_Wind_Tunnel
+-> Ho_Heli_Ramp01
+-> Ho_Heli_Ramp02
+-> Ho_Rotor
+-> skhan_2
+-> Ho_Heli_Ramp02
+-> Ho_Rollin
+-> Ho_HalfPipe
+-> Ho_Coping
+-> Ho_Wind_Tunnel
+-> Ho_Heli_Ramp01
+-> Ho_Heli_Ramp02
+-> Ho_Rotor
+-> skhan_2
+-> Ho_Rotor
+-> Ho_Rollin
+-> Ho_HalfPipe
+-> Ho_Coping
+-> Ho_Wind_Tunnel
+-> Ho_Heli_Ramp01
+-> Ho_Heli_Ramp02
+-> Ho_Rotor
+-> skhan_2
+-> )bg7
+-> Cy#2
+-> B)!P
+->  A4!
+-> B)!,
+-> B)!,

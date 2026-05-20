@@ -1,0 +1,147 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1086_19C9C448.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 32116 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Start
+-> Start
+-> Visitors Center
+-> Back of THPS Park
+-> Phillyside
+-> SkPH
+-> Start
+-> 2P Start 1
+-> SkPH_l
+-> SkPH_O
+-> SkPH_O
+-> C_Bus
+-> Visitors Center
+-> Start
+-> Visitors Center
+-> Back of THPS Park
+-> Phillyside
+-> SkPH
+-> Back of THPS Park
+-> Start
+-> Visitors Center
+-> Back of THPS Park
+-> Phillyside
+-> SkPH
+-> Phillyside
+-> Start
+-> Visitors Center
+-> Back of THPS Park
+-> Phillyside
+-> SkPH
+-> f=5?
+-> Start
+-> Start
+-> Visitors Center
+-> Back of THPS Park
+-> Phillyside
+-> SkPH
+-> 2GP_
+-> Re_2P
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkMar_2
+-> 2P Start 1
+-> 2P Start 1
+-> 2P Start 2
+-> SkPH_2
+-> Start
+-> 2P Start 1
+-> SkPH_l2
+-> SkPH_O2
+-> SkPH_O2
+-> /!<j
+-> Ho_Funbox
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> Ho_Inside_Planter
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> Ho_Awning
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> Ho_Outside_Planter
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> Ho_Transfer
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> Ho_Pillar
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> Ho_Vis
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> Ho_Twinkie
+-> Ho_Funbox
+-> Ho_Inside_Planter
+-> Ho_Awning
+-> Ho_Outside_Planter
+-> Ho_Transfer
+-> Ho_Pillar
+-> Ho_Vis
+-> Ho_Twinkie
+-> SkPH_2
+-> i9*Z
+-> i9*Z
+-> Dr)/
+-> Dr)/

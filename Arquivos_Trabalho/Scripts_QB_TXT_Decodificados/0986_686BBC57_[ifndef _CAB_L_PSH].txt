@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0986_686BBC57.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1509 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _CAB_L_PSH
+-> define _CAB_L_PSH
+-> define CAB_LPART_CABLOW_BOARD
+-> parent
+-> Scene Root
+-> define CAB_LPART_CABLOW_FRONT_WHEEL
+-> cablow_board
+-> define CAB_LPART_CABLOW_BACK_WHEEL
+-> define CAB_LPART_CABALLERO_PELVIS
+-> define CAB_LPART_CABALLERO_RIGHT_SHOE
+-> caballero_right_shin
+-> define CAB_LPART_CABALLERO_RIGHT_SHIN
+-> caballero_right_thigh
+-> define CAB_LPART_CABALLERO_RIGHT_THIGH
+-> caballero_pelvis
+-> define CAB_LPART_CABALLERO_LEFT_SHOE
+-> caballero_left_shin
+-> define CAB_LPART_CABALLERO_LEFT_SHIN
+-> caballero_left_thigh
+-> define CAB_LPART_CABALLERO_LEFT_THIGH
+-> define CAB_LPART_CABALLERO_STOMACH
+-> define CAB_LPART_CABALLERO_LEFT_HAND
+-> caballero_left_forearm
+-> define CAB_LPART_CABALLERO_LEFT_FOREARM
+-> caballero_left_bicep
+-> define CAB_LPART_CABALLERO_RIGHT_HAND
+-> caballero_right_forearm
+-> define CAB_LPART_CABALLERO_RIGHT_FOREARM
+-> caballero_right_bicep
+-> define CAB_LPART_CABALLERO_HEAD
+-> caballero_chest
+-> define CAB_LPART_CABALLERO_CHEST
+-> caballero_stomach
+-> define CAB_LPART_CABALLERO_LEFT_BICEP
+-> define CAB_LPART_CABALLERO_RIGHT_BICEP

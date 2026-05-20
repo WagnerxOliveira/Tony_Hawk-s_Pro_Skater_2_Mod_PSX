@@ -1,0 +1,66 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1137_C3BA3679.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 28160 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_School
+-> Re_Start_School_Two_Player
+-> SkSchl_o
+-> SkSchl_o
+-> |r=u
+-> =C&l
+-> !B+!*!
+-> !B*!
+-> Re_Start_School
+-> Re_Start_School
+-> SkSchl_l
+-> skschl
+-> Ho_Start_School_Two_Player
+-> Ho_Start_School_Two_Player
+-> Ho_Start_School_Rails01
+-> Ho_Start_School_Pool01
+-> Ho_Start_School_Halfpipe01
+-> Ho_Start_School_Halfpipe02
+-> Ho_Start_School_Pool02
+-> Ho_Start_School_Billboard01
+-> SkSchll2
+-> SkSchl_2
+-> _E'!
+-> _E'!
+-> %*}j
+-> rxj[
+-> EvKh
+-> 3IqB
+-> +&5m
+-> Q$z-
+-> /!|`
+-> /!|`
+-> Ho_Start_School_Rails01
+-> SkSchll2
+-> SkSchl_2
+-> Re_Start_School_Two_Player
+-> Re_Start_School_Two_Player
+-> SkSchll2
+-> SkSchl_2
+-> Ho_Start_School_Pool01
+-> SkSchll2
+-> SkSchl_2
+-> Ho_Start_School_Halfpipe01
+-> SkSchll2
+-> SkSchl_2
+-> Ho_Start_School_Halfpipe02
+-> SkSchll2
+-> SkSchl_2
+-> Ho_Start_School_Pool02
+-> SkSchll2
+-> SkSchl_2
+-> Ho_Start_School_Billboard01
+-> SkSchll2
+-> SkSchl_2
+-> RE_2P

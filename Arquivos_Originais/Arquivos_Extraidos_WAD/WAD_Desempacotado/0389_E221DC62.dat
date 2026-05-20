@@ -1,0 +1,60 @@
+#ifndef _BURNQ2_PSH
+#define _BURNQ2_PSH
+#define BURNQ2PART_BURNQ_PELVIS			0
+//   parent: Scene Root
+
+#define BURNQ2PART_BURNQ_RIGHT_SHOE			1
+//   parent: burnq_right_shin
+
+#define BURNQ2PART_BURNQ_RIGHT_SHIN			2
+//   parent: burnq_right_thigh
+
+#define BURNQ2PART_BURNQ_RIGHT_THIGH			3
+//   parent: burnq_pelvis
+
+#define BURNQ2PART_BURNQ_LEFT_SHOE			4
+//   parent: burnq_left_shin
+
+#define BURNQ2PART_BURNQ_LEFT_SHIN			5
+//   parent: burnq_left_thigh
+
+#define BURNQ2PART_BURNQ_LEFT_THIGH			6
+//   parent: burnq_pelvis
+
+#define BURNQ2PART_BURNQ_STOMACH			7
+//   parent: burnq_pelvis
+
+#define BURNQ2PART_BURNQ_CHEST			8
+//   parent: burnq_stomach
+
+#define BURNQ2PART_BURNQ_LEFT_HAND			9
+//   parent: burnq_left_forearm
+
+#define BURNQ2PART_BURNQ_LEFT_FOREARM			10
+//   parent: burnq_left_bicep
+
+#define BURNQ2PART_BURNQ_LEFT_BICEP			11
+//   parent: burnq_chest
+
+#define BURNQ2PART_BURNQ_RIGHT_HAND			12
+//   parent: burnq_right_forearm
+
+#define BURNQ2PART_BURNQ_RIGHT_FOREARM			13
+//   parent: burnq_right_bicep
+
+#define BURNQ2PART_BURNQ_RIGHT_BICEP			14
+//   parent: burnq_chest
+
+#define BURNQ2PART_MULLEN_HEAD			15
+//   parent: burnq_chest
+
+#define BURNQ2PART_BURNQ_BOARD			16
+//   parent: Scene Root
+
+#define BURNQ2PART_BURNQ_FRONT_WHEEL			17
+//   parent: burnq_board
+
+#define BURNQ2PART_BURNQ_BACK_WHEEL			18
+//   parent: burnq_board
+
+#endif

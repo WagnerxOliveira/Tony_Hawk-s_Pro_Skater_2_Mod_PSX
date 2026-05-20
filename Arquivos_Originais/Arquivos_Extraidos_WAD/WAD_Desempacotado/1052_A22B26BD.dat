@@ -1,0 +1,333 @@
+#ifndef _SK2DEF_L_PSH
+#define _SK2DEF_L_PSH
+#define SK2DEF_LPART_DEFAULT_PELVIS			0
+//   parent: Scene Root
+
+#define SK2DEF_LPART_DEFAULT_LEFT_SHIN			1
+//   parent: default_left_thigh
+
+#define SK2DEF_LPART_DEFAULT_LEFT_SHOE			2
+//   parent: default_left_shin
+
+#define SK2DEF_LPART_DEFAULT_RIGHT_SHIN			3
+//   parent: default_right_thigh
+
+#define SK2DEF_LPART_DEFAULT_RIGHT_THIGH			4
+//   parent: default_pelvis
+
+#define SK2DEF_LPART_DEFAULT_LEFT_THIGH			5
+//   parent: default_pelvis
+
+#define SK2DEF_LPART_DEFAULT_RIGHT_SHOE			6
+//   parent: default_right_shin
+
+#define SK2DEF_LPART_DEFAULT_STOMACH			7
+//   parent: default_pelvis
+
+#define SK2DEF_LPART_DEFAULT_CHEST			8
+//   parent: default_stomach
+
+#define SK2DEF_LPART_DEFAULT_LEFT_HAND			9
+//   parent: default_left_forearm
+
+#define SK2DEF_LPART_DEFAULT_LEFT_FOREARM			10
+//   parent: default_left_bicep
+
+#define SK2DEF_LPART_DEFAULT_LEFT_BICEP			11
+//   parent: default_chest
+
+#define SK2DEF_LPART_DEFAULT_RIGHT_HAND			12
+//   parent: default_right_forearm
+
+#define SK2DEF_LPART_DEFAULT_RIGHT_FOREARM			13
+//   parent: default_right_bicep
+
+#define SK2DEF_LPART_DEFAULT_RIGHT_BICEP			14
+//   parent: default_chest
+
+#define SK2DEF_LPART_SKIN_HEAD			15
+//   parent: default_chest
+
+#define SK2DEF_LPART_BALDBLACK_HEAD			16
+//   parent: default_chest
+
+#define SK2DEF_LPART_DEFAULT_BOARD			17
+//   parent: Scene Root
+
+#define SK2DEF_LPART_DEFAULT_BACK_WHEEL			18
+//   parent: default_board
+
+#define SK2DEF_LPART_DEFAULT_FRONT_WHEEL			19
+//   parent: default_board
+
+#define SK2DEF_LPART_CAPFORWARD_HEAD			20
+//   parent: Scene Root
+
+#define SK2DEF_LPART_LONGPANTS_PELVIS			21
+//   parent: Scene Root
+
+#define SK2DEF_LPART_LONGPANTS_LEFT_SHOE			22
+//   parent: longpants_left_shin
+
+#define SK2DEF_LPART_LONGPANTS_LEFT_SHIN			23
+//   parent: longpants_left_thigh
+
+#define SK2DEF_LPART_LONGPANTS_RIGHT_SHOE			24
+//   parent: longpants_right_shin
+
+#define SK2DEF_LPART_LONGPANTS_RIGHT_SHIN			25
+//   parent: longpants_right_thigh
+
+#define SK2DEF_LPART_LONGPANTS_RIGHT_THIGH			26
+//   parent: longpants_pelvis
+
+#define SK2DEF_LPART_LONGPANTS_LEFT_THIGH			27
+//   parent: longpants_pelvis
+
+#define SK2DEF_LPART_LONGSLEVE_STOMACH			28
+//   parent: Scene Root
+
+#define SK2DEF_LPART_LONGSLEVE_CHEST			29
+//   parent: longsleve_stomach
+
+#define SK2DEF_LPART_LONGSLEVE_LEFT_FOREARM			30
+//   parent: longsleve_left_bicep
+
+#define SK2DEF_LPART_LONGSLEVE_LEFT_BICEP			31
+//   parent: longsleve_chest
+
+#define SK2DEF_LPART_LONGSLEVE_LEFT_HAND			32
+//   parent: longsleve_left_forearm
+
+#define SK2DEF_LPART_LONGSLEVE_RIGHT_FOREARM			33
+//   parent: longsleve_right_bicep
+
+#define SK2DEF_LPART_LONGSLEVE_RIGHT_BICEP			34
+//   parent: longsleve_chest
+
+#define SK2DEF_LPART_LONGSLEVE_RIGHT_HAND			35
+//   parent: longsleve_right_forearm
+
+#define SK2DEF_LPART_NOSHIRT_STOMACH			36
+//   parent: Scene Root
+
+#define SK2DEF_LPART_NOSHIRT_CHEST			37
+//   parent: noshirt_stomach
+
+#define SK2DEF_LPART_NOSHIRT_LEFT_HAND			38
+//   parent: noshirt_left_forearm
+
+#define SK2DEF_LPART_NOSHIRT_LEFT_FOREARM			39
+//   parent: noshirt_left_bicep
+
+#define SK2DEF_LPART_NOSHIRT_LEFT_BICEP			40
+//   parent: noshirt_chest
+
+#define SK2DEF_LPART_NOSHIRT_RIGHT_HAND			41
+//   parent: noshirt_right_forearm
+
+#define SK2DEF_LPART_NOSHIRT_RIGHT_FOREARM			42
+//   parent: noshirt_right_bicep
+
+#define SK2DEF_LPART_NOSHIRT_RIGHT_BICEP			43
+//   parent: noshirt_chest
+
+#define SK2DEF_LPART_HOODY_STOMACH			44
+//   parent: Scene Root
+
+#define SK2DEF_LPART_HOODY_CHEST			45
+//   parent: hoody_stomach
+
+#define SK2DEF_LPART_HOODY_LEFT_HAND			46
+//   parent: hoody_left_forearm
+
+#define SK2DEF_LPART_HOODY_LEFT_FOREARM			47
+//   parent: hoody_left_bicep
+
+#define SK2DEF_LPART_HOODY_LEFT_BICEP			48
+//   parent: hoody_chest
+
+#define SK2DEF_LPART_HOODY_RIGHT_HAND			49
+//   parent: hoody_right_forearm
+
+#define SK2DEF_LPART_HOODY_RIGHT_FOREARM			50
+//   parent: hoody_right_bicep
+
+#define SK2DEF_LPART_HOODY_RIGHT_BICEP			51
+//   parent: hoody_chest
+
+#define SK2DEF_LPART_TANKTOP_STOMACH			52
+//   parent: Scene Root
+
+#define SK2DEF_LPART_TANKTOP_CHEST			53
+//   parent: tanktop_stomach
+
+#define SK2DEF_LPART_TANKTOP_LEFT_HAND			54
+//   parent: tanktop_left_forearm
+
+#define SK2DEF_LPART_TANKTOP_LEFT_FOREARM			55
+//   parent: tanktop_left_bicep
+
+#define SK2DEF_LPART_TANKTOP_LEFT_BICEP			56
+//   parent: tanktop_chest
+
+#define SK2DEF_LPART_TANKTOP_RIGHT_HAND			57
+//   parent: tanktop_right_forearm
+
+#define SK2DEF_LPART_TANKTOP_RIGHT_FOREARM			58
+//   parent: tanktop_right_bicep
+
+#define SK2DEF_LPART_TANKTOP_RIGHT_BICEP			59
+//   parent: tanktop_chest
+
+#define SK2DEF_LPART_KNEEPAD_PELVIS			60
+//   parent: Scene Root
+
+#define SK2DEF_LPART_KNEEPAD_LEFT_SHIN			61
+//   parent: kneepad_left_thigh
+
+#define SK2DEF_LPART_KNEEPAD_LEFT_SHOE			62
+//   parent: kneepad_left_shin
+
+#define SK2DEF_LPART_KNEEPAD_RIGHT_SHIN			63
+//   parent: kneepad_right_thigh
+
+#define SK2DEF_LPART_KNEEPAD_RIGHT_THIGH			64
+//   parent: kneepad_pelvis
+
+#define SK2DEF_LPART_KNEEPAD_LEFT_THIGH			65
+//   parent: kneepad_pelvis
+
+#define SK2DEF_LPART_KNEEPAD_RIGHT_SHOE			66
+//   parent: kneepad_right_shin
+
+#define SK2DEF_LPART_BAGGYPANTS_PELVIS			67
+//   parent: Scene Root
+
+#define SK2DEF_LPART_BAGGYPANTS_LEFT_SHOE			68
+//   parent: baggypants_left_shin
+
+#define SK2DEF_LPART_BAGGYPANTS_LEFT_SHIN			69
+//   parent: baggypants_left_thigh
+
+#define SK2DEF_LPART_BAGGYPANTS_RIGHT_SHOE			70
+//   parent: baggypants_right_shin
+
+#define SK2DEF_LPART_BAGGYPANTS_RIGHT_SHIN			71
+//   parent: baggypants_right_thigh
+
+#define SK2DEF_LPART_BAGGYPANTS_RIGHT_THIGH			72
+//   parent: baggypants_pelvis
+
+#define SK2DEF_LPART_BAGGYPANTS_LEFT_THIGH			73
+//   parent: baggypants_pelvis
+
+#define SK2DEF_LPART_ELBOWPADS_STOMACH			74
+//   parent: Scene Root
+
+#define SK2DEF_LPART_ELBOWPADS_CHEST			75
+//   parent: elbowpads_stomach
+
+#define SK2DEF_LPART_ELBOWPADS_LEFT_HAND			76
+//   parent: elbowpads_left_forearm
+
+#define SK2DEF_LPART_ELBOWPADS_LEFT_FOREARM			77
+//   parent: elbowpads_left_bicep
+
+#define SK2DEF_LPART_ELBOWPADS_LEFT_BICEP			78
+//   parent: elbowpads_chest
+
+#define SK2DEF_LPART_ELBOWPADS_RIGHT_HAND			79
+//   parent: elbowpads_right_forearm
+
+#define SK2DEF_LPART_ELBOWPADS_RIGHT_FOREARM			80
+//   parent: elbowpads_right_bicep
+
+#define SK2DEF_LPART_ELBOWPADS_RIGHT_BICEP			81
+//   parent: elbowpads_chest
+
+#define SK2DEF_LPART_CAPHELMET_HEAD			82
+//   parent: Scene Root
+
+#define SK2DEF_LPART_CAPBACKWARD_HEAD			83
+//   parent: Scene Root
+
+#define SK2DEF_LPART_CAPBEANIE_HEAD			84
+//   parent: Scene Root
+
+#define SK2DEF_LPART_AFRO_HEAD			85
+//   parent: Scene Root
+
+#define SK2DEF_LPART_DREADS_HEAD			86
+//   parent: Scene Root
+
+#define SK2DEF_LPART_AFROWHITE_HEAD			87
+//   parent: Scene Root
+
+#define SK2DEF_LPART_GILLIGAN_HEAD			88
+//   parent: Scene Root
+
+#define SK2DEF_LPART_ASIAN_HEAD			89
+//   parent: Scene Root
+
+#define SK2DEF_LPART_SPIKE_HEAD			90
+//   parent: Scene Root
+
+#define SK2DEF_LPART_MULLET_HEAD			91
+//   parent: Scene Root
+
+#define SK2DEF_LPART_TIEDPANT_PELVIS			92
+//   parent: Scene Root
+
+#define SK2DEF_LPART_TIEDPANT_LEFT_SHIN			93
+//   parent: Tiedpant_left_thigh
+
+#define SK2DEF_LPART_TIEDPANT_LEFT_SHOE			94
+//   parent: Tiedpant_left_shin
+
+#define SK2DEF_LPART_TIEDPANT_RIGHT_SHIN			95
+//   parent: Tiedpant_right_thigh
+
+#define SK2DEF_LPART_TIEDPANT_RIGHT_THIGH			96
+//   parent: Tiedpant_pelvis
+
+#define SK2DEF_LPART_TIEDPANT_LEFT_THIGH			97
+//   parent: Tiedpant_pelvis
+
+#define SK2DEF_LPART_TIEDPANT_RIGHT_SHOE			98
+//   parent: Tiedpant_right_shin
+
+#define SK2DEF_LPART_SKINELBW_STOMACH			99
+//   parent: Scene Root
+
+#define SK2DEF_LPART_SKINELBW_CHEST			100
+//   parent: skinelbw_stomach
+
+#define SK2DEF_LPART_SKINELBW_LEFT_HAND			101
+//   parent: skinelbw_left_forearm
+
+#define SK2DEF_LPART_SKINELBW_LEFT_FOREARM			102
+//   parent: skinelbw_left_bicep
+
+#define SK2DEF_LPART_SKINELBW_LEFT_BICEP			103
+//   parent: skinelbw_chest
+
+#define SK2DEF_LPART_SKINELBW_RIGHT_HAND			104
+//   parent: skinelbw_right_forearm
+
+#define SK2DEF_LPART_SKINELBW_RIGHT_FOREARM			105
+//   parent: skinelbw_right_bicep
+
+#define SK2DEF_LPART_SKINELBW_RIGHT_BICEP			106
+//   parent: skinelbw_chest
+
+#define SK2DEF_LPART_CURLYHAIR_HEAD			107
+//   parent: Scene Root
+
+#define SK2DEF_LPART_SLICK_HEAD			108
+//   parent: Scene Root
+
+#define SK2DEF_LPART_DEFAULT_HEAD			109
+//   parent: Scene Root
+
+#endif

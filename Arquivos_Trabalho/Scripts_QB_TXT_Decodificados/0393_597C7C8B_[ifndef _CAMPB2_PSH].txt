@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0393_597C7C8B.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1509 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _CAMPB2_PSH
+-> define _CAMPB2_PSH
+-> define CAMPB2PART_CAMPBELL_PELVIS
+-> parent
+-> Scene Root
+-> define CAMPB2PART_CAMPBELL_RIGHT_SHOE
+-> campbell_right_shin
+-> define CAMPB2PART_CAMPBELL_RIGHT_SHIN
+-> campbell_right_thigh
+-> define CAMPB2PART_CAMPBELL_RIGHT_THIGH
+-> campbell_pelvis
+-> define CAMPB2PART_CAMPBELL_LEFT_SHOE
+-> campbell_left_shin
+-> define CAMPB2PART_CAMPBELL_LEFT_SHIN
+-> campbell_left_thigh
+-> define CAMPB2PART_CAMPBELL_LEFT_THIGH
+-> define CAMPB2PART_CAMPBELL_STOMACH
+-> define CAMPB2PART_CAMPBELL_CHEST
+-> campbell_stomach
+-> define CAMPB2PART_CAMPBELL_LEFT_HAND
+-> campbell_left_forearm
+-> define CAMPB2PART_CAMPBELL_LEFT_FOREARM
+-> campbell_left_bicep
+-> define CAMPB2PART_CAMPBELL_LEFT_BICEP
+-> campbell_chest
+-> define CAMPB2PART_CAMPBELL_RIGHT_HAND
+-> campbell_right_forearm
+-> define CAMPB2PART_CAMPBELL_RIGHT_FOREARM
+-> campbell_right_bicep
+-> define CAMPB2PART_CAMPBELL_RIGHT_BICEP
+-> define CAMPB2PART_CAMPBELL_HEAD
+-> define CAMPB2PART_CAMPBELL_BOARD
+-> define CAMPB2PART_CAMPBELL_FRONT_WHEEL
+-> campbell_board
+-> define CAMPB2PART_CAMPBELL_BACK_WHEEL

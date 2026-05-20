@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0399_48CFB455.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1437 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _LASEK2_PSH
+-> define _LASEK2_PSH
+-> define LASEK2PART_LASEK2_PELVIS
+-> parent
+-> Scene Root
+-> define LASEK2PART_LASEK2_RIGHT_SHOE
+-> lasek2_right_shin
+-> define LASEK2PART_LASEK2_RIGHT_SHIN
+-> lasek2_right_thigh
+-> define LASEK2PART_LASEK2_RIGHT_THIGH
+-> lasek2_pelvis
+-> define LASEK2PART_LASEK2_LEFT_SHOE
+-> lasek2_left_shin
+-> define LASEK2PART_LASEK2_LEFT_SHIN
+-> lasek2_left_thigh
+-> define LASEK2PART_LASEK2_LEFT_THIGH
+-> define LASEK2PART_LASEK2_STOMACH
+-> define LASEK2PART_LASEK2_CHEST
+-> lasek2_stomach
+-> define LASEK2PART_LASEK2_LEFT_HAND
+-> lasek2_left_forearm
+-> define LASEK2PART_LASEK2_LEFT_FOREARM
+-> lasek2_left_bicep
+-> define LASEK2PART_LASEK2_LEFT_BICEP
+-> lasek2_chest
+-> define LASEK2PART_LASEK2_RIGHT_HAND
+-> lasek2_right_forearm
+-> define LASEK2PART_LASEK2_RIGHT_FOREARM
+-> lasek2_right_bicep
+-> define LASEK2PART_LASEK2_RIGHT_BICEP
+-> define LASEK2PART_LASEK2_HEAD
+-> define LASEK2PART_LASEK2_BOARD
+-> define LASEK2PART_LASEK2_FRONT_WHEEL
+-> lasek2_board
+-> define LASEK2PART_LASEK2_BACK_WHEEL

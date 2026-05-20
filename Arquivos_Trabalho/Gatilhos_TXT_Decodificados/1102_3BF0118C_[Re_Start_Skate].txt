@@ -1,0 +1,182 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1102_3BF0118C.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 29640 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_Seashell_Roof
+-> Re_Start_Venice_Ledge
+-> Re_Start_West_Side_Roof
+-> Re_Start_West_Side
+-> SkVen
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkVen_L
+-> SkVen_O
+-> SkVen_O
+-> Re_Start_2P
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Re_2P
+-> SkMar_2
+-> Re_Start_2P
+-> SkVen_L2
+-> QzMH
+-> $Gxk
+-> D$DG
+-> B)!,
+-> Ho_Start_Semi_Pool
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Ho_Start_Triple_Rail
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Re_Start_Seashell_Roof
+-> Re_Start_Skate
+-> Re_Start_Seashell_Roof
+-> Re_Start_Venice_Ledge
+-> Re_Start_West_Side_Roof
+-> Re_Start_West_Side
+-> SkVen
+-> Re_Start_Venice_Ledge
+-> Re_Start_Skate
+-> Re_Start_Seashell_Roof
+-> Re_Start_Venice_Ledge
+-> Re_Start_West_Side_Roof
+-> Re_Start_West_Side
+-> SkVen
+-> Re_Start_West_Side_Roof
+-> Re_Start_Skate
+-> Re_Start_Seashell_Roof
+-> Re_Start_Venice_Ledge
+-> Re_Start_West_Side_Roof
+-> Re_Start_West_Side
+-> SkVen
+-> Re_Start_West_Side
+-> Re_Start_Skate
+-> Re_Start_Seashell_Roof
+-> Re_Start_Venice_Ledge
+-> Re_Start_West_Side_Roof
+-> Re_Start_West_Side
+-> SkVen
+-> B)!,
+-> +!*!!B !
+-> +! !
+->  A!B !
+-> +! !
+->  A!B !
+-> +!*!!B !
+-> +! !
+->  A!B !
+-> +! !
+->  A!B !
+-> Ho_Start_Fun_Boxes
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Ho_Start_Table_Bridge
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Ho_Start_20_Stair
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Ho_Start_Police_Roof
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Ho_SkVen_Video_Line
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> Ho_Start_Angle_Roof
+-> Re_Start_2P
+-> Ho_Start_Semi_Pool
+-> Ho_SkVen_Video_Line
+-> Ho_Start_Triple_Rail
+-> Ho_Start_20_Stair
+-> Ho_Start_Fun_Boxes
+-> Ho_Start_Police_Roof
+-> Ho_Start_Table_Bridge
+-> Ho_Start_Angle_Roof
+-> SkVen_2
+-> B)!,
+-> G`Mc
+->  z0{
+-> N3}E
+-> >F~&
+-> B)!,
+-> B)!,
+-> B)!,
+-> .${@
+-> 9N=d
+-> 6r@>
+-> 0v:f
+-> )q\O

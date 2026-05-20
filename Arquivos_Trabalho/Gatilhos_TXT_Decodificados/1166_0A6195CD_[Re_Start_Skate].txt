@@ -1,0 +1,47 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1166_0A6195CD.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 7972 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkVans_L
+-> SkVans_O
+-> SkVans_O
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_2P
+-> Re_2P
+-> Ho_SkVans_FunBox
+-> Ho_SkVans_HP
+-> Ho_SkVans_Pool
+-> Ho_SkVans_Start
+-> Ho_SkVans_Whoop
+-> SkVans
+-> Re_Start_2P
+-> Re_Start_2P
+-> Re_2P
+-> SkVans_2
+-> Ho_SkVans_Start
+-> Ho_SkVans_FunBox
+-> Ho_SkVans_HP
+-> Ho_SkVans_Pool
+-> Ho_SkVans_Start
+-> Ho_SkVans_Whoop
+-> SkVans
+-> Ho_SkVans_Whoop
+-> SkVans
+-> Ho_SkVans_HP
+-> SkVans
+-> Ho_SkVans_FunBox
+-> SkVans
+-> Ho_SkVans_Pool
+-> SkVans
+-> Re_2P
+-> SkVans_2

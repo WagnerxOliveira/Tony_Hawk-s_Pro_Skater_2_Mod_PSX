@@ -2,15 +2,15 @@ import os
 import shutil
 
 def classificar_e_copiar_arquivos():
-    # 1. Configuração de Caminhos
+    # 1. Configuração de Caminhos (Atualizados para snake_case)
     diretorio_script = os.path.dirname(os.path.abspath(__file__))
-    pasta_originais = os.path.join(diretorio_script, "..", "Arquivos Originais")
+    pasta_originais = os.path.join(diretorio_script, "..", "Arquivos_Originais")
     
     # Pasta RAW (A que vamos manter intacta)
-    pasta_origem = os.path.join(pasta_originais, "Arquivos Extraidos - WAD", "WAD_Desempacotado")
+    pasta_origem = os.path.join(pasta_originais, "Arquivos_Extraidos_WAD", "WAD_Desempacotado")
     
     # Pasta REFINADA (Onde as subpastas organizadas vão nascer)
-    pasta_destino_base = os.path.join(pasta_originais, "Arquivos Classificados")
+    pasta_destino_base = os.path.join(pasta_originais, "Arquivos_Classificados")
 
     if not os.path.exists(pasta_origem):
         print(f"Erro Crítico: A pasta de origem não foi encontrada:\n{pasta_origem}")

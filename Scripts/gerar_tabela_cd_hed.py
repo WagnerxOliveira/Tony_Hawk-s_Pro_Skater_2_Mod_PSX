@@ -5,11 +5,15 @@ def gerar_markdown_completo():
     # Descobre a pasta onde este script está salvo (.../Scripts)
     diretorio_script = os.path.dirname(os.path.abspath(__file__))
     
-    # Navega para a pasta correta do CD.HED e do Markdown
-    pasta_alvo = os.path.join(diretorio_script, "..", "Arquivos Originais", "Arquivos Extraídos - CDmage")
-    
+    # Navega para a pasta correta do CD.HED (Atualizado com snake_case)
+    pasta_alvo = os.path.join(diretorio_script, "..", "Arquivos_Originais", "Arquivos_Extraidos_CDmage")
     caminho_hed = os.path.join(pasta_alvo, "CD.HED")
-    caminho_md = os.path.join(pasta_alvo, "02_Arquivos_mapeados_cd_hed.md")
+    
+    # Direciona o relatório gerado diretamente para a nova pasta de documentação
+    pasta_docs = os.path.join(diretorio_script, "..", "Docs")
+    # Cria a pasta Docs caso ela não exista por algum motivo
+    os.makedirs(pasta_docs, exist_ok=True)
+    caminho_md = os.path.join(pasta_docs, "02_Arquivos_mapeados_cd_hed.md")
 
     if not os.path.exists(caminho_hed):
         print(f"Erro: O arquivo não foi encontrado no caminho: {caminho_hed}")
@@ -23,7 +27,7 @@ def gerar_markdown_completo():
     with open(caminho_md, 'w', encoding='utf-8') as md:
         # Escrevendo o cabeçalho e a explicação
         md.write("# 🗺️ Mapeamento de Memória: CD.HED -> CD.WAD\n\n")
-        md.write("> **Documentação Técnica:** Estrutura de ponteiros do índice `CD.HED` de *Tony Hawk's Pro Skater 2 (PSX)*.\n\n")
+        md.write("> **Documentação Técnico-Científica:** Estrutura de ponteiros do índice `CD.HED` de *Tony Hawk's Pro Skater 2 (PSX)*.\n\n")
         md.write("Durante a análise de engenharia reversa visual via HxD, confirmamos que o arquivo de índice `CD.HED` não utiliza metadados em texto plano. A tabela de alocação (FAT) do jogo é estritamente baseada em uma matriz contínua de blocos de **12 bytes**. Devido à arquitetura MIPS do PlayStation 1, a leitura da memória segue o formato **Little Endian** (bytes invertidos).\n\n")
         md.write("---\n\n")
         md.write("## 🧬 Anatomia da Struct (12 Bytes)\n\n")
@@ -74,7 +78,7 @@ def gerar_markdown_completo():
         md.write(f"* **Fórmula Aplicada:** `{ultimo_offset + 12} bytes úteis ÷ 12 bytes por Struct`\n")
         md.write(f"* **Veredito de Extração:** A matriz atesta de forma inequívoca que o `CD.WAD` armazena exatamente **{arquivos_validos} arquivos**. O algoritmo de extração deverá iterar sobre o índice exatamente {arquivos_validos} vezes.\n")
 
-    print(f"Sucesso! O arquivo Markdown foi reescrito com todas as {arquivos_validos} linhas mapeadas perfeitamente.")
+    print(f"Sucesso! O arquivo Markdown foi gerado na pasta Docs com {arquivos_validos} linhas mapeadas.")
 
 if __name__ == "__main__":
     gerar_markdown_completo()

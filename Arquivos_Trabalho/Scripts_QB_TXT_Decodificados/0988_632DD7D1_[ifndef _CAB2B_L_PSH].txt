@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0988_632DD7D1.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1386 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _CAB2B_L_PSH
+-> define _CAB2B_L_PSH
+-> define CAB2B_LPART_HAWK_PELVIS
+-> parent
+-> Scene Root
+-> define CAB2B_LPART_HAWK_RIGHT_SHOE
+-> hawk_right_shin
+-> define CAB2B_LPART_HAWK_RIGHT_SHIN
+-> hawk_right_thigh
+-> define CAB2B_LPART_HAWK_RIGHT_THIGH
+-> hawk_pelvis
+-> define CAB2B_LPART_HAWK_LEFT_SHOE
+-> hawk_left_shin
+-> define CAB2B_LPART_HAWK_LEFT_SHIN
+-> hawk_left_thigh
+-> define CAB2B_LPART_HAWK_LEFT_THIGH
+-> define CAB2B_LPART_HAWK_STOMACH
+-> define CAB2B_LPART_HAWK_CHEST
+-> hawk_stomach
+-> define CAB2B_LPART_HAWK_LEFT_HAND
+-> hawk_left_forearm
+-> define CAB2B_LPART_HAWK_LEFT_FOREARM
+-> hawk_left_bicep
+-> define CAB2B_LPART_HAWK_LEFT_BICEP
+-> hawk_chest
+-> define CAB2B_LPART_HAWK_RIGHT_HAND
+-> hawk_right_forearm
+-> define CAB2B_LPART_HAWK_RIGHT_FOREARM
+-> hawk_right_bicep
+-> define CAB2B_LPART_HAWK_RIGHT_BICEP
+-> define CAB2B_LPART_HAWK_HEAD
+-> define CAB2B_LPART_HAWK_BOARD
+-> define CAB2B_LPART_HAWK_FRONT_WHEEL
+-> hawk_board
+-> define CAB2B_LPART_HAWK_BACK_WHEEL

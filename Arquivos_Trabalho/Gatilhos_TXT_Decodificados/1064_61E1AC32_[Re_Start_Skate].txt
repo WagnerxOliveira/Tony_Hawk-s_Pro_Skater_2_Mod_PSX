@@ -1,0 +1,123 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1064_61E1AC32.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 22378 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> SkMar
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkMar_L
+-> SkMar_O
+-> SkMar_O
+-> C_Mar
+-> ]@NR
+-> .1do
+-> .1do
+-> Re_Start_2P
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> Re_2P
+-> SkMar_2
+-> Re_Start_2P
+-> SkMar_L2
+-> c*jP
+-> Nb'$
+-> K+p<
+-> 9 0,
+-> 9 0, 
+-> Yao~
+-> B)!h
+-> - M>
+-> Re_Start_Secret
+-> Re_Start_Skate
+-> SkMar
+-> Ho_Start_Planter_North
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> Ho_Start_Planter_South
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> B)!Z
+-> Re_Start_Secret_Exit
+-> Re_Start_Skate
+-> SkMar
+-> Ho_Start_Street_Area_West
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> Ho_Start_Normal
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> Ho_Start_Dumpster_Line
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> Ho_Start_Bowls
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> Ho_Start_Canals
+-> Re_Start_2P
+-> Ho_Start_Planter_South
+-> Ho_Start_Normal
+-> Ho_Start_Bowls
+-> Ho_Start_Street_Area_West
+-> Ho_Start_Dumpster_Line
+-> Ho_Start_Planter_North
+-> Ho_Start_Canals
+-> SkMar_2
+-> z,4)

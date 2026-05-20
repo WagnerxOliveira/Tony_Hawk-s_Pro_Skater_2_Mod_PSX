@@ -1,0 +1,98 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1178_9AAF54E0.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 35476 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_2P
+-> C_Cable
+-> SkSF_L
+-> SkSF_O
+-> SkSF_O
+-> C_Van
+-> Re_Start_Chinatown
+-> SkSF
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_Embarcadero
+-> Re_Start_Chinatown
+-> Re_Start_Roof_Access
+-> Re_Start_Hubba_Hideout
+-> SkSF
+-> Re_Start_Embarcadero
+-> SkSF
+-> Re_Start_Hubba_Hideout
+-> SkSF
+-> !B+!*!
+-> !B*!
+-> !B+!*!
+-> r`9@
+-> Re_Start_2P
+-> Re_Start_2P
+-> Re_2P
+-> Ho_Start_EMB_A
+-> Ho_Start_Fountain_Backside
+-> Ho_Start_Spiral_Room
+-> Ho_Start_Double_Kickers
+-> Ho_Start_Ramp_2_Ramp
+-> Ho_Start_Big_Banks
+-> Ho_Start_Near_Pagoda
+-> Ho_Start_Near_Chinatown
+-> Ho_Start_Near_Lombard
+-> Ho_Start_Bendy_Lip
+-> Ho_Start_EMB_B
+-> Ho_Start_Gonz
+-> SkSF_2
+-> Re_Start_Roof_Access
+-> SkSF
+-> G63l
+-> Re_Start_2P
+-> C_Cable
+-> SkSF_L2
+-> SkSF_O2
+-> SkSF_O2
+-> 47R~
+-> ^oF(
+-> !HVa
+-> Ho_Start_EMB_A
+-> SkSF_2
+-> Ho_Start_Fountain_Backside
+-> SkSF_2
+-> Ho_Start_Spiral_Room
+-> SkSF_2
+-> Ho_Start_Double_Kickers
+-> SkSF_2
+-> Ho_Start_Big_Banks
+-> SkSF_2
+-> Ho_Start_Ramp_2_Ramp
+-> SkSF_2
+-> Ho_Start_Near_Pagoda
+-> SkSF_2
+-> HB:}
+-> J=wm
+-> Ho_Start_Near_Chinatown
+-> SkSF_2
+-> Ho_Start_Near_Lombard
+-> SkSF_2
+-> Ho_Start_Bendy_Lip
+-> SkSF_2
+-> Ho_Start_EMB_B
+-> SkSF_2
+-> Ho_Start_Gonz
+-> SkSF_2
+-> Re_2P
+-> SkSF_2
+-> B)!x
+-> B)!x
+-> B)!x
+-> B)!x
+-> MA|o
+-> )4A%
+-> Rz+U
+-> Rz+U

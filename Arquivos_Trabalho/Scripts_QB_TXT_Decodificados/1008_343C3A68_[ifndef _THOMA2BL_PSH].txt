@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 1008_343C3A68.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1476 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _THOMA2BL_PSH
+-> define _THOMA2BL_PSH
+-> define THOMA2BLPART_BURNQ_PELVIS
+-> parent
+-> Scene Root
+-> define THOMA2BLPART_THOMAS_RIGHT_SHOE
+-> thomas_right_shin
+-> define THOMA2BLPART_THOMAS_RIGHT_SHIN
+-> thomas_right_thigh
+-> define THOMA2BLPART_THOMAS_RIGHT_THIGH
+-> burnq_pelvis
+-> define THOMA2BLPART_THOMAS_LEFT_SHOE
+-> thomas_left_shin
+-> define THOMA2BLPART_THOMAS_LEFT_SHIN
+-> thomas_left_thigh
+-> define THOMA2BLPART_THOMAS_LEFT_THIGH
+-> define THOMA2BLPART_THOMAS_STOMACH
+-> define THOMA2BLPART_THOMAS_CHEST
+-> thomas_stomach
+-> define THOMA2BLPART_BURNQ_LEFT_HAND
+-> thomas_left_forearm
+-> define THOMA2BLPART_THOMAS_LEFT_FOREARM
+-> thomas_left_bicep
+-> define THOMA2BLPART_THOMAS_LEFT_BICEP
+-> thomas_chest
+-> define THOMA2BLPART_REYNOLDS_RIGHT_HAND
+-> thomas_right_forearm
+-> define THOMA2BLPART_THOMAS_RIGHT_FOREARM
+-> thomas_right_bicep
+-> define THOMA2BLPART_THOMAS_RIGHT_BICEP
+-> define THOMA2BLPART_THOMAS_HEAD
+-> define THOMA2BLPART_THOMAS_BOARD
+-> define THOMA2BLPART_THOMAS_FRONT_WHEEL
+-> thomas_board
+-> define THOMA2BLPART_THOMAS_BACK_WHEEL

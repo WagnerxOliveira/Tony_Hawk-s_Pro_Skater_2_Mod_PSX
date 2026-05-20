@@ -1,0 +1,60 @@
+#ifndef _SECRET3C_PSH
+#define _SECRET3C_PSH
+#define SECRET3CPART_SPIDEY_PELVIS			0
+//   parent: Scene Root
+
+#define SECRET3CPART_SPIDEY_RIGHT_SHOE			1
+//   parent: spidey_right_shin
+
+#define SECRET3CPART_SPIDEY_RIGHT_SHIN			2
+//   parent: spidey_right_thigh
+
+#define SECRET3CPART_SPIDEY_RIGHT_THIGH			3
+//   parent: spidey_pelvis
+
+#define SECRET3CPART_SPIDEY_LEFT_SHOE			4
+//   parent: spidey_left_shin
+
+#define SECRET3CPART_SPIDEY_LEFT_SHIN			5
+//   parent: spidey_left_thigh
+
+#define SECRET3CPART_SPIDEY_LEFT_THIGH			6
+//   parent: spidey_pelvis
+
+#define SECRET3CPART_SPIDEY_STOMACH			7
+//   parent: spidey_pelvis
+
+#define SECRET3CPART_SPIDEY_CHEST			8
+//   parent: spidey_stomach
+
+#define SECRET3CPART_SPIDEY_LEFT_FOREARM			9
+//   parent: spidey_left_bicep
+
+#define SECRET3CPART_SPIDEY_LEFT_BICEP			10
+//   parent: spidey_chest
+
+#define SECRET3CPART_SPIDEY_LEFT_HAND			11
+//   parent: spidey_left_forearm
+
+#define SECRET3CPART_SPIDEY_RIGHT_HAND			12
+//   parent: spidey_right_forearm
+
+#define SECRET3CPART_SPIDEY_RIGHT_FOREARM			13
+//   parent: spidey_right_bicep
+
+#define SECRET3CPART_SPIDEY_RIGHT_BICEP			14
+//   parent: spidey_chest
+
+#define SECRET3CPART_SPIDEY_HEAD			15
+//   parent: spidey_chest
+
+#define SECRET3CPART_SPIDEY_BOARD			16
+//   parent: Scene Root
+
+#define SECRET3CPART_SPIDEY_BACK_WHEEL			17
+//   parent: spidey_board
+
+#define SECRET3CPART_SPIDEY_FRONT_WHEEL			18
+//   parent: spidey_board
+
+#endif

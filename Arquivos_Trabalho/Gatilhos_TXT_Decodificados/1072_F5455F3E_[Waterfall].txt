@@ -1,0 +1,199 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1072_F5455F3E.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 24270 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Waterfall
+-> Re_Start_2P_SS_Wave_RollIn
+-> SkSS_l
+-> SkSS_O
+-> SkSS_O
+-> Waterfall
+-> Waterfall
+-> Half Pipe
+-> Replay Restart
+-> SkSS
+-> d$F^
+-> Half Pipe
+-> Waterfall
+-> Half Pipe
+-> Replay Restart
+-> SkSS
+-> lmjR
+-> 'vt}
+-> Re_Start_2P_SS_Wave_RollIn
+-> SkSS_l2
+-> SkSS_O2
+-> SkSS_O2
+-> Re_Start_2P_SS_Wave_RollIn
+-> Re_Start_2P_SS_Wave_RollIn
+-> SkSS_2
+-> 7nrQ
+-> tlB&
+-> Replay Restart
+-> Waterfall
+-> Half Pipe
+-> Replay Restart
+-> SkSS
+-> Ho_Waterfall
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Bowl
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Mini Halfpipe
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Kiddie
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> ;?}c
+-> S7HE
+-> B)!<
+-> B)!<
+-> B)!<
+-> B)!<
+-> B)!<
+-> B)!<
+-> B)!<
+-> B)!<
+-> S7HEL
+-> Ho_HP
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Railbox
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Wavewall_Top
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Sticker
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Hipbox
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Funbox
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> Ho_Deck
+-> Ho_Waterfall
+-> Ho_Bowl
+-> Ho_Mini Halfpipe
+-> Ho_Kiddie
+-> Ho_HP
+-> Ho_Funbox
+-> Ho_Railbox
+-> Ho_Wavewall_Top
+-> Ho_Sticker
+-> Ho_Deck
+-> Ho_Hipbox
+-> SkSS_2
+-> OLq8
+-> mH3q

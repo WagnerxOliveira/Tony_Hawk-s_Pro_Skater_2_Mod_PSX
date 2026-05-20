@@ -1,0 +1,59 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1139_D90BFFD8.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 10656 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkBurn_L
+-> SkBurn_O
+-> SkBurn_O
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_2P
+-> Re_2P
+-> Ho_SkBurn_6ftPool
+-> Ho_SkBurn_BackWall
+-> Ho_SkBurn_BridgeGap
+-> Ho_SkBurn_MainWall
+-> Ho_SkBurn_Start
+-> Ho_SkBurn_TripleRail
+-> SkBurn
+-> Re_Start_2P
+-> Re_Start_2P
+-> Re_2P
+-> SkBurn_2
+-> H9(*
+-> Ho_SkBurn_Start
+-> Ho_SkBurn_6ftPool
+-> Ho_SkBurn_BackWall
+-> Ho_SkBurn_BridgeGap
+-> Ho_SkBurn_MainWall
+-> Ho_SkBurn_Start
+-> Ho_SkBurn_TripleRail
+-> SkBurn
+-> Ho_SkBurn_TripleRail
+-> SkBurn
+-> Ho_SkBurn_MainWall
+-> SkBurn
+-> Ho_SkBurn_BridgeGap
+-> SkBurn
+-> Ho_SkBurn_6ftPool
+-> SkBurn
+-> Ho_SkBurn_BackWall
+-> SkBurn
+-> l+@6
+-> Re_2P
+-> SkBurn_2
+-> J@nT
+-> EkuT
+-> Re_Start_2P
+-> SkBurn_L
+-> SkBurn_O
+-> SkBurn_O

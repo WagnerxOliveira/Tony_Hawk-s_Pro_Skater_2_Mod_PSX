@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0391_821059E6.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1482 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _CAB_PSH
+-> define _CAB_PSH
+-> define CABPART_CABALLERO_PELVIS
+-> parent
+-> Scene Root
+-> define CABPART_CABALLERO_RIGHT_SHOE
+-> caballero_right_shin
+-> define CABPART_CABALLERO_RIGHT_SHIN
+-> caballero_right_thigh
+-> define CABPART_CABALLERO_RIGHT_THIGH
+-> caballero_pelvis
+-> define CABPART_CABALLERO_LEFT_SHOE
+-> caballero_left_shin
+-> define CABPART_CABALLERO_LEFT_SHIN
+-> caballero_left_thigh
+-> define CABPART_CABALLERO_LEFT_THIGH
+-> define CABPART_CABALLERO_STOMACH
+-> define CABPART_CABALLERO_LEFT_HAND
+-> caballero_left_forearm
+-> define CABPART_CABALLERO_LEFT_FOREARM
+-> caballero_left_bicep
+-> define CABPART_CABALLERO_RIGHT_HAND
+-> caballero_right_forearm
+-> define CABPART_CABALLERO_RIGHT_FOREARM
+-> caballero_right_bicep
+-> define CABPART_CABALLERO_HEAD
+-> caballero_chest
+-> define CABPART_CABALLERO_CHEST
+-> caballero_stomach
+-> define CABPART_CABALLERO_LEFT_BICEP
+-> define CABPART_CABALLERO_RIGHT_BICEP
+-> define CABPART_CABALLERO_BOARD
+-> define CABPART_CABALLERO_FRONT_WHEEL
+-> caballero_board
+-> define CABPART_CABALLERO_BACK_WHEEL

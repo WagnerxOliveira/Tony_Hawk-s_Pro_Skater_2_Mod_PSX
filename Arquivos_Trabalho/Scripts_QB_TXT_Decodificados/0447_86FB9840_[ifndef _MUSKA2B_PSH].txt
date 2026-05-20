@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0447_86FB9840.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1490 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _MUSKA2B_PSH
+-> define _MUSKA2B_PSH
+-> define MUSKA2BPART_LASEK2_PELVIS
+-> parent
+-> Scene Root
+-> define MUSKA2BPART_MUSKA2B_RIGHT_SHOE
+-> muska2b_right_shin
+-> define MUSKA2BPART_MUSKA2B_RIGHT_SHIN
+-> muska2b_right_thigh
+-> define MUSKA2BPART_MUSKA2B_RIGHT_THIGH
+-> lasek2_pelvis
+-> define MUSKA2BPART_MUSKA2B_LEFT_SHOE
+-> muska2b_left_shin
+-> define MUSKA2BPART_MUSKA2B_LEFT_SHIN
+-> muska2b_left_thigh
+-> define MUSKA2BPART_MUSKA2B_LEFT_THIGH
+-> define MUSKA2BPART_MUSKA2B_STOMACH
+-> define MUSKA2BPART_MUSKA2B_CHEST
+-> muska2b_stomach
+-> define MUSKA2BPART_MUSKA2B_LEFT_HAND
+-> muska2b_left_forearm
+-> define MUSKA2BPART_MUSKA2B_LEFT_FOREARM
+-> muska2b_left_bicep
+-> define MUSKA2BPART_MUSKA2B_LEFT_BICEP
+-> muska2b_chest
+-> define MUSKA2BPART_MUSKA2B_RIGHT_HAND
+-> muska2b_right_forearm
+-> define MUSKA2BPART_MUSKA2B_RIGHT_FOREARM
+-> muska2b_right_bicep
+-> define MUSKA2BPART_MUSKA2B_RIGHT_BICEP
+-> define MUSKA2BPART_MUSKA2B_HEAD
+-> define MUSKA2BPART_MUSKA2B_BOARD
+-> define MUSKA2BPART_MUSKA2B_FRONT_WHEEL
+-> muska2b_board
+-> define MUSKA2BPART_MUSKA2B_BACK_WHEEL

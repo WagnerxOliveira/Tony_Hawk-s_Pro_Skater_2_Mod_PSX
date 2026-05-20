@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0992_CEF2DDBD.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1407 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _MUSKA2BL_PSH
+-> define _MUSKA2BL_PSH
+-> define MUSKA2BLPART_HAWK_PELVIS
+-> parent
+-> Scene Root
+-> define MUSKA2BLPART_HAWK_RIGHT_SHOE
+-> hawk_right_shin
+-> define MUSKA2BLPART_HAWK_RIGHT_SHIN
+-> hawk_right_thigh
+-> define MUSKA2BLPART_HAWK_RIGHT_THIGH
+-> hawk_pelvis
+-> define MUSKA2BLPART_HAWK_LEFT_SHOE
+-> hawk_left_shin
+-> define MUSKA2BLPART_HAWK_LEFT_SHIN
+-> hawk_left_thigh
+-> define MUSKA2BLPART_HAWK_LEFT_THIGH
+-> define MUSKA2BLPART_HAWK_STOMACH
+-> define MUSKA2BLPART_HAWK_CHEST
+-> hawk_stomach
+-> define MUSKA2BLPART_HAWK_LEFT_HAND
+-> hawk_left_forearm
+-> define MUSKA2BLPART_HAWK_LEFT_FOREARM
+-> hawk_left_bicep
+-> define MUSKA2BLPART_HAWK_LEFT_BICEP
+-> hawk_chest
+-> define MUSKA2BLPART_HAWK_RIGHT_HAND
+-> hawk_right_forearm
+-> define MUSKA2BLPART_HAWK_RIGHT_FOREARM
+-> hawk_right_bicep
+-> define MUSKA2BLPART_HAWK_RIGHT_BICEP
+-> define MUSKA2BLPART_HAWK_HEAD
+-> define MUSKA2BLPART_HAWK_BOARD
+-> define MUSKA2BLPART_HAWK_FRONT_WHEEL
+-> hawk_board
+-> define MUSKA2BLPART_HAWK_BACK_WHEEL

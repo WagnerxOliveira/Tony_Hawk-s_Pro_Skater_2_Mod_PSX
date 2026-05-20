@@ -1,0 +1,45 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 1000_490DA084.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1440 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _MULLN2BL_PSH
+-> define _MULLN2BL_PSH
+-> define MULLN2BLPART_BURNQ_PELVIS
+-> parent
+-> Scene Root
+-> define MULLN2BLPART_BURNQ_RIGHT_SHOE
+-> burnq_right_shin
+-> define MULLN2BLPART_BURNQ_RIGHT_SHIN
+-> burnq_right_thigh
+-> define MULLN2BLPART_BURNQ_RIGHT_THIGH
+-> burnq_pelvis
+-> define MULLN2BLPART_BURNQ_LEFT_SHOE
+-> burnq_left_shin
+-> define MULLN2BLPART_BURNQ_LEFT_SHIN
+-> burnq_left_thigh
+-> define MULLN2BLPART_BURNQ_LEFT_THIGH
+-> define MULLN2BLPART_BURNQ_STOMACH
+-> define MULLN2BLPART_BURNQ_CHEST
+-> burnq_stomach
+-> define MULLN2BLPART_BURNQ_LEFT_HAND
+-> burnq_left_forearm
+-> define MULLN2BLPART_BURNQ_LEFT_FOREARM
+-> burnq_left_bicep
+-> define MULLN2BLPART_BURNQ_LEFT_BICEP
+-> burnq_chest
+-> define MULLN2BLPART_BURNQ_RIGHT_HAND
+-> burnq_right_forearm
+-> define MULLN2BLPART_BURNQ_RIGHT_FOREARM
+-> burnq_right_bicep
+-> define MULLN2BLPART_BURNQ_RIGHT_BICEP
+-> define MULLN2BLPART_BURNQ_HEAD
+-> define MULLN2BLPART_BURNQ_BACK_WHEEL
+-> define MULLN2BLPART_BURNQ_FRONT_WHEEL
+-> define MULLN2BLPART_HAWK_BOARD

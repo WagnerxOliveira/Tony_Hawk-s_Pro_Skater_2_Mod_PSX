@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0389_E221DC62.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1402 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _BURNQ2_PSH
+-> define _BURNQ2_PSH
+-> define BURNQ2PART_BURNQ_PELVIS
+-> parent
+-> Scene Root
+-> define BURNQ2PART_BURNQ_RIGHT_SHOE
+-> burnq_right_shin
+-> define BURNQ2PART_BURNQ_RIGHT_SHIN
+-> burnq_right_thigh
+-> define BURNQ2PART_BURNQ_RIGHT_THIGH
+-> burnq_pelvis
+-> define BURNQ2PART_BURNQ_LEFT_SHOE
+-> burnq_left_shin
+-> define BURNQ2PART_BURNQ_LEFT_SHIN
+-> burnq_left_thigh
+-> define BURNQ2PART_BURNQ_LEFT_THIGH
+-> define BURNQ2PART_BURNQ_STOMACH
+-> define BURNQ2PART_BURNQ_CHEST
+-> burnq_stomach
+-> define BURNQ2PART_BURNQ_LEFT_HAND
+-> burnq_left_forearm
+-> define BURNQ2PART_BURNQ_LEFT_FOREARM
+-> burnq_left_bicep
+-> define BURNQ2PART_BURNQ_LEFT_BICEP
+-> burnq_chest
+-> define BURNQ2PART_BURNQ_RIGHT_HAND
+-> burnq_right_forearm
+-> define BURNQ2PART_BURNQ_RIGHT_FOREARM
+-> burnq_right_bicep
+-> define BURNQ2PART_BURNQ_RIGHT_BICEP
+-> define BURNQ2PART_MULLEN_HEAD
+-> define BURNQ2PART_BURNQ_BOARD
+-> define BURNQ2PART_BURNQ_FRONT_WHEEL
+-> burnq_board
+-> define BURNQ2PART_BURNQ_BACK_WHEEL

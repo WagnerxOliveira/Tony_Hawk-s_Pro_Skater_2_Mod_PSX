@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0018_B627C1A9.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1344 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _HAWK2_PSH
+-> define _HAWK2_PSH
+-> define HAWK2PART_HAWK_PELVIS
+-> parent
+-> Scene Root
+-> define HAWK2PART_HAWK_RIGHT_SHOE
+-> hawk_right_shin
+-> define HAWK2PART_HAWK_RIGHT_SHIN
+-> hawk_right_thigh
+-> define HAWK2PART_HAWK_RIGHT_THIGH
+-> hawk_pelvis
+-> define HAWK2PART_HAWK_LEFT_SHOE
+-> hawk_left_shin
+-> define HAWK2PART_HAWK_LEFT_SHIN
+-> hawk_left_thigh
+-> define HAWK2PART_HAWK_LEFT_THIGH
+-> define HAWK2PART_HAWK_STOMACH
+-> define HAWK2PART_HAWK_CHEST
+-> hawk_stomach
+-> define HAWK2PART_HAWK_LEFT_HAND
+-> hawk_left_forearm
+-> define HAWK2PART_HAWK_LEFT_FOREARM
+-> hawk_left_bicep
+-> define HAWK2PART_HAWK_LEFT_BICEP
+-> hawk_chest
+-> define HAWK2PART_HAWK_RIGHT_HAND
+-> hawk_right_forearm
+-> define HAWK2PART_HAWK_RIGHT_FOREARM
+-> hawk_right_bicep
+-> define HAWK2PART_HAWK_RIGHT_BICEP
+-> define HAWK2PART_HAWK_HEAD
+-> define HAWK2PART_HAWK_BOARD
+-> define HAWK2PART_HAWK_FRONT_WHEEL
+-> hawk_board
+-> define HAWK2PART_HAWK_BACK_WHEEL

@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 1038_D48CF1A3.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1515 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _SECRE2_L_PSH
+-> define _SECRE2_L_PSH
+-> define SECRE2_LPART_CARRERA_PELVIS
+-> parent
+-> Scene Root
+-> define SECRE2_LPART_CARRERA_RIGHT_SHOE
+-> carrera_right_shin
+-> define SECRE2_LPART_CARRERA_RIGHT_SHIN
+-> carrera_right_thigh
+-> define SECRE2_LPART_CARRERA_RIGHT_THIGH
+-> carrera_pelvis
+-> define SECRE2_LPART_CARRERA_LEFT_SHOE
+-> carrera_left_shin
+-> define SECRE2_LPART_CARRERA_LEFT_SHIN
+-> carrera_left_thigh
+-> define SECRE2_LPART_CARRERA_LEFT_THIGH
+-> define SECRE2_LPART_CARRERA_STOMACH
+-> define SECRE2_LPART_CARRERA_CHEST
+-> carrera_stomach
+-> define SECRE2_LPART_CARRERA_LEFT_HAND
+-> carrera_left_forearm
+-> define SECRE2_LPART_CARRERA_LEFT_FOREARM
+-> carrera_left_bicep
+-> define SECRE2_LPART_CARRERA_LEFT_BICEP
+-> carrera_chest
+-> define SECRE2_LPART_CARRERA_RIGHT_HAND
+-> carrera_right_forearm
+-> define SECRE2_LPART_CARRERA_RIGHT_FOREARM
+-> carrera_right_bicep
+-> define SECRE2_LPART_CARRERA_RIGHT_BICEP
+-> define SECRE2_LPART_CARRERA_HEAD
+-> define SECRE2_LPART_CARRERA_BOARD
+-> define SECRE2_LPART_CARRERA_FRONT_WHEEL
+-> carrera_board
+-> define SECRE2_LPART_CARRERA_BACK_WHEEL

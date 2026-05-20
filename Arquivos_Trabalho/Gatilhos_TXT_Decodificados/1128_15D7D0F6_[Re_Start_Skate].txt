@@ -1,0 +1,65 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1128_15D7D0F6.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 10590 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkWare_L
+-> SkWare_O
+-> SkWare_O
+-> 6[R'
+-> 6[R'
+-> Re_Start_2P
+-> Re_Start_2P
+-> Re_2P
+-> SkWare_2
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_2P
+-> Re_2P
+-> Ho_SkWare_HPGap
+-> Ho_SkWare_BigRail
+-> Ho_SkWare_Kickers
+-> Ho_SkWare_HP
+-> Ho_SkWare_BigRailGap
+-> Ho_SkWare_BackWall
+-> SkWare
+-> A)! 
+-> B+!*!
+-> B+!*! A A
+-> Ho_SkWare_BigRail
+-> Ho_SkWare_HPGap
+-> Ho_SkWare_BigRail
+-> Ho_SkWare_Kickers
+-> Ho_SkWare_HP
+-> Ho_SkWare_BigRailGap
+-> Ho_SkWare_BackWall
+-> SkWare
+-> Ho_SkWare_HPGap
+-> SkWare
+-> Ho_SkWare_BigRailGap
+-> SkWare
+-> Ho_SkWare_Kickers
+-> SkWare
+-> Ho_SkWare_BackWall
+-> SkWare
+-> Ho_SkWare_HP
+-> SkWare
+-> m"HI
+-> }5$Y
+-> \1Z6
+-> /!eK
+-> /!I*
+-> /!0(
+-> /!$z
+->  A A
+-> Re_2P
+-> SkWare_2
+-> h-5t

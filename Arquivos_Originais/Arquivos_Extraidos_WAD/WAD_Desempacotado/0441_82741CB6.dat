@@ -1,0 +1,60 @@
+#ifndef _KOSTON2B_PSH
+#define _KOSTON2B_PSH
+#define KOSTON2BPART_KOSTON_PELVIS			0
+//   parent: Scene Root
+
+#define KOSTON2BPART_KOSTON_RIGHT_SHOE			1
+//   parent: koston_right_shin
+
+#define KOSTON2BPART_KOSTON_RIGHT_SHIN			2
+//   parent: koston_right_thigh
+
+#define KOSTON2BPART_KOSTON_RIGHT_THIGH			3
+//   parent: koston_pelvis
+
+#define KOSTON2BPART_KOSTON_LEFT_SHOE			4
+//   parent: koston_left_shin
+
+#define KOSTON2BPART_KOSTON_LEFT_SHIN			5
+//   parent: koston_left_thigh
+
+#define KOSTON2BPART_KOSTON_LEFT_THIGH			6
+//   parent: koston_pelvis
+
+#define KOSTON2BPART_KOSTON_STOMACH			7
+//   parent: koston_pelvis
+
+#define KOSTON2BPART_KOSTON_CHEST			8
+//   parent: koston_stomach
+
+#define KOSTON2BPART_KOSTON_LEFT_HAND			9
+//   parent: koston_left_forearm
+
+#define KOSTON2BPART_KOSTON_LEFT_FOREARM			10
+//   parent: koston_left_bicep
+
+#define KOSTON2BPART_KOSTON_LEFT_BICEP			11
+//   parent: koston_chest
+
+#define KOSTON2BPART_KOSTON_RIGHT_HAND			12
+//   parent: koston_right_forearm
+
+#define KOSTON2BPART_KOSTON_RIGHT_FOREARM			13
+//   parent: koston_right_bicep
+
+#define KOSTON2BPART_KOSTON_RIGHT_BICEP			14
+//   parent: koston_chest
+
+#define KOSTON2BPART_KOSTON_HEAD			15
+//   parent: koston_chest
+
+#define KOSTON2BPART_KOSTON_BOARD			16
+//   parent: Scene Root
+
+#define KOSTON2BPART_KOSTON_FRONT_WHEEL			17
+//   parent: koston_board
+
+#define KOSTON2BPART_KOSTON_BACK_WHEEL			18
+//   parent: koston_board
+
+#endif

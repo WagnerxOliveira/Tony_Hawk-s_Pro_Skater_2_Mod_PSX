@@ -1,0 +1,60 @@
+#ifndef _STEAM2BL_PSH
+#define _STEAM2BL_PSH
+#define STEAM2BLPART_STEAMER_PELVIS			0
+//   parent: Scene Root
+
+#define STEAM2BLPART_STEAMER_RIGHT_SHOE			1
+//   parent: steamer_right_shin
+
+#define STEAM2BLPART_STEAMER_RIGHT_SHIN			2
+//   parent: steamer_right_thigh
+
+#define STEAM2BLPART_STEAMER_LEFT_SHOE			3
+//   parent: steamer_left_shin
+
+#define STEAM2BLPART_STEAMER_LEFT_SHIN			4
+//   parent: steamer_left_thigh
+
+#define STEAM2BLPART_STEAMER_LEFT_THIGH			5
+//   parent: steamer_pelvis
+
+#define STEAM2BLPART_STEAMER_RIGHT_THIGH			6
+//   parent: steamer_pelvis
+
+#define STEAM2BLPART_STEAMER_STOMACH			7
+//   parent: steamer_pelvis
+
+#define STEAM2BLPART_STEAMER_CHEST			8
+//   parent: steamer_stomach
+
+#define STEAM2BLPART_STEAMER_LEFT_HAND			9
+//   parent: steamer_left_forearm
+
+#define STEAM2BLPART_STEAMER_LEFT_FOREARM			10
+//   parent: steamer_left_bicep
+
+#define STEAM2BLPART_STEAMER_LEFT_BICEP			11
+//   parent: steamer_chest
+
+#define STEAM2BLPART_STEAMER_RIGHT_HAND			12
+//   parent: steamer_right_forearm
+
+#define STEAM2BLPART_STEAMER_RIGHT_FOREARM			13
+//   parent: steamer_right_bicep
+
+#define STEAM2BLPART_STEAMER_RIGHT_BICEP			14
+//   parent: steamer_chest
+
+#define STEAM2BLPART_STEAMER_HEAD			15
+//   parent: steamer_chest
+
+#define STEAM2BLPART_STEAMER_BOARD			16
+//   parent: Scene Root
+
+#define STEAM2BLPART_STEAMER_FRONT_WHEEL			17
+//   parent: steamer_board
+
+#define STEAM2BLPART_STEAMER_BACK_WHEEL			18
+//   parent: steamer_board
+
+#endif

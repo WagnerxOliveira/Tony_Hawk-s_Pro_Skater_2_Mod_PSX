@@ -1,0 +1,72 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1150_98266C2E.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 28532 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Mall
+-> Re_Start_Mall_2Player
+-> SkMall_l
+-> SkMall_o
+-> SkMall_o
+-> Re_Start_Mall
+-> Re_Start_Mall
+-> skmall
+-> Ho_Upstairs01_Mall
+-> Ho_Upstairs01_Mall
+-> Ho_Upstairs02_Mall
+-> Ho_Slope_Mall
+-> Ho_Dancing_Waters_Mall
+-> Ho_Start_Mall
+-> Ho_Car_Mall
+-> Ho_Steep_Slope_Mall
+-> Ho_Rail_Mall
+-> Ho_Leap_Mall
+-> skmall_2
+-> Ho_Upstairs02_Mall
+-> skmall_2
+-> Ho_Slope_Mall
+-> skmall_2
+-> Ho_Dancing_Waters_Mall
+-> skmall_2
+-> /!oY`
+-> /!oY`
+-> B)!,
+-> !B+!*!
+-> !B*!
+-> B)!,
+-> !B+!*!
+-> !B*!
+-> Re_Start_Mall_2Player
+-> Re_Start_Mall_2Player
+-> skmall_2
+-> ql`|
+-> '/rR
+-> !B+!*!
+-> ;5+!
+-> ;5+!
+-> |^Bk
+-> Re_Start_Mall
+-> Re_Start_Mall_2Player
+-> SkMallo2
+-> SkMallo2
+-> SkMallL2
+-> Ho_Start_Mall
+-> skmall_2
+-> Ho_Car_Mall
+-> skmall_2
+-> Ho_Steep_Slope_Mall
+-> skmall_2
+-> Ho_Rail_Mall
+-> skmall_2
+-> Ho_Leap_Mall
+-> skmall_2
+-> EvKh
+-> :8f5
+-> :8f5
+-> RE_2P

@@ -1,0 +1,101 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1158_9BBAE136.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 33084 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkDown_L
+-> SkDown_O
+-> SkDown_O
+-> C_Taxi
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_2P
+-> Re_Start_Office
+-> Re_Start_Roof
+-> Re_Start_Roof2
+-> Re_Start_Angle
+-> Re_Start_Park
+-> SkDown
+-> Re_Start_Roof
+-> SkDown
+-> Re_Start_Park
+-> SkDown
+-> Re_Start_Office
+-> SkDown
+-> Re_Start_Angle
+-> SkDown
+-> Re_Start_Roof2
+-> SkDown
+-> 3kA<
+-> ;5+!
+-> A)! 
+-> B+!*!
+-> B+!*! A A
+-> Q]8s
+-> Re_Start_2P
+-> SkDownL2
+-> C_Taxi
+-> Re_Start_2P
+-> Re_Start_2P
+-> Re_2P
+-> Ho_SkDown_Angle
+-> Ho_SkDown_BigRail
+-> Ho_SkDown_BigRail2
+-> Ho_SkDown_BusStop
+-> Ho_SkDown_BusStop2
+-> Ho_SkDown_Fountain
+-> Ho_SkDown_Garage
+-> Ho_SkDown_QP
+-> Ho_SkDown_Taxi
+-> Ho_SkDown_TruckGap
+-> SkDown_2
+-> Ho_SkDown_Fountain
+-> Ho_SkDown_Angle
+-> Ho_SkDown_BigRail
+-> Ho_SkDown_BigRail2
+-> Ho_SkDown_BusStop
+-> Ho_SkDown_BusStop2
+-> Ho_SkDown_Fountain
+-> Ho_SkDown_Garage
+-> Ho_SkDown_QP
+-> Ho_SkDown_Taxi
+-> Ho_SkDown_TruckGap
+-> SkDown_H
+-> Ho_SkDown_BigRail
+-> SkDown_H
+-> Ho_SkDown_TruckGap
+-> SkDown_H
+-> Ho_SkDown_Angle
+-> SkDown_H
+-> Ho_SkDown_Garage
+-> SkDown_H
+-> Ho_SkDown_BusStop
+-> SkDown_H
+-> Ho_SkDown_BusStop2
+-> SkDown_H
+-> Ho_SkDown_BigRail2
+-> SkDown_H
+-> Ho_SkDown_QP
+-> SkDown_H
+-> Ho_SkDown_Taxi
+-> SkDown_H
+-> [:.g
+-> [:.g
+-> |dOYN
+-> |dOY
+-> p8*S
+-> p8*S
+-> p8*S
+-> K[Fw
+-> 9DC-
+-> r~tQ
+-> Re_2P
+-> SkDown_2

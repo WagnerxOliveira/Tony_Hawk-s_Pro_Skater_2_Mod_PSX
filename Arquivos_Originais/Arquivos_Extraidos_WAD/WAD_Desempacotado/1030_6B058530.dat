@@ -1,0 +1,60 @@
+#ifndef _CAMPB2_L_PSH
+#define _CAMPB2_L_PSH
+#define CAMPB2_LPART_CAMPBELL_PELVIS			0
+//   parent: Scene Root
+
+#define CAMPB2_LPART_CAMPBELL_RIGHT_SHOE			1
+//   parent: campbell_right_shin
+
+#define CAMPB2_LPART_CAMPBELL_RIGHT_SHIN			2
+//   parent: campbell_right_thigh
+
+#define CAMPB2_LPART_CAMPBELL_RIGHT_THIGH			3
+//   parent: campbell_pelvis
+
+#define CAMPB2_LPART_CAMPBELL_LEFT_SHOE			4
+//   parent: campbell_left_shin
+
+#define CAMPB2_LPART_CAMPBELL_LEFT_SHIN			5
+//   parent: campbell_left_thigh
+
+#define CAMPB2_LPART_CAMPBELL_LEFT_THIGH			6
+//   parent: campbell_pelvis
+
+#define CAMPB2_LPART_CAMPBELL_STOMACH			7
+//   parent: campbell_pelvis
+
+#define CAMPB2_LPART_CAMPBELL_CHEST			8
+//   parent: campbell_stomach
+
+#define CAMPB2_LPART_CAMPBELL_LEFT_HAND			9
+//   parent: campbell_left_forearm
+
+#define CAMPB2_LPART_CAMPBELL_LEFT_FOREARM			10
+//   parent: campbell_left_bicep
+
+#define CAMPB2_LPART_CAMPBELL_LEFT_BICEP			11
+//   parent: campbell_chest
+
+#define CAMPB2_LPART_CAMPBELL_RIGHT_HAND			12
+//   parent: campbell_right_forearm
+
+#define CAMPB2_LPART_CAMPBELL_RIGHT_FOREARM			13
+//   parent: campbell_right_bicep
+
+#define CAMPB2_LPART_CAMPBELL_RIGHT_BICEP			14
+//   parent: campbell_chest
+
+#define CAMPB2_LPART_CAMPBELL_HEAD			15
+//   parent: campbell_chest
+
+#define CAMPB2_LPART_CAMPBELL_BOARD			16
+//   parent: Scene Root
+
+#define CAMPB2_LPART_CAMPBELL_FRONT_WHEEL			17
+//   parent: campbell_board
+
+#define CAMPB2_LPART_CAMPBELL_BACK_WHEEL			18
+//   parent: campbell_board
+
+#endif

@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0433_CEA92CD7.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1386 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _BURNQ2B_PSH
+-> define _BURNQ2B_PSH
+-> define BURNQ2BPART_HAWK_PELVIS
+-> parent
+-> Scene Root
+-> define BURNQ2BPART_HAWK_RIGHT_SHOE
+-> hawk_right_shin
+-> define BURNQ2BPART_HAWK_RIGHT_SHIN
+-> hawk_right_thigh
+-> define BURNQ2BPART_HAWK_RIGHT_THIGH
+-> hawk_pelvis
+-> define BURNQ2BPART_HAWK_LEFT_SHOE
+-> hawk_left_shin
+-> define BURNQ2BPART_HAWK_LEFT_SHIN
+-> hawk_left_thigh
+-> define BURNQ2BPART_HAWK_LEFT_THIGH
+-> define BURNQ2BPART_HAWK_STOMACH
+-> define BURNQ2BPART_HAWK_CHEST
+-> hawk_stomach
+-> define BURNQ2BPART_HAWK_LEFT_HAND
+-> hawk_left_forearm
+-> define BURNQ2BPART_HAWK_LEFT_FOREARM
+-> hawk_left_bicep
+-> define BURNQ2BPART_HAWK_LEFT_BICEP
+-> hawk_chest
+-> define BURNQ2BPART_HAWK_RIGHT_HAND
+-> hawk_right_forearm
+-> define BURNQ2BPART_HAWK_RIGHT_FOREARM
+-> hawk_right_bicep
+-> define BURNQ2BPART_HAWK_RIGHT_BICEP
+-> define BURNQ2BPART_HAWK_HEAD
+-> define BURNQ2BPART_HAWK_BOARD
+-> define BURNQ2BPART_HAWK_FRONT_WHEEL
+-> hawk_board
+-> define BURNQ2BPART_HAWK_BACK_WHEEL

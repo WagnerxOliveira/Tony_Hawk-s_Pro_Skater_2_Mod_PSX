@@ -4,13 +4,14 @@ import re
 def decodificar_scripts_qb():
     print("🧠 Iniciando a Engenharia Reversa dos Scripts Lógicos (.qb -> TXT)...")
     
-    # 1. Configuração de Caminhos
+    # 1. Configuração de Caminhos (Atualizados para a nova arquitetura)
     diretorio_script = os.path.dirname(os.path.abspath(__file__))
-    pasta_base = os.path.join(diretorio_script, "..", "Arquivos Originais", "Arquivos Classificados")
     
-    pasta_origem = os.path.join(pasta_base, "Scripts_QB")
-    # Nome da pasta atualizado para referenciar a origem
-    pasta_destino = os.path.join(pasta_base, "Scripts_QB_TXT_Decodificados")
+    # Origem: Busca os arquivos originais (.qb) dentro do cofre classificado
+    pasta_origem = os.path.join(diretorio_script, "..", "Arquivos_Originais", "Arquivos_Classificados", "Scripts_QB")
+    
+    # Destino: Salva os scripts decodificados em formato de texto na área de trabalho limpa
+    pasta_destino = os.path.join(diretorio_script, "..", "Arquivos_Trabalho", "Scripts_QB_TXT_Decodificados")
     
     if not os.path.exists(pasta_origem):
         print(f"Erro Crítico: A pasta de origem não foi encontrada:\n{pasta_origem}")

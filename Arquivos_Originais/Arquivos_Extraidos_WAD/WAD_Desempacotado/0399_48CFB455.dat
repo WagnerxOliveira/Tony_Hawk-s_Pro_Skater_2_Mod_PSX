@@ -1,0 +1,60 @@
+#ifndef _LASEK2_PSH
+#define _LASEK2_PSH
+#define LASEK2PART_LASEK2_PELVIS			0
+//   parent: Scene Root
+
+#define LASEK2PART_LASEK2_RIGHT_SHOE			1
+//   parent: lasek2_right_shin
+
+#define LASEK2PART_LASEK2_RIGHT_SHIN			2
+//   parent: lasek2_right_thigh
+
+#define LASEK2PART_LASEK2_RIGHT_THIGH			3
+//   parent: lasek2_pelvis
+
+#define LASEK2PART_LASEK2_LEFT_SHOE			4
+//   parent: lasek2_left_shin
+
+#define LASEK2PART_LASEK2_LEFT_SHIN			5
+//   parent: lasek2_left_thigh
+
+#define LASEK2PART_LASEK2_LEFT_THIGH			6
+//   parent: lasek2_pelvis
+
+#define LASEK2PART_LASEK2_STOMACH			7
+//   parent: lasek2_pelvis
+
+#define LASEK2PART_LASEK2_CHEST			8
+//   parent: lasek2_stomach
+
+#define LASEK2PART_LASEK2_LEFT_HAND			9
+//   parent: lasek2_left_forearm
+
+#define LASEK2PART_LASEK2_LEFT_FOREARM			10
+//   parent: lasek2_left_bicep
+
+#define LASEK2PART_LASEK2_LEFT_BICEP			11
+//   parent: lasek2_chest
+
+#define LASEK2PART_LASEK2_RIGHT_HAND			12
+//   parent: lasek2_right_forearm
+
+#define LASEK2PART_LASEK2_RIGHT_FOREARM			13
+//   parent: lasek2_right_bicep
+
+#define LASEK2PART_LASEK2_RIGHT_BICEP			14
+//   parent: lasek2_chest
+
+#define LASEK2PART_LASEK2_HEAD			15
+//   parent: lasek2_chest
+
+#define LASEK2PART_LASEK2_BOARD			16
+//   parent: Scene Root
+
+#define LASEK2PART_LASEK2_FRONT_WHEEL			17
+//   parent: lasek2_board
+
+#define LASEK2PART_LASEK2_BACK_WHEEL			18
+//   parent: lasek2_board
+
+#endif

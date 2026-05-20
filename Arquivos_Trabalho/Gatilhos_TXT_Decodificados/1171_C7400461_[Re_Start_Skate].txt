@@ -1,0 +1,83 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1171_C7400461.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 12864 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkRos_L
+-> SkRos_O
+-> SkRos_O
+-> Ho_Main_Deck
+-> Ho_Main_Deck
+-> Ho_Birdhouse_Rail
+-> Ho_Triple_Rail
+-> Ho_Curved_Rail
+-> Ho_Pool_Room
+-> Ho_Roll_In
+-> Ho_Metal_Grind
+-> Ho_Metal_HP
+-> SkRos_H
+-> \$@)
+-> O9'M
+-> rH&#
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_2P
+-> Re_2P
+-> Ho_Main_Deck
+-> Ho_Birdhouse_Rail
+-> Ho_Triple_Rail
+-> Ho_Curved_Rail
+-> Ho_Pool_Room
+-> Ho_Roll_In
+-> Ho_Metal_Grind
+-> Ho_Metal_HP
+-> SkRos
+-> Ho_Triple_Rail
+-> SkRos_H
+-> Ho_Curved_Rail
+-> SkRos_H
+-> Ho_Roll_In
+-> SkRos_H
+-> Ho_Pool_Room
+-> SkRos_H
+-> Ho_Birdhouse_Rail
+-> SkRos_H
+-> Re_Start_2P
+-> Re_Start_2P
+-> Re_2P
+-> SkRos_2
+-> Re_2P
+-> Re_Start_2P
+-> Re_2P
+-> SkRos_2
+-> B)!Z
+-> [Ox"
+-> Re_Start_Frig
+-> B)!<
+-> +!*!!B !
+-> +! !
+-> !B !
+-> +!*!!B !
+-> +! !
+-> !B !
+-> +!*!!B !
+-> +! !
+-> !B !
+-> qctH
+-> qctH
+-> Re_Start_2P
+-> SkRos_L
+-> SkRosO2
+-> SkRosO2
+-> Ho_Metal_Grind
+-> SkRos_H
+-> Ho_Metal_HP
+-> SkRos_H

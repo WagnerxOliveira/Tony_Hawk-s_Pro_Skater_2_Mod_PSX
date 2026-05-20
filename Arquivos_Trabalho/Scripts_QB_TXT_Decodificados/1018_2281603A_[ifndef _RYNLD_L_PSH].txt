@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 1018_2281603A.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1458 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _RYNLD_L_PSH
+-> define _RYNLD_L_PSH
+-> define RYNLD_LPART_BURNQ_PELVIS
+-> parent
+-> Scene Root
+-> define RYNLD_LPART_BURNQ_RIGHT_SHOE
+-> burnq_right_shin
+-> define RYNLD_LPART_BURNQ_RIGHT_SHIN
+-> burnq_right_thigh
+-> define RYNLD_LPART_BURNQ_RIGHT_THIGH
+-> burnq_pelvis
+-> define RYNLD_LPART_BURNQ_LEFT_SHOE
+-> burnq_left_shin
+-> define RYNLD_LPART_BURNQ_LEFT_SHIN
+-> burnq_left_thigh
+-> define RYNLD_LPART_BURNQ_LEFT_THIGH
+-> define RYNLD_LPART_BURNQ_STOMACH
+-> define RYNLD_LPART_REYNOLDS_CHEST
+-> burnq_stomach
+-> define RYNLD_LPART_BURNQ_LEFT_HAND
+-> reynolds_left_forearm
+-> define RYNLD_LPART_REYNOLDS_LEFT_FOREARM
+-> reynolds_left_bicep
+-> define RYNLD_LPART_REYNOLDS_LEFT_BICEP
+-> reynolds_chest
+-> define RYNLD_LPART_REYNOLDS_RIGHT_HAND
+-> burnq_right_forearm
+-> define RYNLD_LPART_BURNQ_RIGHT_FOREARM
+-> reynolds_right_bicep
+-> define RYNLD_LPART_REYNOLDS_RIGHT_BICEP
+-> define RYNLD_LPART_REYNOLDS_HEAD
+-> define RYNLD_LPART_BURNQ_BOARD
+-> define RYNLD_LPART_BURNQ_FRONT_WHEEL
+-> burnq_board
+-> define RYNLD_LPART_BURNQ_BACK_WHEEL

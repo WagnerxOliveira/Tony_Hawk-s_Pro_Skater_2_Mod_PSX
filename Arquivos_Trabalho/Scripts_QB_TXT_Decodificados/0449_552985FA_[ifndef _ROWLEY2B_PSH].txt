@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0449_552985FA.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1443 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _ROWLEY2B_PSH
+-> define _ROWLEY2B_PSH
+-> define ROWLEY2BPART_BURNQ_PELVIS
+-> parent
+-> Scene Root
+-> define ROWLEY2BPART_BURNQ_RIGHT_SHOE
+-> burnq_right_shin
+-> define ROWLEY2BPART_BURNQ_RIGHT_SHIN
+-> burnq_right_thigh
+-> define ROWLEY2BPART_BURNQ_RIGHT_THIGH
+-> burnq_pelvis
+-> define ROWLEY2BPART_BURNQ_LEFT_SHOE
+-> burnq_left_shin
+-> define ROWLEY2BPART_BURNQ_LEFT_SHIN
+-> burnq_left_thigh
+-> define ROWLEY2BPART_BURNQ_LEFT_THIGH
+-> define ROWLEY2BPART_BURNQ_STOMACH
+-> define ROWLEY2BPART_BURNQ_CHEST
+-> burnq_stomach
+-> define ROWLEY2BPART_BURNQ_LEFT_HAND
+-> burnq_left_forearm
+-> define ROWLEY2BPART_BURNQ_LEFT_FOREARM
+-> burnq_left_bicep
+-> define ROWLEY2BPART_BURNQ_LEFT_BICEP
+-> burnq_chest
+-> define ROWLEY2BPART_BURNQ_RIGHT_HAND
+-> burnq_right_forearm
+-> define ROWLEY2BPART_BURNQ_RIGHT_FOREARM
+-> burnq_right_bicep
+-> define ROWLEY2BPART_BURNQ_RIGHT_BICEP
+-> define ROWLEY2BPART_BURNQ_HEAD
+-> define ROWLEY2BPART_BURNQ_BOARD
+-> define ROWLEY2BPART_BURNQ_FRONT_WHEEL
+-> burnq_board
+-> define ROWLEY2BPART_BURNQ_BACK_WHEEL

@@ -1,0 +1,203 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 0486_3FF37DBB.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 8406 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _SK2DEF_PSH
+-> define _SK2DEF_PSH
+-> define SK2DEFPART_DEFAULT_PELVIS
+-> parent
+-> Scene Root
+-> define SK2DEFPART_DEFAULT_LEFT_SHIN
+-> default_left_thigh
+-> define SK2DEFPART_DEFAULT_LEFT_SHOE
+-> default_left_shin
+-> define SK2DEFPART_DEFAULT_RIGHT_SHIN
+-> default_right_thigh
+-> define SK2DEFPART_DEFAULT_RIGHT_THIGH
+-> default_pelvis
+-> define SK2DEFPART_DEFAULT_LEFT_THIGH
+-> define SK2DEFPART_DEFAULT_RIGHT_SHOE
+-> default_right_shin
+-> define SK2DEFPART_DEFAULT_STOMACH
+-> define SK2DEFPART_DEFAULT_CHEST
+-> default_stomach
+-> define SK2DEFPART_DEFAULT_HEAD
+-> default_chest
+-> define SK2DEFPART_DEFAULT_LEFT_HAND
+-> default_left_forearm
+-> define SK2DEFPART_DEFAULT_LEFT_FOREARM
+-> default_left_bicep
+-> define SK2DEFPART_DEFAULT_LEFT_BICEP
+-> define SK2DEFPART_DEFAULT_RIGHT_HAND
+-> default_right_forearm
+-> define SK2DEFPART_DEFAULT_RIGHT_FOREARM
+-> default_right_bicep
+-> define SK2DEFPART_DEFAULT_RIGHT_BICEP
+-> define SK2DEFPART_SKIN_HEAD
+-> define SK2DEFPART_BALDBLACK_HEAD
+-> define SK2DEFPART_SLICK_HEAD
+-> define SK2DEFPART_DEFAULT_BOARD
+-> define SK2DEFPART_DEFAULT_BACK_WHEEL
+-> default_board
+-> define SK2DEFPART_DEFAULT_FRONT_WHEEL
+-> define SK2DEFPART_CAPFORWARD_HEAD
+-> define SK2DEFPART_LONGPANTS_PELVIS
+-> define SK2DEFPART_LONGPANTS_LEFT_SHOE
+-> longpants_left_shin
+-> define SK2DEFPART_LONGPANTS_LEFT_SHIN
+-> longpants_left_thigh
+-> define SK2DEFPART_LONGPANTS_RIGHT_SHOE
+-> longpants_right_shin
+-> define SK2DEFPART_LONGPANTS_RIGHT_SHIN
+-> longpants_right_thigh
+-> define SK2DEFPART_LONGPANTS_RIGHT_THIGH
+-> longpants_pelvis
+-> define SK2DEFPART_LONGPANTS_LEFT_THIGH
+-> define SK2DEFPART_LONGSLEVE_STOMACH
+-> define SK2DEFPART_LONGSLEVE_CHEST
+-> longsleve_stomach
+-> define SK2DEFPART_LONGSLEVE_LEFT_FOREARM
+-> longsleve_left_bicep
+-> define SK2DEFPART_LONGSLEVE_LEFT_BICEP
+-> longsleve_chest
+-> define SK2DEFPART_LONGSLEVE_LEFT_HAND
+-> longsleve_left_forearm
+-> define SK2DEFPART_LONGSLEVE_RIGHT_FOREARM
+-> longsleve_right_bicep
+-> define SK2DEFPART_LONGSLEVE_RIGHT_BICEP
+-> define SK2DEFPART_LONGSLEVE_RIGHT_HAND
+-> longsleve_right_forearm
+-> define SK2DEFPART_NOSHIRT_STOMACH
+-> define SK2DEFPART_NOSHIRT_CHEST
+-> noshirt_stomach
+-> define SK2DEFPART_NOSHIRT_LEFT_HAND
+-> noshirt_left_forearm
+-> define SK2DEFPART_NOSHIRT_LEFT_FOREARM
+-> noshirt_left_bicep
+-> define SK2DEFPART_NOSHIRT_LEFT_BICEP
+-> noshirt_chest
+-> define SK2DEFPART_NOSHIRT_RIGHT_HAND
+-> noshirt_right_forearm
+-> define SK2DEFPART_NOSHIRT_RIGHT_FOREARM
+-> noshirt_right_bicep
+-> define SK2DEFPART_NOSHIRT_RIGHT_BICEP
+-> define SK2DEFPART_HOODY_STOMACH
+-> define SK2DEFPART_HOODY_CHEST
+-> hoody_stomach
+-> define SK2DEFPART_HOODY_LEFT_HAND
+-> hoody_left_forearm
+-> define SK2DEFPART_HOODY_LEFT_FOREARM
+-> hoody_left_bicep
+-> define SK2DEFPART_HOODY_LEFT_BICEP
+-> hoody_chest
+-> define SK2DEFPART_HOODY_RIGHT_HAND
+-> hoody_right_forearm
+-> define SK2DEFPART_HOODY_RIGHT_FOREARM
+-> hoody_right_bicep
+-> define SK2DEFPART_HOODY_RIGHT_BICEP
+-> define SK2DEFPART_TANKTOP_STOMACH
+-> define SK2DEFPART_TANKTOP_CHEST
+-> tanktop_stomach
+-> define SK2DEFPART_TANKTOP_LEFT_HAND
+-> tanktop_left_forearm
+-> define SK2DEFPART_TANKTOP_LEFT_FOREARM
+-> tanktop_left_bicep
+-> define SK2DEFPART_TANKTOP_LEFT_BICEP
+-> tanktop_chest
+-> define SK2DEFPART_TANKTOP_RIGHT_HAND
+-> tanktop_right_forearm
+-> define SK2DEFPART_TANKTOP_RIGHT_FOREARM
+-> tanktop_right_bicep
+-> define SK2DEFPART_TANKTOP_RIGHT_BICEP
+-> define SK2DEFPART_KNEEPAD_PELVIS
+-> define SK2DEFPART_KNEEPAD_LEFT_SHIN
+-> kneepad_left_thigh
+-> define SK2DEFPART_KNEEPAD_LEFT_SHOE
+-> kneepad_left_shin
+-> define SK2DEFPART_KNEEPAD_RIGHT_SHIN
+-> kneepad_right_thigh
+-> define SK2DEFPART_KNEEPAD_RIGHT_THIGH
+-> kneepad_pelvis
+-> define SK2DEFPART_KNEEPAD_LEFT_THIGH
+-> define SK2DEFPART_KNEEPAD_RIGHT_SHOE
+-> kneepad_right_shin
+-> define SK2DEFPART_BAGGYPANTS_PELVIS
+-> define SK2DEFPART_BAGGYPANTS_LEFT_SHOE
+-> baggypants_left_shin
+-> define SK2DEFPART_BAGGYPANTS_LEFT_SHIN
+-> baggypants_left_thigh
+-> define SK2DEFPART_BAGGYPANTS_RIGHT_SHOE
+-> baggypants_right_shin
+-> define SK2DEFPART_BAGGYPANTS_RIGHT_SHIN
+-> baggypants_right_thigh
+-> define SK2DEFPART_BAGGYPANTS_RIGHT_THIGH
+-> baggypants_pelvis
+-> define SK2DEFPART_BAGGYPANTS_LEFT_THIGH
+-> define SK2DEFPART_ELBOWPADS_STOMACH
+-> define SK2DEFPART_ELBOWPADS_CHEST
+-> elbowpads_stomach
+-> define SK2DEFPART_ELBOWPADS_LEFT_HAND
+-> elbowpads_left_forearm
+-> define SK2DEFPART_ELBOWPADS_LEFT_FOREARM
+-> elbowpads_left_bicep
+-> define SK2DEFPART_ELBOWPADS_LEFT_BICEP
+-> elbowpads_chest
+-> define SK2DEFPART_ELBOWPADS_RIGHT_HAND
+-> elbowpads_right_forearm
+-> define SK2DEFPART_ELBOWPADS_RIGHT_FOREARM
+-> elbowpads_right_bicep
+-> define SK2DEFPART_ELBOWPADS_RIGHT_BICEP
+-> define SK2DEFPART_CAPHELMET_HEAD
+-> define SK2DEFPART_CAPBACKWARD_HEAD
+-> define SK2DEFPART_CURLYHAIR_HEAD
+-> define SK2DEFPART_CAPBEANIE_HEAD
+-> define SK2DEFPART_AFRO_HEAD
+-> define SK2DEFPART_DREADS_HEAD
+-> define SK2DEFPART_AFROWHITE_HEAD
+-> define SK2DEFPART_GILLIGAN_HEAD
+-> define SK2DEFPART_ASIAN_HEAD
+-> define SK2DEFPART_SPIKE_HEAD
+-> define SK2DEFPART_MULLET_HEAD
+-> define SK2DEFPART_TIEDPANT_PELVIS
+-> define SK2DEFPART_TIEDPANT_LEFT_SHIN
+-> Tiedpant_left_thigh
+-> define SK2DEFPART_TIEDPANT_LEFT_SHOE
+-> Tiedpant_left_shin
+-> define SK2DEFPART_TIEDPANT_RIGHT_SHIN
+-> Tiedpant_right_thigh
+-> define SK2DEFPART_TIEDPANT_RIGHT_THIGH
+-> Tiedpant_pelvis
+-> define SK2DEFPART_TIEDPANT_LEFT_THIGH
+-> 100
+-> define SK2DEFPART_TIEDPANT_RIGHT_SHOE
+-> 101
+-> Tiedpant_right_shin
+-> define SK2DEFPART_SKINELBW_STOMACH
+-> 102
+-> define SK2DEFPART_SKINELBW_CHEST
+-> 103
+-> skinelbw_stomach
+-> define SK2DEFPART_SKINELBW_LEFT_HAND
+-> 104
+-> skinelbw_left_forearm
+-> define SK2DEFPART_SKINELBW_LEFT_FOREARM
+-> 105
+-> skinelbw_left_bicep
+-> define SK2DEFPART_SKINELBW_LEFT_BICEP
+-> 106
+-> skinelbw_chest
+-> define SK2DEFPART_SKINELBW_RIGHT_HAND
+-> 107
+-> skinelbw_right_forearm
+-> define SK2DEFPART_SKINELBW_RIGHT_FOREARM
+-> 108
+-> skinelbw_right_bicep
+-> define SK2DEFPART_SKINELBW_RIGHT_BICEP
+-> 109

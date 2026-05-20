@@ -1,0 +1,60 @@
+#ifndef _SECRE2BL_PSH
+#define _SECRE2BL_PSH
+#define SECRE2BLPART_CARRERA_PELVIS			0
+//   parent: Scene Root
+
+#define SECRE2BLPART_CARRERA_RIGHT_SHOE			1
+//   parent: carrera_right_shin
+
+#define SECRE2BLPART_CARRERA_RIGHT_SHIN			2
+//   parent: carrera_right_thigh
+
+#define SECRE2BLPART_CARRERA_RIGHT_THIGH			3
+//   parent: carrera_pelvis
+
+#define SECRE2BLPART_CARRERA_LEFT_SHOE			4
+//   parent: carrera_left_shin
+
+#define SECRE2BLPART_CARRERA_LEFT_SHIN			5
+//   parent: carrera_left_thigh
+
+#define SECRE2BLPART_CARRERA_LEFT_THIGH			6
+//   parent: carrera_pelvis
+
+#define SECRE2BLPART_CARRERA_STOMACH			7
+//   parent: carrera_pelvis
+
+#define SECRE2BLPART_CARRERA_CHEST			8
+//   parent: carrera_stomach
+
+#define SECRE2BLPART_CARRERA_LEFT_HAND			9
+//   parent: carrera_left_forearm
+
+#define SECRE2BLPART_CARRERA_LEFT_FOREARM			10
+//   parent: carrera_left_bicep
+
+#define SECRE2BLPART_CARRERA_LEFT_BICEP			11
+//   parent: carrera_chest
+
+#define SECRE2BLPART_CARRERA_RIGHT_HAND			12
+//   parent: carrera_right_forearm
+
+#define SECRE2BLPART_CARRERA_RIGHT_FOREARM			13
+//   parent: carrera_right_bicep
+
+#define SECRE2BLPART_CARRERA_RIGHT_BICEP			14
+//   parent: carrera_chest
+
+#define SECRE2BLPART_CARRERA_HEAD			15
+//   parent: carrera_chest
+
+#define SECRE2BLPART_CARRERA_BOARD			16
+//   parent: Scene Root
+
+#define SECRE2BLPART_CARRERA_FRONT_WHEEL			17
+//   parent: carrera_board
+
+#define SECRE2BLPART_CARRERA_BACK_WHEEL			18
+//   parent: carrera_board
+
+#endif

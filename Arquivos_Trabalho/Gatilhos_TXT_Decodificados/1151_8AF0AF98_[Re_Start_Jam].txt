@@ -1,0 +1,61 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1151_8AF0AF98.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 18796 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Jam
+-> Re_Start_Jam
+-> Re_Start_Jam_2
+-> skjam
+-> Re_Start_Jam
+-> skjam_l
+-> skjam_o
+-> skjam_o
+-> Re_Start_Jam_2
+-> skjam
+-> EK);
+-> /!<g
+-> ct h
+-> Re_Start_Jam_2Player
+-> skjaml2
+-> skjamo2
+-> skjamo2
+-> Ho_Top
+-> Ho_Top
+-> Ho_Rails
+-> Ho_Ramp
+-> Ho_Rails2
+-> Ho_Dam
+-> Ho_Dam2
+-> Ho_Dew
+-> Ho_Skijump
+-> Ho_Finishramp
+-> skjam_2
+-> Ho_Rails
+-> skjam_2
+-> Ho_Ramp
+-> skjam_2
+-> Ho_Rails2
+-> skjam_2
+-> Ho_Dam
+-> skjam_2
+-> Ho_Dam2
+-> skjam_2
+-> Ho_Dew
+-> skjam_2
+-> Ho_Skijump
+-> skjam_2
+-> Ho_Finishramp
+-> skjam_2
+-> Re_Jam_PO
+-> Re_Start_Jam_2Player
+-> Re_Start_Jam_2Player
+-> skjam_2
+-> RE_2P
+-> DTBP

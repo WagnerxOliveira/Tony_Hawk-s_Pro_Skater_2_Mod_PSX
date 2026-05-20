@@ -1,0 +1,25 @@
+====================================================
+ 🎯 RELATÓRIO DE MAPEAMENTO DE GATILHOS (TRIGGERS) 
+====================================================
+Arquivo Original: 1188_CD83E332.trg
+Assinatura Identificada: _TRG
+Tamanho do Bloco: 2944 bytes
+----------------------------------------------------
+
+📋 STRINGS INTERNAS ENCONTRADAS:
+(Nomes de Gaps, Objetivos, Scripts de Colisão e Nós 3D)
+
+-> Re_Start_Skate
+-> Re_Start_2P
+-> Re_Start_Skate
+-> Re_Start_Skate
+-> Re_Start_2P
+-> SkEd
+-> Re_Start_2P
+-> Re_Start_Skate
+-> Re_Start_2P
+-> Re_2P
+-> SkEd
+-> Re_2P
+-> SkMar_2
+-> Re_Start_2P

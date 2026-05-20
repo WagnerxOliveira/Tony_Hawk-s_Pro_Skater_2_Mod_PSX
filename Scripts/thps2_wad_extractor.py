@@ -2,19 +2,19 @@ import os
 import struct
 
 def extrair_wad():
-    # 1. Configuração de Caminhos Relativos (Atualizados para a nova estrutura)
+    # 1. Configuração de Caminhos Relativos (Atualizados para a nova estrutura snake_case)
     diretorio_script = os.path.dirname(os.path.abspath(__file__))
     
-    # Navega para a pasta mãe "Arquivos Originais"
-    pasta_originais = os.path.join(diretorio_script, "..", "Arquivos Originais")
+    # Navega para a pasta mãe "Arquivos_Originais"
+    pasta_originais = os.path.join(diretorio_script, "..", "Arquivos_Originais")
     
     # Caminho onde estão o HED e WAD originais
-    pasta_cdmage = os.path.join(pasta_originais, "Arquivos Extraídos - CDmage")
+    pasta_cdmage = os.path.join(pasta_originais, "Arquivos_Extraidos_CDmage")
     caminho_hed = os.path.join(pasta_cdmage, "CD.HED")
     caminho_wad = os.path.join(pasta_cdmage, "CD.WAD")
     
     # Define o novo destino exato conforme a sua organização no VS Code
-    pasta_destino = os.path.join(pasta_originais, "Arquivos Extraidos - WAD", "WAD_Desempacotado")
+    pasta_destino = os.path.join(pasta_originais, "Arquivos_Extraidos_WAD", "WAD_Desempacotado")
 
     # 2. Validação de Segurança
     if not os.path.exists(caminho_hed) or not os.path.exists(caminho_wad):

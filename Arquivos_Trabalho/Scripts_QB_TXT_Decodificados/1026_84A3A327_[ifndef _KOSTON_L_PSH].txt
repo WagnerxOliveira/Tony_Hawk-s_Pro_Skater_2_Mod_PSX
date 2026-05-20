@@ -1,0 +1,46 @@
+====================================================
+ 🧠 RELATÓRIO DE DECODIFICAÇÃO DE SCRIPT LÓGICO (.QB)
+====================================================
+Arquivo Original: 1026_84A3A327.qb
+Assinatura Identificada: #ifn (Neversoft Engine)
+Tamanho do Bloco: 1479 bytes
+----------------------------------------------------
+
+📋 TEXTOS E VARIÁVEIS EXTRAÍDOS:
+(Diálogos, Nomes de Missões, Regras e Variáveis da Engine)
+
+-> ifndef _KOSTON_L_PSH
+-> define _KOSTON_L_PSH
+-> define KOSTON_LPART_KOSTON_PELVIS
+-> parent
+-> Scene Root
+-> define KOSTON_LPART_KOSTON_RIGHT_SHOE
+-> koston_right_shin
+-> define KOSTON_LPART_KOSTON_RIGHT_SHIN
+-> koston_right_thigh
+-> define KOSTON_LPART_KOSTON_RIGHT_THIGH
+-> koston_pelvis
+-> define KOSTON_LPART_KOSTON_LEFT_SHOE
+-> koston_left_shin
+-> define KOSTON_LPART_KOSTON_LEFT_SHIN
+-> koston_left_thigh
+-> define KOSTON_LPART_KOSTON_LEFT_THIGH
+-> define KOSTON_LPART_KOSTON_STOMACH
+-> define KOSTON_LPART_KOSTON_CHEST
+-> koston_stomach
+-> define KOSTON_LPART_KOSTON_LEFT_HAND
+-> koston_left_forearm
+-> define KOSTON_LPART_KOSTON_LEFT_FOREARM
+-> koston_left_bicep
+-> define KOSTON_LPART_KOSTON_LEFT_BICEP
+-> koston_chest
+-> define KOSTON_LPART_KOSTON_RIGHT_HAND
+-> koston_right_forearm
+-> define KOSTON_LPART_KOSTON_RIGHT_FOREARM
+-> koston_right_bicep
+-> define KOSTON_LPART_KOSTON_RIGHT_BICEP
+-> define KOSTON_LPART_KOSTON_HEAD
+-> define KOSTON_LPART_KOSTON_BOARD
+-> define KOSTON_LPART_KOSTON_FRONT_WHEEL
+-> koston_board
+-> define KOSTON_LPART_KOSTON_BACK_WHEEL
