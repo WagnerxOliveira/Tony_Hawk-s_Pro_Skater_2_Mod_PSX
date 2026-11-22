@@ -172,6 +172,9 @@ try {
   chkStr(0x0C45F0, 'Lulao');
   chkStr(0x0C4600, 'Lulao');
   chkStr(0x0C8698, 'Lulao');
+  chkStr(0x0C4714, 'Bolsonaro');
+  chkStr(0x0C4724, 'Bolso');
+  chkStr(0x0C86A8, 'Bolsonaro');
   chkStr(0x0C8730, 'Joao Paulo');
   if (strErr === 0) pass(`${checkedStrs.size} strings modificadas validadas (0 overflows, 0 erros printf, 0 bytes fora do .FNT)`);
 
@@ -188,7 +191,7 @@ try {
     pass('CD.HED 100% identico ao Redump original');
   }
 
-  const allowedWadIdxs = new Set([45, 370, 389, 433, 986, 988]);
+  const allowedWadIdxs = new Set([13, 45, 370, 371, 389, 391, 433, 435, 986, 988, 1030, 1032]);
   let wadChecked = 0, wadUnexpected = 0;
   for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
     const h = hedDisk.readUInt32LE(idx * 12);
@@ -204,44 +207,53 @@ try {
       wadUnexpected++;
     }
   }
-  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (1.525 intactas + 6 do mod Lulao)`);
+  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas + ${allowedWadIdxs.size} mods: Lulao, Bolsonaro e Hangar)`);
 
   // =========================================================================
-  // STAGE 4: s2face2.bmp & options.pre INTEGRITY
+  // STAGE 4: s2face2.bmp, s2face3.bmp & options.pre INTEGRITY
   // =========================================================================
-  console.log('\n[STAGE 4] options.pre & s2face2.bmp — Retrato do Menu e Transparencia');
-  const faceOrig = getWadEntry(fdRed, 455, hedDisk, 370);
-  const faceMod = getWadEntry(fdMod, 455, hedDisk, 370);
+  console.log('\n[STAGE 4] options.pre, s2face2.bmp (Lulao) & s2face3.bmp (Bolsonaro) — Retratos');
+  const face2Orig = getWadEntry(fdRed, 455, hedDisk, 370);
+  const face2Mod = getWadEntry(fdMod, 455, hedDisk, 370);
+  const face3Orig = getWadEntry(fdRed, 455, hedDisk, 371);
+  const face3Mod = getWadEntry(fdMod, 455, hedDisk, 371);
   const optOrig = getWadEntry(fdRed, 455, hedDisk, 45);
   const optMod = getWadEntry(fdMod, 455, hedDisk, 45);
-  if (faceMod.length !== 4088 || !faceOrig.subarray(0, 54).equals(faceMod.subarray(0, 54))) {
-    fail('PORTRAIT', 'Header/tamanho de s2face2.bmp invalido');
+  for (const [nm, o, m, magIdx, preOff] of [
+    ['s2face2.bmp', face2Orig, face2Mod, 5, 0x256C4],
+    ['s2face3.bmp', face3Orig, face3Mod, 39, 0x266CC],
+  ]) {
+    if (m.length !== 4088 || !o.subarray(0, 54).equals(m.subarray(0, 54))) {
+      fail('PORTRAIT', `Header/tamanho de ${nm} invalido`);
+    }
+    if (m[54 + magIdx * 4] !== 255 || m[54 + magIdx * 4 + 1] !== 0 || m[54 + magIdx * 4 + 2] !== 255) {
+      fail('PORTRAIT', `Indice ${magIdx} de ${nm} nao e magenta #FF00FF!`);
+    }
+    if (optMod.indexOf(m) !== preOff) {
+      fail('PORTRAIT', `${nm} nao encontrado no offset 0x${preOff.toString(16)} de options.pre!`);
+    }
   }
-  // Palette index 5 MUST be magenta (B=255, G=0, R=255, A=0)
-  if (faceMod[54 + 5 * 4] !== 255 || faceMod[54 + 5 * 4 + 1] !== 0 || faceMod[54 + 5 * 4 + 2] !== 255) {
-    fail('PORTRAIT', 'Indice 5 de s2face2.bmp nao e magenta #FF00FF!');
-  }
-  if (optMod.indexOf(faceMod) !== 0x256C4) {
-    fail('PORTRAIT', `s2face2.bmp nao encontrado no offset 0x256C4 de options.pre!`);
-  }
-  // Confirm zero bytes modified outside s2face2.bmp inside options.pre
   let optOutsideDiff = 0;
   for (let i = 0; i < optOrig.length; i++) {
-    if (i >= 0x256C4 && i < 0x256C4 + 4088) continue;
+    if ((i >= 0x256C4 && i < 0x256C4 + 4088) || (i >= 0x266CC && i < 0x266CC + 4088)) continue;
     if (optOrig[i] !== optMod[i]) optOutsideDiff++;
   }
-  if (optOutsideDiff > 0) fail('PORTRAIT', `options.pre tem ${optOutsideDiff} bytes alterados fora de s2face2.bmp!`);
-  else pass('s2face2.bmp (4.088 B, #FF00FF idx=5) e options.pre (+0x256C4) 100% integros');
+  if (optOutsideDiff > 0) fail('PORTRAIT', `options.pre tem ${optOutsideDiff} bytes alterados fora de s2face2/s2face3!`);
+  else pass('s2face2.bmp (idx=5, +0x256C4), s2face3.bmp (idx=39, +0x266CC) e options.pre 100% integros');
 
   // =========================================================================
-  // STAGE 5: ALL 4 LULAO .PSX MODELS (GEOMETRY, HASH, STITCH, BBOX, RAD, CLUT)
+  // STAGE 5: ALL 8 SKATER .PSX MODELS (LULAO + BOLSONARO) & HANGAR skhan_l.psx
   // =========================================================================
-  console.log('\n[STAGE 5] Modelos 3D .PSX do Lulao (cab, cab_L, cab2b, cab2b_L)');
+  console.log('\n[STAGE 5] Modelos 3D .PSX (4 Lulao + 4 Bolsonaro) & Paredes Fase 1 (skhan_l.psx)');
   const psxChecks = [
     { idx: 389, name: 'cab.psx', headHash: 0x0f88a1f8, expMesh: 12 },
     { idx: 986, name: 'cab_L.psx', headHash: 0x0f88a1f8, expMesh: 15 },
     { idx: 433, name: 'cab2b.psx', headHash: 0x9504086e, expMesh: 15 },
     { idx: 988, name: 'cab2b_L.psx', headHash: 0x9504086e, expMesh: 15 },
+    { idx: 391, name: 'campb2.psx', headHash: 0x7806eefa, expMesh: 15 },
+    { idx: 1030, name: 'campb2_L.psx', headHash: 0x7806eefa, expMesh: 15 },
+    { idx: 435, name: 'campb2b.psx', headHash: 0x7806eefa, expMesh: 15 },
+    { idx: 1032, name: 'campb2bL.psx', headHash: 0x7806eefa, expMesh: 15 },
   ];
   for (const pc of psxChecks) {
     const orig = getWadEntry(fdRed, 455, hedDisk, pc.idx);
@@ -316,6 +328,38 @@ try {
           pass(`${pc.name}: HEAD Mesh[${m}] (${movedVerts} verts esculpidos, w!=0 travados, bbox/rad seguros, 0 CLUT 0x0000)`);
         }
       }
+    }
+  }
+
+  // Validate Level 1 Hangar Texture Library (skhan_l.psx, idx 13)
+  {
+    const hOrig = getWadEntry(fdRed, 455, hedDisk, 13);
+    const hCur = getWadEntry(fdMod, 455, hedDisk, 13);
+    if (hOrig.length !== hCur.length) fail('HANGAR', `skhan_l.psx tamanho alterado: ${hCur.length}`);
+    else {
+      let mpos = hOrig.readUInt32LE(4);
+      while (mpos < hOrig.length) { const tag = hOrig.readUInt32LE(mpos); mpos += 4; if (tag === 0xFFFFFFFF) break; mpos += 4 + hOrig.readUInt32LE(mpos); }
+      const nTexRefs = hOrig.readUInt32LE(mpos); mpos += 4 + nTexRefs * 4;
+      const nPal16 = hOrig.readUInt32LE(mpos); mpos += 4;
+      const pal16End = mpos + nPal16 * 36;
+      if (!hOrig.subarray(0, pal16End).equals(hCur.subarray(0, pal16End))) fail('HANGAR', 'Header ou paletas 4-bit de skhan_l.psx alteradas!');
+      mpos = pal16End;
+      const nPal256 = hOrig.readUInt32LE(mpos); mpos += 4;
+      const allowedWallPals = new Set([0xdcdfd62e, 0xd68c9cc6, 0x4a5bfdaa, 0x40231b5b, 0x9feab851, 0xbb6f18de]);
+      let palErr = 0, zeroClut = 0, modPals = 0;
+      for (let i = 0; i < nPal256; i++) {
+        const pid = hOrig.readUInt32LE(mpos);
+        if (pid !== hCur.readUInt32LE(mpos)) palErr++;
+        const changed = !hOrig.subarray(mpos + 4, mpos + 516).equals(hCur.subarray(mpos + 4, mpos + 516));
+        if (changed) {
+          if (!allowedWallPals.has(pid)) palErr++;
+          else modPals++;
+          for (let c = 0; c < 256; c++) if (hCur.readUInt16LE(mpos + 4 + c * 2) === 0) zeroClut++;
+        }
+        mpos += 516;
+      }
+      if (palErr || zeroClut || modPals !== 6) fail('HANGAR', `skhan_l.psx invalido: modPals=${modPals}/6 palErr=${palErr} zeroClut=${zeroClut}`);
+      else pass('skhan_l.psx (Fase 1 The Hangar 1P/2P): 6 murais 256 cores validados (0 CLUT 0x0000, tamanho exato 316.604 B)');
     }
   }
 

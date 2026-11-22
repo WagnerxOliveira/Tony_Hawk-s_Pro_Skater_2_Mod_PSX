@@ -29,6 +29,7 @@ const { spawnSync } = require('child_process');
 const rootDir = path.resolve(__dirname, '..');
 const ffmpegExe = path.join(rootDir, 'tools', 'bin', 'ffmpeg', 'ffmpeg-9.1-essentials_build', 'bin', 'ffmpeg.exe');
 const suitImgPath = path.join(rootDir, 'texturas_para_colocar_nos_skatistas', 'textura_lulao.png');
+const suitBImgPath = path.join(rootDir, 'texturas_para_colocar_nos_skatistas', 'textura_lulao_b.png');
 const faceImgPath = path.join(rootDir, 'fotos_para_modificar_nos_skatistas', 'lulao.png');
 const backupDir = path.join(rootDir, 'originals_backup');
 const previewDir = path.join(rootDir, 'build', '_lulao_preview');
@@ -218,8 +219,10 @@ function quantizeImageForPsx(rgba, w, h, maxColors = 256) {
 // ============================================================================
 const faceSrcW = 319, faceSrcH = 360;
 const suitSrcW = 202, suitSrcH = 391;
+const suitBSrcW = 201, suitBSrcH = 384;
 const faceSrc = loadRgba(faceImgPath, faceSrcW, faceSrcH);
 const suitSrc = loadRgba(suitImgPath, suitSrcW, suitSrcH);
+const suitBSrc = loadRgba(suitBImgPath, suitBSrcW, suitBSrcH);
 
 // 1. Build EXACT 4,088-byte 62x47 8-bit BMP for s2face2.bmp (preserving metallic bezel & #FF00FF corners!)
 function buildPortraitBmp(origBmpBuf) {
@@ -645,6 +648,138 @@ function buildSilverHairTexture32() {
   return rgba;
 }
 
+// 7. Build Lulao Style B (textura_lulao_b.png): Black & White Striped Prison Uniform!
+// Sample authentic charcoal-black & off-white cotton tones directly from textura_lulao_b.png (201x384)
+function samplePrisonPaletteFromLulaoB() {
+  let dr = 0, dg = 0, db = 0, dc = 0;
+  let lr = 0, lg = 0, lb = 0, lc = 0;
+  // Shirt region in textura_lulao_b.png: x=62..140, y=68..180
+  for (let y = 70; y <= 175; y += 2) {
+    for (let x = 66; x <= 136; x += 2) {
+      const c = sampleBilinear(suitBSrc, suitBSrcW, suitBSrcH, x, y);
+      const lum = c[0] * 0.30 + c[1] * 0.59 + c[2] * 0.11;
+      if (lum < 72) { dr += c[0]; dg += c[1]; db += c[2]; dc++; }
+      else if (lum > 155) { lr += c[0]; lg += c[1]; lb += c[2]; lc++; }
+    }
+  }
+  return {
+    dark: dc ? [Math.round(dr / dc), Math.round(dg / dc), Math.round(db / dc)] : [32, 30, 32],
+    light: lc ? [Math.round(lr / lc), Math.round(lg / lc), Math.round(lb / lc)] : [214, 212, 208],
+  };
+}
+const lulaoBCols = samplePrisonPaletteFromLulaoB();
+
+function prisonStripeColor(x, y, W, H, period = 7.6, phase = 0) {
+  // Subtle organic fabric wave + cloth weave shading
+  const wave = Math.sin((x / W) * Math.PI * 4) * 0.35 + Math.cos((y / H) * Math.PI * 6) * 0.18;
+  const pos = ((y + phase + wave) % period + period) % period;
+  const half = period * 0.5;
+  // Crisp anti-aliased edge between dark charcoal & off-white stripes
+  let t;
+  if (pos < half - 0.6) t = 0;
+  else if (pos < half + 0.6) t = (pos - (half - 0.6)) / 1.2;
+  else if (pos < period - 0.6) t = 1;
+  else t = 1 - (pos - (period - 0.6)) / 1.2;
+  const weave = 0.96 + 0.04 * Math.sin(x * 1.7 + y * 0.9);
+  return [
+    clamp(Math.round(lerp(lulaoBCols.dark[0], lulaoBCols.light[0], t) * weave), 10, 245),
+    clamp(Math.round(lerp(lulaoBCols.dark[1], lulaoBCols.light[1], t) * weave), 10, 245),
+    clamp(Math.round(lerp(lulaoBCols.dark[2], lulaoBCols.light[2], t) * weave), 10, 245),
+  ];
+}
+
+// Style B Torso (128x64): Collared button-up black & white striped prison shirt (front x=32..96, back x=0..32 & 96..128)
+function buildPrisonTorsoLulaoB128x64() {
+  const W = 128, H = 64;
+  const rgba = Buffer.alloc(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      // Base horizontal prison stripes wrapping seamlessly around torso
+      let [r, g, b] = prisonStripeColor(x, y, W, H, 7.6, 1.5);
+      // Cylindrical torso shading (brighter on chest center & back center, darker at side seams x=32 & x=96)
+      const sideDist = Math.min(Math.abs(x - 32), Math.abs(x - 96));
+      let shade = 0.78 + 0.24 * clamp(sideDist / 24, 0, 1);
+      // Subtle vertical fold shadows on chest & back
+      shade *= (0.94 + 0.06 * Math.sin((x / W) * Math.PI * 10));
+      // Subtle hem shadow near bottom
+      if (y > 57) shade *= lerp(1.0, 0.78, (y - 57) / 6);
+      r = Math.round(r * shade); g = Math.round(g * shade); b = Math.round(b * shade);
+
+      // Front chest details (x=32..96, center x=64)
+      const dx = x - 64;
+      // 1. White undershirt V-peek + collared shirt lapels at top center (y=0..10)
+      if (y <= 10) {
+        const vHalf = Math.max(0, 7.5 - y * 0.78);
+        if (Math.abs(dx) <= vHalf) {
+          // Off-white crew undershirt under open collar
+          const uShade = 0.90 + 0.08 * (1 - y / 10);
+          r = Math.round(226 * uShade); g = Math.round(224 * uShade); b = Math.round(218 * uShade);
+        } else if (Math.abs(dx) <= vHalf + 5.0 && y <= 9) {
+          // Pointed striped shirt collar flaps with dark stitched edge
+          const edge = Math.abs(Math.abs(dx) - (vHalf + 4.4)) < 1.0 || Math.abs(Math.abs(dx) - vHalf) < 0.9;
+          if (edge) { r = Math.round(r * 0.55); g = Math.round(g * 0.55); b = Math.round(b * 0.55); }
+          else { r = Math.min(242, Math.round(r * 1.08)); g = Math.min(242, Math.round(g * 1.08)); b = Math.min(242, Math.round(b * 1.08)); }
+        }
+      }
+      // 2. Vertical button placket down exact front center (x=63..65, y=10..61)
+      if (y >= 10 && y <= 61 && Math.abs(dx) <= 1.6) {
+        if (Math.abs(dx) > 1.0) { r = Math.round(r * 0.65); g = Math.round(g * 0.65); b = Math.round(b * 0.65); }
+        // Crisp light buttons spaced down the placket
+        for (const by of [14, 24, 34, 44, 54]) {
+          if (Math.hypot(dx, y - by) <= 1.35) {
+            r = 232; g = 230; b = 220;
+          }
+        }
+      }
+      // 3. Left chest pocket (viewer's right, x=71..84, y=15..27) matching textura_lulao_b.png!
+      if (x >= 71 && x <= 84 && y >= 15 && y <= 27) {
+        const onBorder = (x === 71 || x === 84 || y === 15 || y === 27);
+        const onShadow = (y === 27 || x === 84);
+        if (onBorder) {
+          const k = onShadow ? 0.48 : 0.62;
+          r = Math.round(r * k); g = Math.round(g * k); b = Math.round(b * k);
+        } else {
+          // Slight stripe phase offset on pocket so pocket stands out authentically
+          let [pr, pg, pb] = prisonStripeColor(x, y, W, H, 7.6, 3.0);
+          r = Math.round(pr * shade * 0.96); g = Math.round(pg * shade * 0.96); b = Math.round(pb * shade * 0.96);
+        }
+      }
+      // Back shoulder yoke seam (x < 24 or x > 104, y === 10)
+      if ((x < 24 || x > 104) && y === 10) {
+        r = Math.round(r * 0.68); g = Math.round(g * 0.68); b = Math.round(b * 0.68);
+      }
+
+      const d = (y * W + x) * 4;
+      rgba[d] = clamp(r, 8, 250); rgba[d + 1] = clamp(g, 8, 250); rgba[d + 2] = clamp(b, 8, 250); rgba[d + 3] = 255;
+    }
+  }
+  return rgba;
+}
+
+// Style B Striped Prison Sleeves & Trousers (cab2b / cab2b_L)
+function buildPrisonStripedGarment(W, H, period = 7.6, isPants = false) {
+  const rgba = Buffer.alloc(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let [r, g, b] = prisonStripeColor(x, y, W, H, period, isPants ? 0.5 : 1.0);
+      const cyl = 0.80 + 0.22 * Math.sin((x / W) * Math.PI);
+      const crease = isPants
+        ? (0.94 + 0.06 * Math.cos(((x / W) * 2 - 1) * Math.PI * 2))
+        : (1.0 - 0.10 * Math.exp(-Math.pow((y - H * 0.5) / 4, 2)));
+      let shade = cyl * crease;
+      // Waistband on upper pants (y < 4) or cuff seam near bottom
+      if (isPants && y < 3) shade *= 0.72;
+      if (!isPants && y >= H - 3) shade *= 0.78;
+      const d = (y * W + x) * 4;
+      rgba[d] = clamp(Math.round(r * shade), 8, 250);
+      rgba[d + 1] = clamp(Math.round(g * shade), 8, 250);
+      rgba[d + 2] = clamp(Math.round(b * shade), 8, 250);
+      rgba[d + 3] = 255;
+    }
+  }
+  return rgba;
+}
+
 // ============================================================================
 // NEVERSOFT .PSX PARSER, TEXTURE/CLUT PATCHER & 3D HEAD GEOMETRY SCULPTOR
 // ============================================================================
@@ -965,15 +1100,17 @@ const getOrigWadSlice = name => {
   throw new Error(`Nao encontrado no CD.WAD: ${name}`);
 };
 
-console.log('=== 1. Gerando texturas de alta precisao para Lulao ===');
+console.log('=== 1. Gerando texturas de alta precisao para Lulao (Style A: Terno + Faixa | Style B: Uniforme Listrado) ===');
 const portrait = buildPortraitBmp(getOrigWadSlice('s2face2.bmp'));
 const headRgba64 = buildHeadTexture64();
 const torsoRgba128 = buildSuitTorsoTexture128x64();
 const pantsRgba128 = buildSuitPantsTexture(128, 64);
-const pantsRgba64 = buildSuitPantsTexture(64, 64);
-const shinRgba32 = buildSuitPantsTexture(32, 32);
 const sleeveRgba32 = buildSuitSleeveTexture(32, 64);
 const hairRgba32 = buildSilverHairTexture32();
+const prisonTorsoB128 = buildPrisonTorsoLulaoB128x64();
+const prisonSleeveB32 = buildPrisonStripedGarment(32, 64, 7.6, false);
+const prisonPantsB64 = buildPrisonStripedGarment(64, 64, 8.0, true);
+const prisonShinB32 = buildPrisonStripedGarment(32, 32, 8.0, true);
 
 // Modify all 4 .PSX models in memory (same byte size!)
 const modelSpecs = [
@@ -998,22 +1135,22 @@ const modelSpecs = [
   {
     name: 'cab2b.psx', headMeshHash: 0x9504086e, faceTexIdx: 6,
     texMap: {
-      0x2fd2c5c1: torsoRgba128,  // Shirt -> Suit + Sash (128x64)
-      0xf98267a1: headRgba64,    // Head/Face (64x64)
-      0x6cfa5ba3: sleeveRgba32,  // Sleeve (32x64)
-      0xbcd7678d: pantsRgba64,   // Shorts -> Navy Trousers (64x64)
-      0x1a0761b6: shinRgba32,    // Shins -> Navy Trousers (32x32)
-      0x604135d3: hairRgba32,    // Helmet -> Silver Hair (32x32)
+      0x2fd2c5c1: prisonTorsoB128,  // Shirt -> Style B Striped Prison Uniform (128x64)
+      0xf98267a1: headRgba64,       // Head/Face (64x64)
+      0x6cfa5ba3: prisonSleeveB32,  // Sleeve -> Striped Prison Sleeve (32x64)
+      0xbcd7678d: prisonPantsB64,   // Thighs -> Striped Prison Pants (64x64)
+      0x1a0761b6: prisonShinB32,    // Shins -> Striped Prison Pants (32x32)
+      0x604135d3: hairRgba32,       // Helmet -> Silver Hair (32x32)
     }
   },
   {
     name: 'cab2b_L.psx', headMeshHash: 0x9504086e, faceTexIdx: 6,
     texMap: {
-      0x2fd2c5c1: torsoRgba128,
+      0x2fd2c5c1: prisonTorsoB128,
       0xf98267a1: headRgba64,
-      0x882e3822: sleeveRgba32,
-      0xbcd7678d: pantsRgba64,
-      0x1a0761b6: shinRgba32,
+      0x882e3822: prisonSleeveB32,
+      0xbcd7678d: prisonPantsB64,
+      0x1a0761b6: prisonShinB32,
       0x604135d3: hairRgba32,
     }
   },
@@ -1021,6 +1158,7 @@ const modelSpecs = [
 
 const modifiedModels = new Map();
 let cabPreviewQ = {};
+let cab2bPreviewQ = {};
 let cabSculpt = null;
 
 console.log('\n=== 2. Aplicando texturas PS1 (BGR555) e esculpindo geometria 3D do rosto nos 4 .PSX ===');
@@ -1040,6 +1178,9 @@ for (const spec of modelSpecs) {
       if (spec.name === 'cab.psx') {
         cabPreviewQ[t.palId] = { w: t.w, h: t.h, rgba: qRgba };
       }
+      if (spec.name === 'cab2b.psx') {
+        cab2bPreviewQ[t.palId] = { w: t.w, h: t.h, rgba: qRgba };
+      }
     }
   }
   const sculpt = sculptHeadGeometryToLulao(psxBuf, info, headMeshIdx, spec.faceTexIdx);
@@ -1055,6 +1196,9 @@ writePng(path.join(previewDir, 'preview_head_tex_64x64.png'), 64, 64, cabPreview
 writePng(path.join(previewDir, 'preview_torso_tex_128x64.png'), 128, 64, cabPreviewQ[0xf59659e3].rgba);
 writePng(path.join(previewDir, 'preview_pants_128x64.png'), 128, 64, cabPreviewQ[0x7a948d36].rgba);
 writePng(path.join(previewDir, 'preview_sleeve_32x64.png'), 32, 64, cabPreviewQ[0x720a8ef1].rgba);
+writePng(path.join(previewDir, 'preview_styleB_torso_128x64.png'), 128, 64, cab2bPreviewQ[0x2fd2c5c1].rgba);
+writePng(path.join(previewDir, 'preview_styleB_sleeve_32x64.png'), 32, 64, cab2bPreviewQ[0x6cfa5ba3].rgba);
+writePng(path.join(previewDir, 'preview_styleB_pants_64x64.png'), 64, 64, cab2bPreviewQ[0xbcd7678d].rgba);
 renderHeadComparisonPng(cabSculpt, path.join(previewDir, 'preview_head_3d_before_after.png'));
 console.log(`\nPreviews visuais salvos em: ${previewDir}`);
 

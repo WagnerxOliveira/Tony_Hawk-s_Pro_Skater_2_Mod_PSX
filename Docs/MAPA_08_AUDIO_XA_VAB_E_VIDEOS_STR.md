@@ -97,7 +97,7 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 | 17 | `0x800C1F18` | `0x0B2718` | `\X\HAWK.STR;1` | Tony Hawk | 320×240 | **634** | `0x025800` | Sim | str (2336B) |
 | 18 | `0x800C1F3C` | `0x0B273C` | `\X\BURNQUIS.STR;1` | Bob Burnquist | 320×240 | **598** | `0x025800` | Sim | str (2336B) |
 | 19 | `0x800C1F60` | `0x0B2760` | `\X\CABALLER.STR;1` | Lulao | 320×240 | **606** | `0x025800` | Sim | str (2336B) |
-| 20 | `0x800C1F84` | `0x0B2784` | `\X\CAMPBELL.STR;1` | Kareem Campbell | 320×240 | **644** | `0x025800` | Sim | str (2336B) |
+| 20 | `0x800C1F84` | `0x0B2784` | `\X\CAMPBELL.STR;1` | Bolsonaro | 320×240 | **644** | `0x025800` | Sim | str (2336B) |
 | 21 | `0x800C1FA8` | `0x0B27A8` | `\X\GLIFBERG.STR;1` | Wagner Oliver | 320×240 | **627** | `0x025800` | Sim | str (2336B) |
 | 22 | `0x800C1FCC` | `0x0B27CC` | `\X\KOSTON.STR;1` | Eric Koston | 320×240 | **629** | `0x025800` | Sim | str (2336B) |
 | 23 | `0x800C1FF0` | `0x0B27F0` | `\X\LASEK.STR;1` | Bucky Lasek | 320×240 | **652** | `0x025800` | Sim | str (2336B) |
