@@ -80,6 +80,7 @@ const scriptsToSync = [
   'build_iso.js',
   'create_patch.js',
   'replace_videos.js',
+  'mod_skater_lulao.js',
   'generate_all_docs.js',
   'ghidra_apply_symbols.py',
   'thps2_build.xml',
