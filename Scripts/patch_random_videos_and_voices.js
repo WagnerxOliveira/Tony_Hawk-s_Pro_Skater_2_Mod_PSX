@@ -94,6 +94,7 @@ const ADDR = {
   g_VoicesBaseLba:     0x800E27C4,
   g_ModLoaded:         0x800E27C8,
   Str_VoicesPath:      0x800E27CC, // "\VOICES.DAT;1\0" (14 B -> padded 16 B to 0x800E27DC)
+  g_InPlaySel:         0x800E27DC, // Dedicated 4-byte flag (1 while inside playsel.bin; NEVER touches 23464($gp)!)
   ModCodeBase:         0x800E2800, // Sector 0 of VOICES.DAT (2048 B)
   Entry_BootMovie:     0x800E2800,
   Entry_PlaySelScroll: 0x800E2808,
@@ -392,13 +393,13 @@ function assembleSlusTailCompact() {
   a.jr(R.t2);
   a.nop();
 
-  // Hook_CdMix(CdlATV* a0): reduces background XA music to 25% (-12 dB) while inside Skater Select (23464($gp) == 2)!
+  // Hook_CdMix(CdlATV* a0): reduces background XA music to 25% (-12 dB) while g_InPlaySel != 0 (0x800E27DC)!
   a.padTo(ADDR.Hook_CdMix);
-  a.lw(R.t0, 23464, R.gp);
-  a.addiu(R.t1, R.zero, 2);                    // fills lw load-delay slot! (2 == playsel.bin)
-  a.bne(R.t0, R.t1, 'cdmix_go');
-  a.lbu(R.t2, 0, R.a0);                        // val0 = Left CD-XA vol (harmless if branch taken!)
-  a.lbu(R.t3, 2, R.a0);                        // val2 = Right CD-XA vol (fills lbu $t2 load-delay!)
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t0, ADDR.g_InPlaySel & 0xffff, R.t0);
+  a.lbu(R.t2, 0, R.a0);                        // fills lw load-delay slot! val0 = Left CD-XA vol
+  a.beq(R.t0, R.zero, 'cdmix_go');             // if NOT inside playsel.bin -> 100% full volume!
+  a.lbu(R.t3, 2, R.a0);                        // delay slot! val2 = Right CD-XA vol
   a.srl(R.t2, R.t2, 2);                        // 25% (-12 dB) — soft background music!
   a.srl(R.t3, R.t3, 2);                        // 25% (-12 dB)
   a.sb(R.t2, 0, R.a0);
@@ -413,6 +414,9 @@ function assembleSlusTailCompact() {
 
   a.padTo(ADDR.Str_VoicesPath);
   a.bytes(Buffer.from('\\VOICES.DAT;1\0', 'ascii'));
+
+  a.padTo(ADDR.g_InPlaySel);
+  a.word(0); // g_InPlaySel (0 = outside playsel, 1 = inside playsel)
 
   a.padTo(0x800E2800);
   const bin = a.emit();
@@ -781,9 +785,8 @@ function assembleModCode() {
   a.sw(R.s5, 32, R.sp);
   a.sw(R.s6, 28, R.sp);
 
-  a.move(R.s0, R.a0);
   a.jal('SkaterVoice_Stop');
-  a.nop();
+  a.move(R.s0, R.a0);
 
   a.lwSym(R.s1, ADDR.VoiceTblBase + 4); // lulaoCount
   a.lwSym(R.s2, ADDR.VoiceTblBase + 8); // bolsoCount
@@ -1038,9 +1041,11 @@ function assembleModCode() {
   a.move(R.s2, R.a2);
   a.move(R.s3, R.a3);
 
-  // 23464($gp) is already 2 -> XA_UpdateVolume lowers COMPILED.XA to 25% (-12 dB) immediately!
+  // Set private flag g_InPlaySel = 1 (NEVER touches THPS2's 23464($gp)!) -> lowers music to 25% (-12 dB)!
+  a.lui(R.t0, 0x800E);
+  a.addiu(R.t1, R.zero, 1);
   a.jal(SYM.XA_UpdateVolume);
-  a.nop();
+  a.sw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
 
   a.move(R.a0, R.s0);
   a.move(R.a1, R.s1);
@@ -1049,9 +1054,10 @@ function assembleModCode() {
   a.move(R.a3, R.s3);
   a.move(R.s0, R.v0);
 
-  // Leaving Skater Select -> stop Voice 23 cleanly & restore 100% full music volume!
+  // Leaving Skater Select -> clear g_InPlaySel = 0 (leaving 23464($gp) 100% untouched!), stop Voice 23 & restore 100% music!
+  a.lui(R.t0, 0x800E);
   a.jal('SkaterVoice_Stop');
-  a.sw(R.zero, 23464, R.gp);
+  a.sw(R.zero, ADDR.g_InPlaySel & 0xffff, R.t0);
   a.jal(SYM.XA_UpdateVolume);
   a.nop();
 

@@ -257,10 +257,22 @@ const skhanLib = Buffer.from(origWad.subarray(libOff, libOff + libSize));
 const info = parsePsxTexLib(skhanLib);
 
 // Prepare sharp, tightly-framed portraits (56x56 for 128x64 dual murals & 54x54 for 64x64 single murals)
+// Dynamic crop for Bolsonaro's laughing photo (315x397 -> clean square crop around face & head!)
+function readPngDims(pngPath) {
+  const hdr = Buffer.alloc(24); const fd = fs.openSync(pngPath, 'r');
+  fs.readSync(fd, hdr, 0, 24, 0); fs.closeSync(fd);
+  return { w: hdr.readUInt32BE(16), h: hdr.readUInt32BE(20) };
+}
+const bd = readPngDims(bolsoImg);
+const bCropW = Math.min(bd.w, Math.round(bd.w * 0.78));
+const bCropH = Math.min(bd.h - 14, bCropW);
+const bolsoVf56 = `crop=${bCropW}:${bCropH}:0:14,eq=brightness=0.08:contrast=1.14:saturation=1.08,scale=56:56:flags=lanczos`;
+const bolsoVf54 = `crop=${bCropW}:${bCropH}:0:14,eq=brightness=0.08:contrast=1.14:saturation=1.08,scale=54:54:flags=lanczos`;
+
 const lulao56 = loadCroppedRgba(lulaoImg, 'crop=290:318:14:4,scale=56:56:flags=lanczos');
-const bolso56 = loadCroppedRgba(bolsoImg, 'crop=490:510:33:4,scale=56:56:flags=lanczos');
+const bolso56 = loadCroppedRgba(bolsoImg, bolsoVf56);
 const lulao54 = loadCroppedRgba(lulaoImg, 'crop=290:318:14:4,scale=54:54:flags=lanczos');
-const bolso54 = loadCroppedRgba(bolsoImg, 'crop=490:510:33:4,scale=54:54:flags=lanczos');
+const bolso54 = loadCroppedRgba(bolsoImg, bolsoVf54);
 
 const wallTargets = [
   { idx: 47, palId: 0xdcdfd62e, name: 'wall47_mullet_falls_Lulao_Bolso', mode: 'dual', left: lulao56, right: bolso56 },
