@@ -302,7 +302,7 @@ const notes = [
   '### ✨ Destaques do Mod',
   '- **Vídeos Aleatórios no Boot com Duração Exata Original (Activision `13,87s` + Neversoft `17,73s` + Intro):** a cada inicialização no DuckStation, 3 vídeos customizados diferentes são sorteados automaticamente entre os 20 vídeos do disco (Setor 60 do Memory Card + timers HW PS1), respeitando a duração exata de cada animação original sem alterar os vídeos de final de carreira.',
   '- **Vozes Rotativas na Seleção de Skatistas (Lulao & Bolsonaro) + Música Suavizada (`-12 dB`):** 28 áudios exclusivos em SPU-ADPCM hardware (`14` Lulao + `14` Bolsonaro em `VOICES.DAT`) tocando na Voz 23 dedicada ao navegar Left/Right e confirmar com **X**, com redução automática da música de fundo para **25%** durante a Seleção de Skatistas e restauração em **100%** nas fases.',
-  '- **Lulao (Style A & B) e Bolsonaro (Style A & B):** retratos, nomes, roupas customizadas, escultura 3D do rosto em todos os 8 modelos `.PSX` e murais 256 cores nas paredes da Fase 1 (*The Hangar*).',
+  '- **Lulao (Style A & B) e Bolsonaro (Style A & B):** retratos, nomes, roupas customizadas, escultura 3D completa nos 8 modelos `.PSX` (crânio simetrizado + rosto `bolsonaro_rosto.png` com cabelo curto 360° no Bolsonaro; rosto + barriguinha 3D anatômica no Lulao; Fase 1 *The Hangar* com paredes originais restauradas).',
   '- **Auditoria Forense em 10 Estágios (0 erros):** todos os 48 arquivos originais mantêm LBA exato Redump + perfil `SLUS-01066.ini` incluso.',
   '',
   '### 🔐 Verificação de Integridade (Checksums)',

@@ -1065,6 +1065,200 @@ function renderHeadComparisonPng(sculptResult, outPath) {
   writePng(outPath, W, H, img);
 }
 
+/**
+ * Surgically sculpts a natural, anatomically rounded belly ("barriguinha") onto Lulao's
+ * 3D torso across ALL 4 models (cab.psx, cab_L.psx, cab2b.psx, cab2b_L.psx):
+ *  - STRICT PSX SKINNING INVARIANTS:
+ *    * NEVER touches any w === 2 stitch target vertex (its y field is a stitch-pool index!)
+ *    * NEVER touches any w === 1 anchor vertex on Chest (arms/shoulders/neck stay 100% intact!)
+ *    * NEVER touches back vertices (z > +130) or lower pelvic crotch (y > +200)!
+ *  - Sculpts Stomach w === 1 front/antero-lateral ring (consumed EXCLUSIVELY by Chest lower ring -> zero seam!)
+ *    and Pelvis w === 1 upper front waist/flanks/belt-center (harmonizing jacket/shirt hem & trouser waistband!)
+ *  - Recomputes exact hdrBbox & safe bounding sphere rad on Pelvis, Stomach, AND Chest (preventing any culling)!
+ */
+function sculptBellyGeometryForLulao(buf, psxInfo, spec) {
+  const belly = spec.belly;
+  if (!belly) return { movedCount: 0 };
+
+  const applyMeshDeltas = (meshHash, deltaMap, extraZminPad = 0, extraXPad = 0) => {
+    const mi = psxInfo.meshHashes.indexOf(meshHash);
+    if (mi < 0) throw new Error(`Belly mesh hash 0x${meshHash.toString(16)} nao encontrado em ${spec.name}!`);
+    const mo = psxInfo.meshOffs[mi];
+    const nVerts = buf.readUInt16LE(mo + 2);
+    const vOff = mo + 28;
+    let moved = 0;
+    let xmin = 32767, xmax = -32768, ymin = 32767, ymax = -32768, zmin = 32767, zmax = -32768, maxR = 0;
+
+    for (let v = 0; v < nVerts; v++) {
+      const vo = vOff + v * 8;
+      let x = buf.readInt16LE(vo), y = buf.readInt16LE(vo + 2), z = buf.readInt16LE(vo + 4);
+      const w = buf.readUInt16LE(vo + 6);
+      const d = deltaMap[v];
+      if (d) {
+        if (w === 2) throw new Error(`VIOLACAO: tentativa de mover w=2 em ${spec.name} Mesh[${mi}].v[${v}]!`);
+        x = clamp(Math.round(x + d[0]), -32767, 32767);
+        y = clamp(Math.round(y + d[1]), -32767, 32767);
+        z = clamp(Math.round(z + d[2]), -32767, 32767);
+        buf.writeInt16LE(x, vo);
+        buf.writeInt16LE(y, vo + 2);
+        buf.writeInt16LE(z, vo + 4);
+        moved++;
+      }
+      if (w !== 2) {
+        if (x < xmin) xmin = x; if (x > xmax) xmax = x;
+        if (y < ymin) ymin = y; if (y > ymax) ymax = y;
+        if (z < zmin) zmin = z; if (z > zmax) zmax = z;
+        const r = Math.hypot(x, y, z); if (r > maxR) maxR = r;
+      }
+    }
+    // Expand bounding box/radius safely (also accounting for w=2 stitched belly vertices on Chest!)
+    zmin = Math.min(zmin, buf.readInt16LE(mo + 0x16) * 16) - extraZminPad;
+    xmin = Math.min(xmin, buf.readInt16LE(mo + 0x0E) * 16) - extraXPad;
+    xmax = Math.max(xmax, buf.readInt16LE(mo + 0x0C) * 16) + extraXPad;
+    ymax = Math.max(ymax, buf.readInt16LE(mo + 0x10) * 16) + (extraZminPad > 0 ? 32 : 0);
+    ymin = Math.min(ymin, buf.readInt16LE(mo + 0x12) * 16);
+    zmax = Math.max(zmax, buf.readInt16LE(mo + 0x14) * 16);
+    const paddedR = Math.max(maxR, Math.hypot(Math.max(Math.abs(xmin), Math.abs(xmax)), Math.max(Math.abs(ymin), Math.abs(ymax)), Math.max(Math.abs(zmin), Math.abs(zmax))));
+    const origRad = buf.readUInt32LE(mo + 0x08);
+    buf.writeUInt32LE(Math.max(origRad, Math.ceil(paddedR / 16) * 4096), mo + 0x08);
+    buf.writeInt16LE(Math.ceil(xmax / 16), mo + 0x0C);
+    buf.writeInt16LE(Math.floor(xmin / 16), mo + 0x0E);
+    buf.writeInt16LE(Math.ceil(ymax / 16), mo + 0x10);
+    buf.writeInt16LE(Math.floor(ymin / 16), mo + 0x12);
+    buf.writeInt16LE(Math.ceil(zmax / 16), mo + 0x14);
+    buf.writeInt16LE(Math.floor(zmin / 16), mo + 0x16);
+    return moved;
+  };
+
+  let total = 0;
+  total += applyMeshDeltas(belly.pelvisHash,  belly.pelvisDeltas,  0, 0);
+  total += applyMeshDeltas(belly.stomachHash, belly.stomachDeltas, 0, 0);
+  total += applyMeshDeltas(belly.chestHash,   belly.chestDeltas || {}, 220, 48);
+  return { movedCount: total };
+}
+
+// Assemble Pelvis + Stomach + Chest (with w=2 stitches resolved!) and render 4-Angle 3D Textured Before vs After PNG
+function renderBellyComparison3DPng(origBuf, modBuf, spec, torsoRgba, outPath) {
+  const parseAll = buf => {
+    const info = parsePsxStructure(buf);
+    const numObjs = buf.readUInt32LE(8);
+    const objs = Array.from({ length: numObjs }, (_, i) => {
+      const o = 12 + i * 36;
+      return { x: buf.readInt32LE(o + 4) / 256, y: buf.readInt32LE(o + 8) / 256, z: buf.readInt32LE(o + 12) / 256 };
+    });
+    const meshes = [];
+    for (let mi = 0; mi < info.numMeshes; mi++) {
+      const mo = info.meshOffs[mi], mEnd = (mi + 1 < info.numMeshes) ? info.meshOffs[mi + 1] : info.ptrMeta;
+      const nV = buf.readUInt16LE(mo + 2), nN = buf.readUInt16LE(mo + 4), nF = buf.readUInt16LE(mo + 6);
+      const vOff = mo + 28, fOff = vOff + nV * 8 + nN * 8;
+      const verts = Array.from({ length: nV }, (_, v) => ({
+        idx: v, x: buf.readInt16LE(vOff + v * 8), y: buf.readInt16LE(vOff + v * 8 + 2),
+        z: buf.readInt16LE(vOff + v * 8 + 4), w: buf.readUInt16LE(vOff + v * 8 + 6),
+      }));
+      const faces = [];
+      let fp = fOff;
+      for (let fi = 0; fi < nF && fp + 4 <= mEnd; fi++) {
+        const fl = buf.readUInt16LE(fp), fLen = buf.readUInt16LE(fp + 2);
+        if (fLen < 12 || fp + fLen > mEnd) break;
+        const rv = [buf[fp + 4], buf[fp + 5], buf[fp + 6], buf[fp + 7]];
+        const gpu = buf[fp + 11], quad = (gpu & 8) !== 0;
+        const textured = (fl & 1) !== 0 || (gpu & 4) !== 0;
+        let uvs = [];
+        if (textured && fLen >= 28) {
+          uvs = [[buf[fp+20],buf[fp+21]],[buf[fp+22],buf[fp+23]],[buf[fp+24],buf[fp+25]]];
+          if (quad) uvs.push([buf[fp+26],buf[fp+27]]);
+        }
+        faces.push({ rv, quad, textured, uvs });
+        fp += fLen;
+      }
+      meshes.push({ mi, hash: info.meshHashes[mi], verts, faces });
+    }
+    return { objs, meshes };
+  };
+
+  const views = [{ yaw: 0 }, { yaw: 38 }, { yaw: -90 }, { yaw: 180 }];
+  const cellW = 160, cellH = 210, W = cellW * 4, H = cellH * 2;
+  const img = Buffer.alloc(W * H * 4, 24);
+  for (let i = 0; i < W * H; i++) img[i * 4 + 3] = 255;
+
+  const renderRow = (rowIdx, buf) => {
+    const { objs, meshes } = parseAll(buf);
+    const pM = meshes.find(m => m.hash === spec.belly.pelvisHash);
+    const sM = meshes.find(m => m.hash === spec.belly.stomachHash);
+    const cM = meshes.find(m => m.hash === spec.belly.chestHash);
+    // Use exact bone positions (obj[m.mi] aligns Pelvis/Stomach/Chest in both cab.psx and cab2b.psx!)
+    const posOf = m => objs[m.mi] || { x: 0, y: 0, z: 0 };
+    const worldOf = (m, v) => { const o = posOf(m); return { x: v.x + o.x, y: v.y + o.y, z: v.z + o.z }; };
+    const stitchW = [];
+    for (const m of meshes) for (const v of m.verts) if (v.w === 1) stitchW.push(worldOf(m, v));
+    const resolveVerts = m => m.verts.map(v => v.w === 2 ? (stitchW[v.y] || { x: 0, y: 0, z: 0 }) : worldOf(m, v));
+
+    const parts = [pM, sM, cM];
+    let ymin = 1e9, ymax = -1e9;
+    for (const m of parts) for (const p of resolveVerts(m)) { if (p.y < ymin) ymin = p.y; if (p.y > ymax) ymax = p.y; }
+    const yMid = (ymin + ymax) * 0.5;
+    const yOff = rowIdx * cellH;
+    const sc = 0.14;
+
+    views.forEach((vw, vi) => {
+      const ox = vi * cellW + cellW * 0.5, oy = yOff + cellH * 0.5;
+      const zbuf = new Float32Array(cellW * cellH).fill(1e9);
+      const yaw = vw.yaw * Math.PI / 180, cy = Math.cos(yaw), sy = Math.sin(yaw);
+      const proj = p => ({ sx: ox + (p.x * cy + p.z * sy) * sc, sy: oy + (p.y - yMid) * sc, sz: -p.x * sy + p.z * cy });
+      const drawTri = (p0, p1, p2, uv0, uv1, uv2, shade) => {
+        const minX = Math.max(vi * cellW, Math.floor(Math.min(p0.sx, p1.sx, p2.sx)));
+        const maxX = Math.min((vi + 1) * cellW - 1, Math.ceil(Math.max(p0.sx, p1.sx, p2.sx)));
+        const minY = Math.max(yOff, Math.floor(Math.min(p0.sy, p1.sy, p2.sy)));
+        const maxY = Math.min(yOff + cellH - 1, Math.ceil(Math.max(p0.sy, p1.sy, p2.sy)));
+        const area = (p1.sx - p0.sx) * (p2.sy - p0.sy) - (p2.sx - p0.sx) * (p1.sy - p0.sy);
+        if (Math.abs(area) < 0.01) return;
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            const w0 = ((p1.sx - x) * (p2.sy - y) - (p2.sx - x) * (p1.sy - y)) / area;
+            const w1 = ((p2.sx - x) * (p0.sy - y) - (p0.sx - x) * (p2.sy - y)) / area;
+            const w2 = 1 - w0 - w1;
+            if (w0 < -0.001 || w1 < -0.001 || w2 < -0.001) continue;
+            const z = w0 * p0.sz + w1 * p1.sz + w2 * p2.sz;
+            const zi = (y - yOff) * cellW + (x - vi * cellW);
+            if (z < zbuf[zi]) {
+              zbuf[zi] = z;
+              const u = clamp(Math.round(w0 * uv0[0] + w1 * uv1[0] + w2 * uv2[0]) & 127, 0, 127);
+              const vv = clamp(Math.round(w0 * uv0[1] + w1 * uv1[1] + w2 * uv2[1]), 0, 63);
+              const to = (vv * 128 + u) * 4;
+              const o = (y * W + x) * 4;
+              img[o] = Math.min(255, Math.round(torsoRgba[to] * shade));
+              img[o + 1] = Math.min(255, Math.round(torsoRgba[to + 1] * shade));
+              img[o + 2] = Math.min(255, Math.round(torsoRgba[to + 2] * shade));
+              img[o + 3] = 255;
+            }
+          }
+        }
+      };
+      for (const m of parts) {
+        const wvs = resolveVerts(m);
+        for (const f of m.faces) {
+          if (!f.textured || f.uvs.length < 3) continue;
+          const p0 = proj(wvs[f.rv[0]]), p1 = proj(wvs[f.rv[1]]), p2 = proj(wvs[f.rv[2]]);
+          const p3 = f.quad ? proj(wvs[f.rv[3]]) : null;
+          const e1x = p1.sx - p0.sx, e1y = p1.sy - p0.sy, e1z = p1.sz - p0.sz;
+          const e2x = p2.sx - p0.sx, e2y = p2.sy - p0.sy, e2z = p2.sz - p0.sz;
+          const nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+          const shade = 0.72 + 0.28 * Math.abs(nz / (Math.hypot(nx, ny, nz) || 1));
+          if (f.quad && p3) {
+            drawTri(p0, p1, p2, f.uvs[0], f.uvs[1], f.uvs[2], shade);
+            drawTri(p1, p3, p2, f.uvs[1], f.uvs[3], f.uvs[2], shade);
+          } else {
+            drawTri(p0, p1, p2, f.uvs[0], f.uvs[1], f.uvs[2], shade);
+          }
+        }
+      }
+    });
+  };
+  renderRow(0, origBuf);
+  renderRow(1, modBuf);
+  writePng(outPath, W, H, img);
+}
+
 // ============================================================================
 // MAIN EXECUTION (--preview or full --apply)
 // ============================================================================
@@ -1121,7 +1315,22 @@ const modelSpecs = [
       0x7a948d36: pantsRgba128,  // Pants (128x64)
       0x134420c2: headRgba64,    // Face/Head (64x64)
       0x720a8ef1: sleeveRgba32,  // Sleeves (32x64)
-    }
+    },
+    belly: {
+      pelvisHash: 0x02ca281e, stomachHash: 0xc46f3c25, chestHash: 0x6331822c,
+      pelvisDeltas: {
+         9: [-24, 14, -105], 15: [ 24, 14, -105], // front waist upper pair
+        10: [-26,  8,  -38], 16: [ 26,  8,  -38], // waist flanks (Stomach only)
+        14: [  0, 10,  -48],                      // front hem / belt buckle center
+      },
+      stomachDeltas: {
+         2: [-34, 20, -135],  5: [ 34, 20, -135], // belly apex front pair (Chest only!)
+         3: [-30, 10,  -55],  4: [ 30, 10,  -55], // belly antero-lateral flanks
+      },
+      chestDeltas: {
+        41: [  0,  0,  -22],                      // w=0 mid-lower sternum smooth slope (ZERO w=1 touched!)
+      },
+    },
   },
   {
     name: 'cab_L.psx', headMeshHash: 0x0f88a1f8, faceTexIdx: 7,
@@ -1130,7 +1339,20 @@ const modelSpecs = [
       0x7a948d36: pantsRgba128,
       0x134420c2: headRgba64,
       0x720a8ef1: sleeveRgba32,
-    }
+    },
+    belly: {
+      pelvisHash: 0x02ca281e, stomachHash: 0xc46f3c25, chestHash: 0x6331822c,
+      pelvisDeltas: {
+         9: [-24, 14, -105], 14: [ 24, 14, -105], // front waist upper pair
+        10: [-22,  6,  -24],  6: [ 22,  6,  -24], // side flanks
+        13: [  0, 10,  -48],                      // front hem / belt center
+      },
+      stomachDeltas: {
+         2: [-34, 20, -135],  4: [ 34, 20, -135], // belly apex front pair
+         1: [-26,  8,  -35],  3: [ 26,  8,  -35], // side flanks
+      },
+      chestDeltas: {},
+    },
   },
   {
     name: 'cab2b.psx', headMeshHash: 0x9504086e, faceTexIdx: 6,
@@ -1141,7 +1363,20 @@ const modelSpecs = [
       0xbcd7678d: prisonPantsB64,   // Thighs -> Striped Prison Pants (64x64)
       0x1a0761b6: prisonShinB32,    // Shins -> Striped Prison Pants (32x32)
       0x604135d3: hairRgba32,       // Helmet -> Silver Hair (32x32)
-    }
+    },
+    belly: {
+      pelvisHash: 0x8adb8442, stomachHash: 0xa63a3056, chestHash: 0x7ac738f4,
+      pelvisDeltas: {
+         1: [-24, 14, -115],  8: [ 24, 14, -115], // front waist upper pair
+         2: [-26,  8,  -38], 10: [ 26,  8,  -38], // waist flanks
+         7: [  0, 10,  -48],                      // front hem / belt center
+      },
+      stomachDeltas: {
+        11: [-34, 20, -175],  6: [ 34, 20, -175], // belly apex front pair (matches Style A profile!)
+         9: [-30, 10,  -65],  5: [ 30, 10,  -65], // belly antero-lateral flanks
+      },
+      chestDeltas: {},
+    },
   },
   {
     name: 'cab2b_L.psx', headMeshHash: 0x9504086e, faceTexIdx: 6,
@@ -1152,7 +1387,20 @@ const modelSpecs = [
       0xbcd7678d: prisonPantsB64,
       0x1a0761b6: prisonShinB32,
       0x604135d3: hairRgba32,
-    }
+    },
+    belly: {
+      pelvisHash: 0x8adb8442, stomachHash: 0xa63a3056, chestHash: 0x7ac738f4,
+      pelvisDeltas: {
+         1: [-24, 14, -115],  7: [ 24, 14, -115], // front waist upper pair
+         2: [-22,  6,  -28],  9: [ 22,  6,  -28], // side flanks
+         6: [  0, 10,  -48],                      // front hem / belt center
+      },
+      stomachDeltas: {
+         7: [-34, 20, -175],  5: [ 34, 20, -175], // belly apex front pair
+         1: [-26,  8,  -38],  3: [ 26,  8,  -38], // side flanks
+      },
+      chestDeltas: {},
+    },
   },
 ];
 
@@ -1160,10 +1408,13 @@ const modifiedModels = new Map();
 let cabPreviewQ = {};
 let cab2bPreviewQ = {};
 let cabSculpt = null;
+let cabOrigBuf = null, cab2bOrigBuf = null;
 
-console.log('\n=== 2. Aplicando texturas PS1 (BGR555) e esculpindo geometria 3D do rosto nos 4 .PSX ===');
+console.log('\n=== 2. Aplicando texturas PS1 (BGR555), esculpindo rosto 3D e barriguinha 3D nos 4 .PSX ===');
 for (const spec of modelSpecs) {
   const psxBuf = getOrigWadSlice(spec.name);
+  if (spec.name === 'cab.psx') cabOrigBuf = Buffer.from(psxBuf);
+  if (spec.name === 'cab2b.psx') cab2bOrigBuf = Buffer.from(psxBuf);
   const info = parsePsxStructure(psxBuf);
   const headMeshIdx = info.meshHashes.indexOf(spec.headMeshHash);
   if (headMeshIdx < 0) {
@@ -1184,9 +1435,10 @@ for (const spec of modelSpecs) {
     }
   }
   const sculpt = sculptHeadGeometryToLulao(psxBuf, info, headMeshIdx, spec.faceTexIdx);
+  const bellyRes = sculptBellyGeometryForLulao(psxBuf, info, spec);
   if (spec.name === 'cab.psx') cabSculpt = sculpt;
   modifiedModels.set(spec.name, psxBuf);
-  console.log(`  [OK] ${spec.name.padEnd(12)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${headMeshIdx}] (0x${spec.headMeshHash.toString(16)}, ${sculpt.newVerts.length} verts) esculpido!`);
+  console.log(`  [OK] ${spec.name.padEnd(12)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${headMeshIdx}] (${sculpt.newVerts.length}v) + BARRIGUINHA (${bellyRes.movedCount} verts Pelvis/Stomach) esculpidos!`);
 }
 
 // Save visual verification previews in build/_lulao_preview/
@@ -1200,6 +1452,8 @@ writePng(path.join(previewDir, 'preview_styleB_torso_128x64.png'), 128, 64, cab2
 writePng(path.join(previewDir, 'preview_styleB_sleeve_32x64.png'), 32, 64, cab2bPreviewQ[0x6cfa5ba3].rgba);
 writePng(path.join(previewDir, 'preview_styleB_pants_64x64.png'), 64, 64, cab2bPreviewQ[0xbcd7678d].rgba);
 renderHeadComparisonPng(cabSculpt, path.join(previewDir, 'preview_head_3d_before_after.png'));
+renderBellyComparison3DPng(cabOrigBuf, modifiedModels.get('cab.psx'), modelSpecs[0], cabPreviewQ[0xf59659e3].rgba, path.join(previewDir, 'preview_belly_styleA_3d.png'));
+renderBellyComparison3DPng(cab2bOrigBuf, modifiedModels.get('cab2b.psx'), modelSpecs[2], cab2bPreviewQ[0x2fd2c5c1].rgba, path.join(previewDir, 'preview_belly_styleB_3d.png'));
 console.log(`\nPreviews visuais salvos em: ${previewDir}`);
 
 if (previewOnly) {

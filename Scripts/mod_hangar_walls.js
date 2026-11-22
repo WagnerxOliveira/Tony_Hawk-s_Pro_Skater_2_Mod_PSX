@@ -254,6 +254,15 @@ for (let i = 0; i < (origHed.length - 4) / 12; i++) {
 }
 if (libOff < 0) throw new Error('skhan_l.psx nao encontrado em CD.HED!');
 const skhanLib = Buffer.from(origWad.subarray(libOff, libOff + libSize));
+
+if (process.argv.includes('--restore')) {
+  const curWad = fs.readFileSync(path.join(rootDir, 'CD.WAD'));
+  skhanLib.copy(curWad, libOff);
+  fs.writeFileSync(path.join(rootDir, 'CD.WAD'), curWad);
+  console.log(`[RESTORE] CD.WAD idx=${libIdx} @ 0x${libOff.toString(16)}: skhan_l.psx (${libSize} B) restaurado 100% ao original Redump!`);
+  process.exit(0);
+}
+
 const info = parsePsxTexLib(skhanLib);
 
 // Prepare sharp, tightly-framed portraits (56x56 for 128x64 dual murals & 54x54 for 64x64 single murals)

@@ -31,7 +31,8 @@ const rootDir = path.resolve(__dirname, '..');
 const ffmpegExe = path.join(rootDir, 'tools', 'bin', 'ffmpeg', 'ffmpeg-9.1-essentials_build', 'bin', 'ffmpeg.exe');
 const suitAImgPath = path.join(rootDir, 'texturas_para_colocar_nos_skatistas', 'textura_bolsonaro.png');
 const suitBImgPath = path.join(rootDir, 'texturas_para_colocar_nos_skatistas', 'textura_bolsonaro_b.png');
-const faceImgPath = path.join(rootDir, 'fotos_para_modificar_nos_skatistas', 'bolsonaro.png');
+const portraitImgPath = path.join(rootDir, 'fotos_para_modificar_nos_skatistas', 'bolsonaro.png');
+const faceImgPath = path.join(rootDir, 'fotos_para_modificar_nos_skatistas', 'bolsonaro_rosto.png');
 const backupDir = path.join(rootDir, 'originals_backup');
 const previewDir = path.join(rootDir, 'build', '_bolsonaro_preview');
 
@@ -223,7 +224,7 @@ function quantizeImageForPsx(rgba, w, h, maxColors = 256, reserveTransparentIdx 
 }
 
 // ============================================================================
-// LOAD HIGH-RES SOURCES (DYNAMIC DIMENSIONS FOR NEW bolsonaro.png!)
+// LOAD HIGH-RES SOURCES (bolsonaro.png for Menu Portrait + bolsonaro_rosto.png for 3D Head!)
 // ============================================================================
 function readPngDims(pngPath) {
   const hdr = Buffer.alloc(24);
@@ -234,6 +235,8 @@ function readPngDims(pngPath) {
   return { w: hdr.readUInt32BE(16), h: hdr.readUInt32BE(20) };
 }
 
+const portraitDims = readPngDims(portraitImgPath);
+const portraitSrcW = portraitDims.w, portraitSrcH = portraitDims.h;
 const faceDims = readPngDims(faceImgPath);
 const faceSrcW = faceDims.w, faceSrcH = faceDims.h;
 const suitASrcW = 114, suitASrcH = 174;
@@ -242,56 +245,65 @@ const faceSrcRaw = loadRgba(faceImgPath, faceSrcW, faceSrcH);
 const suitASrc = loadRgba(suitAImgPath, suitASrcW, suitASrcH);
 const suitBSrc = loadRgba(suitBImgPath, suitBSrcW, suitBSrcH);
 
-// Gently normalize warm indoor lighting on the new laughing bolsonaro.png so skin is bright, clean & natural on PS1!
+// Gentle clarity lift for PS1 BGR555 display while preserving bolsonaro_rosto.png's natural daylight color!
 function normalizeFaceColor(r, g, b) {
   return [
-    clamp(Math.round(r * 1.18 + 14), 8, 250),
-    clamp(Math.round(g * 1.32 + 18), 8, 250),
-    clamp(Math.round(b * 1.35 + 18), 8, 250),
+    clamp(Math.round(r * 1.04 + 4), 8, 250),
+    clamp(Math.round(g * 1.04 + 4), 8, 250),
+    clamp(Math.round(b * 1.03 + 3), 8, 250),
   ];
 }
 
-// Create color-balanced source buffer for 3D UV sampling
 const faceSrc = Buffer.alloc(faceSrcRaw.length);
 for (let i = 0; i < faceSrcW * faceSrcH; i++) {
   const [nr, ng, nb] = normalizeFaceColor(faceSrcRaw[i * 4], faceSrcRaw[i * 4 + 1], faceSrcRaw[i * 4 + 2]);
   faceSrc[i * 4] = nr; faceSrc[i * 4 + 1] = ng; faceSrc[i * 4 + 2] = nb; faceSrc[i * 4 + 3] = 255;
 }
 
-// Sample calibrated fair skin & dark-brown/graying short-hair tones from the new bolsonaro.png (315x397)
+// Sample calibrated fair skin, neck skin & dark-brown/graying short-hair tones from bolsonaro_rosto.png (499x502)
 function sampleSkinAndHair() {
-  // Forehead & cheek clean skin patch (x=65..135, y=78..112 & x=60..95, y=155..195)
+  // Forehead & cheek skin (x=180..320, y=95..140 & x=180..260, y=215..275)
   let sr = 0, sg = 0, sb = 0, sc = 0;
-  for (let y = 78; y <= 112; y += 2) {
-    for (let x = 75; x <= 135; x += 2) {
+  for (let y = 95; y <= 140; y += 3) {
+    for (let x = 185; x <= 325; x += 3) {
       const c = sampleBilinear(faceSrc, faceSrcW, faceSrcH, x, y);
-      if (c[0] > 140 && c[0] > c[2] + 15) { sr += c[0]; sg += c[1]; sb += c[2]; sc++; }
+      if (c[0] > 140 && c[0] > c[2] + 18) { sr += c[0]; sg += c[1]; sb += c[2]; sc++; }
     }
   }
-  for (let y = 155; y <= 195; y += 2) {
-    for (let x = 60; x <= 95; x += 2) {
+  for (let y = 215; y <= 275; y += 3) {
+    for (let x = 175; x <= 265; x += 3) {
       const c = sampleBilinear(faceSrc, faceSrcW, faceSrcH, x, y);
-      if (c[0] > 140 && c[0] > c[2] + 15) { sr += c[0]; sg += c[1]; sb += c[2]; sc++; }
+      if (c[0] > 140 && c[0] > c[2] + 18) { sr += c[0]; sg += c[1]; sb += c[2]; sc++; }
     }
   }
-  // Short hair crown patch (x=55..140, y=32..54)
+  // Natural neck skin patch (x=185..325, y=368..398 — strictly above white collar!)
+  let nr = 0, ng = 0, nb = 0, nc = 0;
+  for (let y = 368; y <= 398; y += 2) {
+    for (let x = 185; x <= 325; x += 3) {
+      const c = sampleBilinear(faceSrc, faceSrcW, faceSrcH, x, y);
+      if (c[0] > 120 && c[0] > c[2] + 15) { nr += c[0]; ng += c[1]; nb += c[2]; nc++; }
+    }
+  }
+  // Short dark-brown combed hair crown (x=170..330, y=18..52)
   let hr = 0, hg = 0, hb = 0, hc = 0;
-  for (let y = 32; y <= 54; y += 2) {
-    for (let x = 55; x <= 140; x += 2) {
-      const c = sampleBilinear(faceSrcRaw, faceSrcW, faceSrcH, x, y);
-      if (c[0] + c[1] + c[2] < 240) { hr += c[0]; hg += c[1]; hb += c[2]; hc++; }
+  for (let y = 18; y <= 52; y += 2) {
+    for (let x = 170; x <= 330; x += 3) {
+      const c = sampleBilinear(faceSrc, faceSrcW, faceSrcH, x, y);
+      if (c[0] + c[1] + c[2] < 270) { hr += c[0]; hg += c[1]; hb += c[2]; hc++; }
     }
   }
+  const skin = sc ? [Math.round(sr / sc), Math.round(sg / sc), Math.round(sb / sc)] : [210, 158, 144];
+  const neck = nc ? [Math.round(nr / nc), Math.round(ng / nc), Math.round(nb / nc)] : [196, 144, 132];
   return {
-    skin: sc ? [Math.round(sr / sc), Math.round(sg / sc), Math.round(sb / sc)] : [208, 156, 142],
-    // Slightly lifted natural dark-brown/graying hair (never pitch-black blob on PS1!)
-    hair: hc ? [clamp(Math.round(hr / hc) + 22, 34, 82), clamp(Math.round(hg / hc) + 20, 28, 72), clamp(Math.round(hb / hc) + 18, 22, 66)] : [58, 46, 38],
+    skin,
+    neck,
+    hair: hc ? [clamp(Math.round(hr / hc), 36, 90), clamp(Math.round(hg / hc), 30, 80), clamp(Math.round(hb / hc), 26, 74)] : [62, 50, 44],
   };
 }
 const bolsoTones = sampleSkinAndHair();
 
 // ============================================================================
-// 1. PORTRAIT BMP (s2face3.bmp — EXACT 4,088 B, MAGENTA INDEX 39!)
+// 1. PORTRAIT BMP (s2face3.bmp — EXACT 4,088 B, MAGENTA INDEX 39, LAUGHING bolsonaro.png!)
 // ============================================================================
 function buildPortraitBmp(origBmpBuf) {
   const w = 62, h = 47, rowStride = 64, offBits = 1078;
@@ -299,11 +311,11 @@ function buildPortraitBmp(origBmpBuf) {
   const isInner = (x, y) => x >= 7 && x <= 52 && y >= 4 && y <= 39;
 
   const innerW = 46, innerH = 36;
-  // Expressive tight crop around laughing Bolsonaro head & face in 315x397 (x=0..236, y=14..276 -> 236x262)
-  const cw = Math.min(faceSrcW, Math.round(faceSrcW * 0.75));
-  const ch = Math.min(faceSrcH - 14, Math.round(cw * 1.11));
+  // Expressive tight crop around laughing Bolsonaro head & face in bolsonaro.png (315x397)
+  const cw = Math.min(portraitSrcW, Math.round(portraitSrcW * 0.75));
+  const ch = Math.min(portraitSrcH - 14, Math.round(cw * 1.11));
   const cropArgs = [
-    '-v', 'error', '-i', faceImgPath,
+    '-v', 'error', '-i', portraitImgPath,
     '-vf', `crop=${cw}:${ch}:0:14,eq=brightness=0.07:contrast=1.12:saturation=1.06,scale=${innerW}:${innerH}:flags=lanczos`,
     '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'
   ];
@@ -395,147 +407,191 @@ function buildPortraitBmp(origBmpBuf) {
 }
 
 // ============================================================================
-// 2. BOLSONARO 64x64 3D HEAD TEXTURE — NEW LAUGHING FACE + SHORT HAIRCUT & 360° CLEAN NECK!
-//    Verified Kareem UV landmarks:
-//      - Top/Crown Hair:      y = 0..17 (all x)
-//      - Short Back/Side Hair:y = 18..36 (outer edges x < 14 || x > 50)
-//      - Short Nape Hairline: y = 35..39 (tapered short men's haircut fade!)
-//      - 360° Fair Skin Neck: y = 39..63 (ALL x outside face oval -> ZERO long hair on neck!)
-//      - Forehead:            y = 18..25, x = 16..48
-//      - Laughing Eyes:       y = 26..31, x = 20..44
-//      - Nose tip:            y = 33..37, x = 28..35
-//      - Laughing Mouth/Teeth:y = 40..47, x = 22..42
-//      - Chin / Lower Neck:   y = 50..63
+// 2. BOLSONARO 64x64 3D HEAD TEXTURE — bolsonaro_rosto.png (499x502) PIECEWISE
+//    SUB-PIXEL LANDMARK MAP ONTO VERIFIED KAREEM HEAD Mesh[15] UV + 360° SHORT HAIR!
+//    Exact verified Mesh[15] UV landmarks (kareem_orig_head_uv_overlay.png):
+//      - Crown hair:       v = 0..16
+//      - Forehead:         v = 16..24, u = 20..43
+//      - Eyebrows:         v = 24..26
+//      - EXACT Pupils:     v = 28, u = 25.5 (left) & u = 37.5 (right)
+//      - EXACT Nose tip:   v = 33.5, u = 31.5
+//      - EXACT Mouth:      v = 43, u = 25..38
+//      - EXACT Chin base:  v = 51..52, u = 27..35
+//      - Cheeks & Ears:    u = 11..52, v = 24..50
+//      - Short Hair Nape:  v = 34..37 (sides/back) -> 360° Seamless Fair Neck v = 38..63!
 // ============================================================================
 function buildBolsonaroHead64() {
   const W = 64, H = 64;
   const rgba = Buffer.alloc(W * H * 4);
 
-  // Short well-trimmed dark-brown/graying hair texture (upper crown & tapered sides/back ONLY!)
+  // Authentic short combed dark-brown hair with silvering temples sampled STRICTLY inside solid hair of bolsonaro_rosto.png!
   const hairPixel = (x, y) => {
-    const u = ((x * 4 + y * 2) % 78);
-    const v = 32 + ((y * 2 + Math.floor(Math.sin(x * 0.45) * 3)) % 20);
-    const s = sampleBilinear(faceSrc, faceSrcW, faceSrcH, 58 + u, clamp(v, 30, 54));
-    const strand = 0.88 + 0.16 * Math.sin(x * 0.72 + y * 0.28);
-    const crownShade = 0.84 + 0.20 * (1 - clamp(y / 40, 0, 1));
-    // Subtle silver-gray highlights on temples/back like real Bolsonaro short haircut
-    const silver = (y >= 22 && y <= 37 && ((x * 7 + y * 13) % 11 === 0)) ? 1.24 : 1.0;
+    const u = ((x * 4 + y * 2) % 104);
+    const v = 24 + ((y * 2 + Math.floor(Math.sin(x * 0.42) * 3)) % 22);
+    const s = sampleBilinear(faceSrc, faceSrcW, faceSrcH, 176 + u, clamp(v, 22, 46));
+    const strand = 0.90 + 0.14 * Math.sin(x * 0.68 + y * 0.24);
+    const crownShade = 0.88 + 0.16 * (1 - clamp(y / 38, 0, 1));
+    // Natural silver-gray temple/side highlights matching bolsonaro_rosto.png!
+    const isSide = (x < 18 || x > 46) && y >= 18 && y <= 36;
+    const silver = isSide && ((x * 5 + y * 11) % 7 === 0) ? 1.35 : ((y >= 20 && y <= 36 && ((x * 7 + y * 13) % 11 === 0)) ? 1.20 : 1.0);
     return [
-      clamp(Math.round(lerp(bolsoTones.hair[0], s[0] * 0.72, 0.35) * strand * crownShade * silver), 22, 160),
-      clamp(Math.round(lerp(bolsoTones.hair[1], s[1] * 0.70, 0.35) * strand * crownShade * silver), 18, 148),
-      clamp(Math.round(lerp(bolsoTones.hair[2], s[2] * 0.68, 0.35) * strand * crownShade * silver), 16, 138),
+      clamp(Math.round(lerp(bolsoTones.hair[0], s[0], 0.45) * strand * crownShade * silver), 26, 165),
+      clamp(Math.round(lerp(bolsoTones.hair[1], s[1], 0.45) * strand * crownShade * silver), 22, 158),
+      clamp(Math.round(lerp(bolsoTones.hair[2], s[2], 0.45) * strand * crownShade * silver), 20, 152),
     ];
   };
 
-  // Clean fair skin neck generator (smooth 360° cosine shading with ZERO step seam at x=13 or x=51!)
+  // Seamless 360° fair neck skin (smooth cosine cylindrical shading, zero step seam at u=0/63!)
   const neckSkinPixel = (x, y) => {
-    // Smooth cylindrical shading from front (x=32, 0.96) around sides to back (x=0/63, 0.88)
-    const ang = ((x - 32) / 32) * Math.PI;
-    const cylShade = 0.92 + 0.045 * Math.cos(ang);
-    const napeShadow = (y >= 37 && y <= 43 && Math.abs(x - 32) > 13) ? lerp(0.82, 1.0, (y - 37) / 6) : 1.0;
-    const collarShadow = y >= 58 ? lerp(1.0, 0.86, (y - 58) / 5) : 1.0;
+    const ang = ((x - 31.5) / 32) * Math.PI;
+    const cylShade = 0.94 + 0.05 * Math.cos(ang);
+    const napeShadow = (y >= 35 && y <= 41 && Math.abs(x - 31.5) > 13) ? lerp(0.84, 1.0, (y - 35) / 6) : 1.0;
+    const collarShadow = y >= 58 ? lerp(1.0, 0.88, (y - 58) / 5) : 1.0;
     const mul = cylShade * napeShadow * collarShadow;
     return [
-      clamp(Math.round(bolsoTones.skin[0] * mul), 24, 245),
-      clamp(Math.round(bolsoTones.skin[1] * mul), 20, 230),
-      clamp(Math.round(bolsoTones.skin[2] * mul), 16, 218),
+      clamp(Math.round(bolsoTones.neck[0] * mul), 24, 245),
+      clamp(Math.round(bolsoTones.neck[1] * mul), 20, 230),
+      clamp(Math.round(bolsoTones.neck[2] * mul), 16, 218),
     ];
   };
 
-  // Pre-leveling rotation: source laughing face is tilted ~-10.5 deg, so sample rotated +10.5 deg!
-  const rotRad = (10.5 * Math.PI) / 180;
+  // Pre-leveling rotation: +4.5° around eye midpoint (287, 182) levels eyes horizontally!
+  const rotRad = (4.5 * Math.PI) / 180;
   const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
-  const pivX = 114, pivY = 148;
-  const sampleLeveledFace = (rx, ry) => {
+  const pivX = 287, pivY = 182;
+  const sampleLeveled = (rx, ry) => {
     const dx = rx - pivX, dy = ry - pivY;
     const sx = pivX + dx * cosR + dy * sinR;
     const sy = pivY - dx * sinR + dy * cosR;
     return sampleBilinear(faceSrc, faceSrcW, faceSrcH, sx, sy);
   };
 
+  // Piecewise vertical landmark map (dst_y -> leveled src_y in 499x502 bolsonaro_rosto.png)
+  const mapY = y => {
+    if (y <= 16) return lerp(20, 66, clamp((y - 6) / 10, 0, 1));
+    if (y <= 22) return lerp(66, 118, (y - 16) / 6);
+    if (y <= 28) return lerp(118, 182, (y - 22) / 6);
+    if (y <= 34) return lerp(182, 246, (y - 28) / 6);
+    if (y <= 43) return lerp(246, 300, (y - 34) / 9);
+    if (y <= 51) return lerp(300, 360, (y - 43) / 8);
+    return lerp(360, 396, clamp((y - 51) / 6, 0, 1));
+  };
+
+  // Piecewise horizontal landmark map (dst_x -> leveled src_x; symmetrizes ~10° turn!)
+  const mapX = x => {
+    if (x <= 12) return 108 - (12 - x) * 6.0;
+    if (x <= 16) return lerp(108, 142, (x - 12) / 4);
+    if (x <= 25.5) return lerp(142, 232, (x - 16) / 9.5);
+    if (x <= 31.5) return lerp(232, 298, (x - 25.5) / 6.0);
+    if (x <= 37.5) return lerp(298, 342, (x - 31.5) / 6.0);
+    if (x <= 46.5) return lerp(342, 384, (x - 37.5) / 9.0);
+    return 384 + (x - 46.5) * 6.0;
+  };
+
+  // Guard against white/gray studio horizontal-blinds background (neutral low-chroma bright/mid-gray!)
+  const isStudioBg = c => {
+    const mx = Math.max(c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]);
+    return (mn > 130 && (mx - mn) < 24 && (c[0] - c[2]) < 20) || (mn > 168 && (mx - mn) < 32);
+  };
+
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       let col;
-      const dxC = x - 32;
-      const inFaceBox = (x >= 13 && x <= 50 && y >= 15 && y <= 55);
+      const dxC = x - 31.5;
+      const hr = hairPixel(x, y);
+      const nk = neckSkinPixel(x, y);
 
-      if (y < 15) {
-        // Pure short top/crown hair
-        col = hairPixel(x, y);
-        if (Math.abs(x - 22) <= 1.2 && y >= 5) col = col.map(c => Math.round(c * 0.72));
-      } else if (inFaceBox) {
-        // Map Kareem front UV (x=15..48, y=18..53) -> leveled Bolsonaro laughing face landmarks!
-        const rx = 109 + dxC * 4.55;
-        const ry = 65 + (y - 18) * 5.05;
-        const fc = sampleLeveledFace(rx, ry);
+      if (y < 14) {
+        // Pure short top/crown hair with natural left side-part around x=20
+        col = hr;
+        if (Math.abs(x - 20.5) <= 1.0 && y >= 4) col = col.map(c => Math.round(c * 0.78));
+      } else if (x >= 11 && x <= 52 && y >= 14 && y <= 57) {
+        const ry = mapY(y);
+        let rx = mapX(x);
+        let fc;
 
-        const hr = hairPixel(x, y);
-        const nk = neckSkinPixel(x, y);
-
-        // Upper hairline blend across forehead & temples
-        const hairlineY = 17.5 + (x > 34 ? 1.5 * clamp((x - 34) / 13, 0, 1) : 0) + Math.pow(dxC / 16.5, 2) * 3.0;
-        let hairBlend = y < hairlineY ? clamp((hairlineY - y) / 2.8, 0, 1) : 0;
-
-        // Taper outer sides cleanly (tighter on viewer's right dxC > 0 to eliminate doorframe highlight completely!)
-        const baseSide = dxC > 0 ? 14.5 : 16.5;
-        const sideHalf = (y > 36) ? lerp(baseSide, 10.8, clamp((y - 36) / 16, 0, 1)) : baseSide;
-        const outerT = clamp((Math.abs(dxC) - (sideHalf - 2.6)) / 3.2, 0, 1);
-
-        // Eliminate right-side olive wall / doorframe strip (rx > 164) & dark left edge cleanly!
-        const isWallBg = (rx > 164 && (fc[0] < 155 || Math.abs(fc[0] - fc[1]) < 26));
-        const isDarkLeftEdge = (rx < 16 && y > 35 && fc[0] + fc[1] + fc[2] < 180);
-
-        let faceCol = [fc[0], fc[1], fc[2]];
-        // Eliminate blue shirt collar / navy tie under chin (y >= 48)
-        if (y >= 48) {
-          const isBlueCollar = (fc[2] > fc[0] - 8) || (fc[0] < 95 && fc[1] < 95);
-          const neckT = clamp((y - 50) / 4.8, 0, 1);
-          if (isBlueCollar || neckT > 0) {
-            const amt = isBlueCollar ? Math.max(neckT, 0.94) : neckT;
-            faceCol = [
-              Math.round(lerp(faceCol[0], nk[0], amt)),
-              Math.round(lerp(faceCol[1], nk[1], amt)),
-              Math.round(lerp(faceCol[2], nk[2], amt)),
-            ];
-          }
+        // Right ear / right temple / lower right jaw: follow Bolsonaro's curved jaw edge (xStart tapers from 43.5 at cheek to 38.5 at lower jaw!)
+        // so ZERO white studio blinds or anti-aliased edge pixels appear, and BOTH ears & jawlines are 100% symmetrical!
+        const mirStart = (y >= 40) ? lerp(43.5, 38.2, clamp((y - 40) / 12, 0, 1)) : 43.5;
+        if (x > mirStart) {
+          const mirrorX = 63 - x; // symmetric mirror around x=31.5
+          const rxMir = mapX(mirrorX);
+          const fcDirect = sampleLeveled(rx, ry);
+          const fcMir = sampleLeveled(rxMir, ry);
+          const mirT = clamp((x - mirStart) / 2.2, 0, 1);
+          const useMir = isStudioBg(fcDirect) ? 1.0 : mirT;
+          fc = [
+            Math.round(lerp(fcDirect[0], fcMir[0] * 0.96, useMir)),
+            Math.round(lerp(fcDirect[1], fcMir[1] * 0.96, useMir)),
+            Math.round(lerp(fcDirect[2], fcMir[2] * 0.96, useMir)),
+          ];
+        } else {
+          fc = sampleLeveled(rx, ry);
         }
 
-        // Smooth blend from outer face edge into short hair (above y=35.5) OR seamless 360° fair neck skin (below y=35.5)!
-        const sideHairAmt = clamp((37.5 - y) / 3.2, 0, 1);
+        // Clean background guard (removes any studio blinds at outer edges around ears/hairline)
+        const sideHairAmt = clamp((36.5 - y) / 3.5, 0, 1);
         const sideBg = [
           Math.round(lerp(nk[0], hr[0], sideHairAmt)),
           Math.round(lerp(nk[1], hr[1], sideHairAmt)),
           Math.round(lerp(nk[2], hr[2], sideHairAmt)),
         ];
-        const bOut = (isWallBg || isDarkLeftEdge) ? 1.0 : outerT;
-        // Apply forehead hairline blend first, then outer edge blend
+
+        let faceCol = [fc[0], fc[1], fc[2]];
+        if ((Math.abs(dxC) > 13.0 || (y >= 38 && Math.abs(dxC) > 6.5)) && isStudioBg(faceCol)) {
+          faceCol = sideBg;
+        }
+        // Remove small stray nape-hair speck right below earlobes (y >= 40, outer jaw/ear edge)
+        if (y >= 40 && Math.abs(dxC) >= 13.0 && (faceCol[0] + faceCol[1] + faceCol[2] < 245)) {
+          faceCol = nk;
+        }
+
+        // Upper forehead hairline curve (natural side-part sweep)
+        const hairlineY = 16.0 + (dxC > 2 ? 1.0 * clamp((dxC - 2) / 14, 0, 1) : 0) + Math.pow(dxC / 18.0, 2) * 2.2;
+        const hairBlend = y < hairlineY ? clamp((hairlineY - y) / 2.6, 0, 1) : 0;
+
+        // Cleanly exclude white dress shirt collar & black suit jacket under chin (y >= 49)
+        if (y >= 49) {
+          const mx = Math.max(faceCol[0], faceCol[1], faceCol[2]), mn = Math.min(faceCol[0], faceCol[1], faceCol[2]);
+          const isCollarOrSuit = (mn > 175 && (mx - mn) < 28) || (faceCol[0] + faceCol[1] + faceCol[2] < 145) || (faceCol[2] > faceCol[0] + 6);
+          const neckT = clamp((y - 51.5) / 4.5, 0, 1);
+          const amt = isCollarOrSuit ? Math.max(neckT, 0.96) : neckT;
+          faceCol = [
+            Math.round(lerp(faceCol[0], nk[0], amt)),
+            Math.round(lerp(faceCol[1], nk[1], amt)),
+            Math.round(lerp(faceCol[2], nk[2], amt)),
+          ];
+        }
+
+        // Smooth feather at outer ear/neck boundary (|dxC| -> 19..21.5) so cheeks wrap smoothly around head!
+        const sideHalf = (y > 40) ? lerp(19.5, 13.5, clamp((y - 40) / 14, 0, 1)) : 19.5;
+        const outerT = clamp((Math.abs(dxC) - (sideHalf - 2.4)) / 3.0, 0, 1);
+
         const afterForehead = [
           Math.round(lerp(faceCol[0], hr[0], hairBlend)),
           Math.round(lerp(faceCol[1], hr[1], hairBlend)),
           Math.round(lerp(faceCol[2], hr[2], hairBlend)),
         ];
         col = [
-          Math.round(lerp(afterForehead[0], sideBg[0], bOut)),
-          Math.round(lerp(afterForehead[1], sideBg[1], bOut)),
-          Math.round(lerp(afterForehead[2], sideBg[2], bOut)),
+          Math.round(lerp(afterForehead[0], sideBg[0], outerT)),
+          Math.round(lerp(afterForehead[1], sideBg[1], outerT)),
+          Math.round(lerp(afterForehead[2], sideBg[2], outerT)),
         ];
       } else {
         // SIDES & BACK OF HEAD/NECK:
-        // Short men's haircut stops cleanly at y = 35..38 -> 100% SEAMLESS FAIR SKIN NECK from y = 39..63!
-        const napeLineY = 35.5 + 1.2 * Math.cos(((x < 32 ? x : 64 - x) / 14) * Math.PI * 0.5);
+        // Short men's haircut ends naturally at y = 34..37 -> 100% SEAMLESS FAIR SKIN NECK y = 38..63!
+        const napeLineY = 34.5 + 1.2 * Math.cos(((x < 32 ? x : 64 - x) / 14) * Math.PI * 0.5);
         if (y <= napeLineY - 1.5) {
-          col = hairPixel(x, y);
+          col = hr;
         } else if (y < napeLineY + 2.5) {
           const t = clamp((y - (napeLineY - 1.5)) / 4.0, 0, 1);
-          const hr = hairPixel(x, y);
-          const nk = neckSkinPixel(x, y);
           col = [
             Math.round(lerp(hr[0], nk[0], t)),
             Math.round(lerp(hr[1], nk[1], t)),
             Math.round(lerp(hr[2], nk[2], t)),
           ];
         } else {
-          col = neckSkinPixel(x, y);
+          col = nk;
         }
       }
 
@@ -918,12 +974,14 @@ function writeTextureIntoPsx(buf, tex, rgba, preserveAlpha = false) {
 }
 
 /**
- * Surgically sculpts Kareem's 3D HEAD (Mesh[15], hash 0x7806eefa) into Bolsonaro:
- *  - Strictly locks all w != 0 neck-seam stitch vertices!
- *  - Removes the protruding backwards baseball cap bill (z > 135) by smoothly tucking it into occipital contour!
- *  - Lowers/contours tall cap crown into Bolsonaro's side-parted hair dome
- *  - Refines nose bridge (slightly narrower, sharper profile), cheekbones, and squarer jaw/chin
- *  - Updates exact hdrBbox & safe bounding sphere rad!
+ * Surgically re-symmetrizes and sculpts Kareem's crooked-cap 3D HEAD (Mesh[15], hash 0x7806eefa)
+ * into a 100% balanced, anatomically clean human head for Bolsonaro (bolsonaro_rosto.png):
+ *  - Strictly locks ALL w != 0 neck-seam stitch vertices!
+ *  - Eliminates the ~25° sideways skull twist inherited from Kareem's cocked baseball cap (symmetric around cx=+5)
+ *  - Eliminates the entire backwards baseball cap visor shell (zero-area degenerate collapse -> 100% invisible)
+ *  - Eliminates the overhanging occipital shelf above the nape (smooth rounded occiput -> fair neck)
+ *  - Keeps natural human nose tip (-306 vs extreme -321/-331), level eye sockets, flat closed-mouth & firm square chin
+ *  - Recomputes exact hdrBbox & safe bounding sphere rad across ALL 4 models (High-LOD 70v & Low-LOD 39v)!
  */
 function sculptHeadGeometryToBolsonaro(buf, psxInfo, headMeshIdx) {
   const mo = psxInfo.meshOffs[headMeshIdx];
@@ -937,7 +995,6 @@ function sculptHeadGeometryToBolsonaro(buf, psxInfo, headMeshIdx) {
     z: buf.readInt16LE(vOff + v * 8 + 4), w: buf.readUInt16LE(vOff + v * 8 + 6),
   }));
 
-  const vertUvAcc = Array.from({ length: nVerts }, () => ({ su: 0, sv: 0, cnt: 0 }));
   const faces = [];
   let fp = fOff;
   for (let fi = 0; fi < nFaces && fp + 4 <= mEnd; fi++) {
@@ -945,123 +1002,113 @@ function sculptHeadGeometryToBolsonaro(buf, psxInfo, headMeshIdx) {
     if (fLen < 12 || fp + fLen > mEnd) break;
     const rv = [buf[fp + 4], buf[fp + 5], buf[fp + 6], buf[fp + 7]];
     const gpu = buf[fp + 11], quad = (gpu & 8) !== 0;
-    if (((fl & 1) || (gpu & 4)) && fLen >= 28) {
-      const uvs = [[buf[fp+20],buf[fp+21]],[buf[fp+22],buf[fp+23]],[buf[fp+24],buf[fp+25]]];
+    const textured = (fl & 1) !== 0 || (gpu & 4) !== 0;
+    let uvs = [];
+    if (textured && fLen >= 28) {
+      uvs = [[buf[fp+20],buf[fp+21]],[buf[fp+22],buf[fp+23]],[buf[fp+24],buf[fp+25]]];
       if (quad) uvs.push([buf[fp+26],buf[fp+27]]);
-      for (let k = 0; k < (quad ? 4 : 3); k++) {
-        if (rv[k] < nVerts) { vertUvAcc[rv[k]].su += uvs[k][0]; vertUvAcc[rv[k]].sv += uvs[k][1]; vertUvAcc[rv[k]].cnt++; }
-      }
     }
-    faces.push({ rawVerts: rv, quad });
+    faces.push({ rawVerts: rv, quad, textured, uvs });
     fp += fLen;
   }
 
-  // Head X center from front face verts (z < -150, w === 0)
-  let sumX = 0, cntX = 0;
-  for (const v of origVerts) if (v.w === 0 && v.z < -150) { sumX += v.x; cntX++; }
-  const cx = cntX ? sumX / cntX : 5;
-
-  // 1. Sculpt skull & facial contour FIRST (keeping w != 0 neck-seam stitch vertices strictly locked!)
   const isHighLod = (nVerts === 70);
   const isLowLod  = (nVerts === 39);
-  const innerSkullPt = { x: 10, y: -150, z: 35 };
+  const innerSkullPt = { x: 5, y: -150, z: 20 };
+
+  // Exact symmetric anatomical targets around centerline cx = +5 (High-LOD 70v & Low-LOD 39v)
+  const highTargets = {
+    // Centerline crown, forehead, nose & occiput (x = +5)
+    42: [  5, -330,   10], // crown top-back (smoothed from tall cap -359)
+    41: [  5, -318, -162], // crown top-front
+    12: [  5, -258, -238], // top forehead
+    10: [  5, -189, -262], // mid forehead
+    49: [  5, -151, -256], // between eyebrows
+    17: [  5,  -90, -306], // natural nose tip (retracted from spiky -321/-331)
+    11: [  5, -220,  110], // upper occipital center
+     7: [  5, -102,   94], // lower occipital center (smooth rounded curve into nape!)
+     0: [  5,  -48,   74], // clean nape transition into neck
+
+    // Symmetric Front Face pairs around cx = +5
+    15: [ -98, -304, -148], 40: [ 108, -304, -148], // upper front temples
+    14: [-105, -238, -208], 28: [ 115, -238, -208], // upper forehead sides
+     9: [ -86, -196, -236], 26: [  96, -196, -236], // mid forehead sides
+     5: [-119, -179, -171], 23: [ 129, -179, -171], // outer temples
+    50: [ -75, -145, -240], 51: [  85, -145, -240], // eyebrows
+    58: [ -91, -118, -225], 57: [ 101, -118, -225], // outer eye sockets (strictly level!)
+    47: [ -26, -116, -256], 48: [  36, -116, -256], // inner eye / nose bridge
+    36: [-112,  -80, -212], 37: [ 122,  -80, -212], // cheekbones
+     6: [ -38,  -79, -268], 24: [  48,  -79, -268], // nose wings (no pinched crease!)
+    45: [  -9,  -59, -288], 52: [  19,  -59, -288], // nostril base
+    35: [ -76,  -15, -244], 34: [  86,  -15, -244], // mid cheeks
+    46: [ -19,    3, -286], 53: [  29,    3, -286], // upper lip / closed mouth
+    59: [ -24,   34, -276], 60: [  34,   34, -276], // lower lip / chin top (no droop!)
+    31: [-118,   -1,  -67], 32: [ 128,   -1,  -67], // jaw corners
+     1: [-109,   27,  -10], 21: [ 119,   27,  -10], // lower jaw under ears
+     3: [ -41,   86, -252],  4: [  51,   86, -252], // firm symmetric chin front
+     2: [ -46,   89, -155], 22: [  56,   89, -155], // under chin
+
+    // Symmetric Side & Back Cranium pairs (eliminating 25° crooked cap twist & mushroom overhang!)
+     8: [-144, -128,  -32], 25: [ 154, -128,  -32], // mid-sides (ears)
+    13: [-142, -238,  -42], 27: [ 152, -238,  -42], // upper sides
+    33: [-102, -306,   -4], 16: [ 112, -306,   -4], // upper-back crown
+    43: [-106, -214,   78], 44: [ 116, -214,   78], // upper occiput
+    39: [ -95,  -92,   64], 38: [ 105,  -92,   64], // lower occiput behind ears (zero shelf!)
+  };
+
+  const lowTargets = {
+    27: [  5, -330,   10], // crown top-back
+    11: [  5, -318, -205], // crown top-front
+     9: [  5, -151, -256], // between eyebrows
+    14: [  5,  -90, -306], // nose tip
+    10: [  5, -220,  110], // upper occipital center
+     7: [  5, -102,   94], // lower occipital center
+     0: [  5,  -48,   74], // nape center
+     2: [  5,   89, -155], // under chin center
+
+     8: [ -98, -304, -175], 21: [ 108, -304, -175], // upper front temples
+     6: [ -38,  -56, -286], 20: [  48,  -56, -286], // nose/cheek front
+     3: [ -41,   86, -252],  4: [  51,   86, -252], // chin front
+     1: [-113,   13,  -39], 18: [ 123,   13,  -39], // jaw under ears
+
+     5: [-144, -128,  -32], 19: [ 154, -128,  -32], // mid-sides (ears)
+    12: [-142, -238,  -42], 22: [ 152, -238,  -42], // upper sides
+    24: [-102, -306,   -4], 13: [ 112, -306,   -4], // upper-back crown
+    28: [-106, -214,   78], 29: [ 116, -214,   78], // upper occiput
+    26: [ -95,  -92,   64], 25: [ 105,  -92,   64], // lower occiput
+  };
+
+  const targets = isHighLod ? highTargets : (isLowLod ? lowTargets : {});
 
   const newVerts = origVerts.map(v => {
-    if (v.w !== 0) return { ...v }; // NEVER touch neck-seam stitch vertices!
-    let x = v.x, y = v.y, z = v.z;
-    const acc = vertUvAcc[v.idx];
-    const u = acc.cnt ? acc.su / acc.cnt : 32;
-    const uvY = acc.cnt ? acc.sv / acc.cnt : 32;
-    const dx = x - cx;
-
-    // A. SLIM SHORT-HAIR BACK-OF-SKULL & NAPE CONTOUR (removes Kareem's asymmetric back-of-cap & nape bulge!)
-    if (v.idx === 0) {
-      // Back-of-neck nape vertex (ORIG 38,-65,149 -> slim natural fair-skin nape!)
-      x = 12; y = -66; z = 90;
-    } else if (isHighLod && v.idx === 7) {
-      x = 24; y = -112; z = 106;
-    } else if (isHighLod && v.idx === 11) {
-      x = 26; y = -238; z = 110;
-    } else if (isHighLod && v.idx === 39) {
-      x = -80; y = -98; z = 92;
-    } else if (isHighLod && v.idx === 38) {
-      x = 132; y = -98; z = 24;
-    } else if (isHighLod && v.idx === 43) {
-      x = -88; y = -220; z = 94;
-    } else if (isHighLod && v.idx === 44) {
-      x = 140; y = -222; z = 52;
-    } else if (isLowLod && v.idx === 7) {
-      x = 24; y = -112; z = 106;
-    } else if (isLowLod && v.idx === 10) {
-      x = 26; y = -238; z = 110;
-    } else if (isLowLod && v.idx === 26) {
-      x = -80; y = -98; z = 92;
-    } else if (isLowLod && v.idx === 25) {
-      x = 132; y = -98; z = 24;
-    } else if (isLowLod && v.idx === 28) {
-      x = -88; y = -220; z = 94;
-    } else if (isLowLod && v.idx === 29) {
-      x = 140; y = -222; z = 52;
-    } else {
-      // B. CAP CROWN -> BOLSONARO'S SMOOTHER NATURAL SHORT-HAIR DOME (y < -200)
-      if (y < -200) {
-        const topT = clamp((-200 - y) / 160, 0, 1);
-        y = -200 - (-200 - y) * (1.0 - 0.14 * topT);
-        x = cx + dx * (1.0 - 0.07 * topT);
-        if (z > 0) z *= (1.0 - 0.14 * topT);
-      }
-
-      // C. FOREHEAD & BROW (uvY 16..27, z < -180): Bolsonaro's slightly broader, prominent forehead
-      if (uvY >= 16 && uvY <= 27 && z < -180) {
-        x = cx + dx * 1.04;
-        z -= 8;
-      }
-
-      // D. NOSE (uvY 28..40, u 25..38, z < -230): Narrower, straighter nose bridge
-      if (uvY >= 28 && uvY <= 40 && u >= 25 && u <= 38 && z < -230) {
-        x = cx + dx * 0.86;
-        z -= 10;
-      }
-
-      // E. CHEEKS & JAW / CHIN (uvY 38..54, z < -140): Expressive laughing cheeks & firm square chin
-      if (uvY >= 38 && uvY <= 54 && z < -140) {
-        const jawT = clamp((y + 40) / 130, 0, 1);
-        x = cx + dx * (1.0 + 0.08 * jawT);
-        if (y > 20 && Math.abs(dx) < 60) {
-          y += 12;
-          z -= 6;
-        }
-      }
+    if (v.w !== 0) return { ...v }; // STRICT INVARIANT: NEVER touch neck-seam stitch vertices!
+    const t = targets[v.idx];
+    if (t) {
+      return {
+        idx: v.idx,
+        x: clamp(Math.round(t[0]), -32767, 32767),
+        y: clamp(Math.round(t[1]), -32767, 32767),
+        z: clamp(Math.round(t[2]), -32767, 32767),
+        w: v.w,
+      };
     }
-
-    return {
-      idx: v.idx,
-      x: clamp(Math.round(x), -32767, 32767),
-      y: clamp(Math.round(y), -32767, 32767),
-      z: clamp(Math.round(z), -32767, 32767),
-      w: v.w,
-    };
+    return { ...v };
   });
 
   // 2. COMPLETELY ELIMINATE BACKWARDS BASEBALL CAP VISOR SHELL (zero-area degenerate collapse -> 100% invisible!)
-  //    Verified exact visor-only vertex indices from polygon topology of campb2.psx (70v) & campb2_L.psx (39v):
   const snapTo = (dstIdx, srcPt) => {
     if (dstIdx < newVerts.length && newVerts[dstIdx].w === 0) {
       newVerts[dstIdx].x = srcPt.x; newVerts[dstIdx].y = srcPt.y; newVerts[dstIdx].z = srcPt.z;
     }
   };
   if (isHighLod) {
-    // Upper visor quads f[67], f[68]: snap outer rim onto sculpted skull rim -> zero-area flush polygons!
     snapTo(54, newVerts[39]);
     snapTo(55, newVerts[7]);
     snapTo(56, newVerts[38]);
-    // Lower visor quads f[75], f[76]: collapse all 6 visor-only verts into hidden interior skull center!
     for (const vi of [64, 65, 66, 67, 68, 69]) snapTo(vi, innerSkullPt);
   } else if (isLowLod) {
-    // Upper visor tris f[41..43]: snap both outer tips (v30, v31) onto v[7] -> all 3 tris become zero-area!
     snapTo(30, newVerts[7]);
     snapTo(31, newVerts[7]);
-    // Lower visor tris f[46..48]: collapse all 5 visor-only verts into hidden interior skull center!
     for (const vi of [34, 35, 36, 37, 38]) snapTo(vi, innerSkullPt);
   }
 
@@ -1123,6 +1170,93 @@ function renderHeadComparisonPng(sculptResult, outPath) {
   plot(PW * 0.5, PH * 1.65, sculptResult.newVerts,  v => [v.x, v.y], [70, 255, 110]);
   plot(PW * 1.5, PH * 1.65, sculptResult.origVerts, v => [v.z, v.y], [150, 50, 50]);
   plot(PW * 1.5, PH * 1.65, sculptResult.newVerts,  v => [v.z, v.y], [70, 255, 110]);
+  writePng(outPath, W, H, img);
+}
+
+// 5-Angle 3D Textured Software Rasterizer (Top = Original Kareem, Bottom = New Bolsonaro — Front, 3/4 L, 3/4 R, Side R, Back!)
+function renderHeadTextured5ViewsPng(sculptResult, origHeadRgba, newHeadRgba, outPath) {
+  const views = [
+    { yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }
+  ];
+  const cellW = 160, cellH = 180, W = cellW * views.length, H = cellH * 2;
+  const img = Buffer.alloc(W * H * 4, 24);
+  for (let i = 0; i < W * H; i++) img[i * 4 + 3] = 255;
+
+  // Approximate neck-base ring positions for w=2 stitch vertices (in head-local space) so Back view renders sealed neck!
+  const neckApprox = {
+    18: { x: -72, y: 128, z: -18 },
+    19: { x: -32, y: 132, z: -96 },
+    20: { x:  54, y: 112, z:  92 },
+    29: { x:  82, y: 128, z: -18 },
+    30: { x:  42, y: 132, z: -96 },
+    61: { x: -44, y: 112, z:  92 },
+    62: { x: -86, y: 118, z:  46 },
+    63: { x:  96, y: 118, z:  46 },
+  };
+
+  const renderRow = (rowIdx, verts, texRgba) => {
+    const yOff = rowIdx * cellH;
+    const sc = 0.40, cyOff = 105;
+    views.forEach((vw, vi) => {
+      const ox = vi * cellW + cellW * 0.5, oy = yOff + cellH * 0.52;
+      const zbuf = new Float32Array(cellW * cellH).fill(1e9);
+      const yaw = vw.yaw * Math.PI / 180, cy = Math.cos(yaw), sy = Math.sin(yaw);
+      const proj = v => {
+        const pt = (v.w === 2 && neckApprox[v.idx]) ? neckApprox[v.idx] : v;
+        const rx = pt.x * cy + pt.z * sy;
+        const rz = -pt.x * sy + pt.z * cy;
+        return { sx: ox + rx * sc, sy: oy + (pt.y + cyOff) * sc, sz: rz };
+      };
+      const drawTri = (p0, p1, p2, uv0, uv1, uv2, shade) => {
+        const minX = Math.max(vi * cellW, Math.floor(Math.min(p0.sx, p1.sx, p2.sx)));
+        const maxX = Math.min((vi + 1) * cellW - 1, Math.ceil(Math.max(p0.sx, p1.sx, p2.sx)));
+        const minY = Math.max(yOff, Math.floor(Math.min(p0.sy, p1.sy, p2.sy)));
+        const maxY = Math.min(yOff + cellH - 1, Math.ceil(Math.max(p0.sy, p1.sy, p2.sy)));
+        const area = (p1.sx - p0.sx) * (p2.sy - p0.sy) - (p2.sx - p0.sx) * (p1.sy - p0.sy);
+        if (Math.abs(area) < 0.01) return;
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            const w0 = ((p1.sx - x) * (p2.sy - y) - (p2.sx - x) * (p1.sy - y)) / area;
+            const w1 = ((p2.sx - x) * (p0.sy - y) - (p0.sx - x) * (p2.sy - y)) / area;
+            const w2 = 1 - w0 - w1;
+            if (w0 < -0.001 || w1 < -0.001 || w2 < -0.001) continue;
+            const z = w0 * p0.sz + w1 * p1.sz + w2 * p2.sz;
+            const zi = (y - yOff) * cellW + (x - vi * cellW);
+            if (z < zbuf[zi]) {
+              zbuf[zi] = z;
+              const u = clamp(Math.round(w0 * uv0[0] + w1 * uv1[0] + w2 * uv2[0]) & 63, 0, 63);
+              const vv = clamp(Math.round(w0 * uv0[1] + w1 * uv1[1] + w2 * uv2[1]), 0, 63);
+              const to = (vv * 64 + u) * 4;
+              const o = (y * W + x) * 4;
+              img[o] = Math.min(255, Math.round(texRgba[to] * shade));
+              img[o + 1] = Math.min(255, Math.round(texRgba[to + 1] * shade));
+              img[o + 2] = Math.min(255, Math.round(texRgba[to + 2] * shade));
+              img[o + 3] = 255;
+            }
+          }
+        }
+      };
+      for (const f of sculptResult.faces) {
+        if (!f.textured || f.uvs.length < 3) continue;
+        const v0 = verts[f.rawVerts[0]], v1 = verts[f.rawVerts[1]], v2 = verts[f.rawVerts[2]];
+        const v3 = f.quad ? verts[f.rawVerts[3]] : null;
+        if (!v0 || !v1 || !v2) continue;
+        const p0 = proj(v0), p1 = proj(v1), p2 = proj(v2), p3 = v3 ? proj(v3) : null;
+        const e1x = p1.sx - p0.sx, e1y = p1.sy - p0.sy, e1z = p1.sz - p0.sz;
+        const e2x = p2.sx - p0.sx, e2y = p2.sy - p0.sy, e2z = p2.sz - p0.sz;
+        const nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+        const shade = 0.74 + 0.26 * Math.abs(nz / (Math.hypot(nx, ny, nz) || 1));
+        if (f.quad && p3) {
+          drawTri(p0, p1, p2, f.uvs[0], f.uvs[1], f.uvs[2], shade);
+          drawTri(p1, p3, p2, f.uvs[1], f.uvs[3], f.uvs[2], shade);
+        } else {
+          drawTri(p0, p1, p2, f.uvs[0], f.uvs[1], f.uvs[2], shade);
+        }
+      }
+    });
+  };
+  renderRow(0, sculptResult.origVerts, origHeadRgba);
+  renderRow(1, sculptResult.newVerts, newHeadRgba);
   writePng(outPath, W, H, img);
 }
 
@@ -1197,6 +1331,7 @@ const modelSpecs = [
 const modifiedModels = new Map();
 const prevA = {}, prevB = {};
 let headSculpt = null;
+let origHeadRgba = null;
 
 console.log('\n=== 2. Aplicando texturas PS1 (BGR555), maos claras e esculpindo cabeca 3D nos 4 .PSX ===');
 for (const spec of modelSpecs) {
@@ -1206,6 +1341,17 @@ for (const spec of modelSpecs) {
   if (headMeshIdx < 0) throw new Error(`HEAD hash 0x${spec.headMeshHash.toString(16)} nao encontrado em ${spec.name}!`);
   let replacedTex = 0;
   for (const t of info.textures) {
+    if (spec.name === 'campb2.psx' && t.palId === 0x59e2e72c) {
+      origHeadRgba = Buffer.alloc(64 * 64 * 4);
+      for (let p = 0; p < 64 * 64; p++) {
+        const ci = psxBuf[t.dataOff + p];
+        const v = psxBuf.readUInt16LE(t.palInfo.offset + ci * 2);
+        origHeadRgba[p * 4] = ((v & 0x1F) * 255 / 31) | 0;
+        origHeadRgba[p * 4 + 1] = (((v >> 5) & 0x1F) * 255 / 31) | 0;
+        origHeadRgba[p * 4 + 2] = (((v >> 10) & 0x1F) * 255 / 31) | 0;
+        origHeadRgba[p * 4 + 3] = 255;
+      }
+    }
     if (t.palId === HAND_PAL_ID) {
       const fairHands = buildFairHands64x16(psxBuf, t);
       const qRgba = writeTextureIntoPsx(psxBuf, t, fairHands, true);
@@ -1221,7 +1367,7 @@ for (const spec of modelSpecs) {
   const sculpt = sculptHeadGeometryToBolsonaro(psxBuf, info, headMeshIdx);
   if (spec.name === 'campb2.psx') headSculpt = sculpt;
   modifiedModels.set(spec.name, psxBuf);
-  console.log(`  [OK] ${spec.name.padEnd(13)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${headMeshIdx}] (${sculpt.newVerts.length} verts, bone removido + rosto esculpido!)`);
+  console.log(`  [OK] ${spec.name.padEnd(13)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${headMeshIdx}] (${sculpt.newVerts.length} verts, cranio simetrizado + bolsonaro_rosto.png!)`);
 }
 
 fs.mkdirSync(previewDir, { recursive: true });
@@ -1235,6 +1381,7 @@ writePng(path.join(previewDir, 'preview_styleB_torso_128x64.png'), 128, 64, prev
 writePng(path.join(previewDir, 'preview_styleB_sleeves_64x64.png'), 64, 64, prevB[0x10bcae0e]);
 writePng(path.join(previewDir, 'preview_styleB_pants_64x64.png'), 64, 64, prevB[0x792c8a53]);
 renderHeadComparisonPng(headSculpt, path.join(previewDir, 'preview_head_3d_before_after.png'));
+renderHeadTextured5ViewsPng(headSculpt, origHeadRgba, prevA[0x59e2e72c], path.join(previewDir, 'preview_head_3d_textured_5views.png'));
 console.log(`\nPreviews visuais salvos em: ${previewDir}`);
 
 if (previewOnly) {

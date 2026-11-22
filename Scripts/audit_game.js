@@ -222,7 +222,7 @@ try {
     pass('CD.HED 100% identico ao Redump original');
   }
 
-  const allowedWadIdxs = new Set([13, 45, 61, 370, 371, 389, 391, 433, 435, 986, 988, 1030, 1032]);
+  const allowedWadIdxs = new Set([45, 61, 370, 371, 389, 391, 433, 435, 986, 988, 1030, 1032]);
   let wadChecked = 0, wadUnexpected = 0;
   for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
     const h = hedDisk.readUInt32LE(idx * 12);
@@ -257,7 +257,7 @@ try {
     }
     if (psErr === 0) pass('playsel.bin (idx=61): 2/2 hooks Skater Select (+0x3388 Scroll, +0x100C Confirm) validos, 31.632 B restantes intactos');
   }
-  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas + ${allowedWadIdxs.size} mods: Lulao, Bolsonaro, Hangar e playsel.bin)`);
+  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: Lulao, Bolsonaro e playsel.bin)`);
 
   // =========================================================================
   // STAGE 4: s2face2.bmp, s2face3.bmp & options.pre INTEGRITY
@@ -294,16 +294,16 @@ try {
   // =========================================================================
   // STAGE 5: ALL 8 SKATER .PSX MODELS (LULAO + BOLSONARO) & HANGAR skhan_l.psx
   // =========================================================================
-  console.log('\n[STAGE 5] Modelos 3D .PSX (4 Lulao + 4 Bolsonaro) & Paredes Fase 1 (skhan_l.psx)');
+  console.log('\n[STAGE 5] Modelos 3D .PSX (4 Lulao rosto+barriga + 4 Bolsonaro) & Fase 1 (skhan_l.psx original)');
   const psxChecks = [
-    { idx: 389, name: 'cab.psx', headHash: 0x0f88a1f8, expMesh: 12 },
-    { idx: 986, name: 'cab_L.psx', headHash: 0x0f88a1f8, expMesh: 15 },
-    { idx: 433, name: 'cab2b.psx', headHash: 0x9504086e, expMesh: 15 },
-    { idx: 988, name: 'cab2b_L.psx', headHash: 0x9504086e, expMesh: 15 },
-    { idx: 391, name: 'campb2.psx', headHash: 0x7806eefa, expMesh: 15 },
-    { idx: 1030, name: 'campb2_L.psx', headHash: 0x7806eefa, expMesh: 15 },
-    { idx: 435, name: 'campb2b.psx', headHash: 0x7806eefa, expMesh: 15 },
-    { idx: 1032, name: 'campb2bL.psx', headHash: 0x7806eefa, expMesh: 15 },
+    { idx: 389, name: 'cab.psx',     headHash: 0x0f88a1f8, expMesh: 12, bellyMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[13,'w0only']]) },
+    { idx: 986, name: 'cab_L.psx',   headHash: 0x0f88a1f8, expMesh: 15, bellyMeshes: new Map([[3,'w1ok'],[10,'w1ok'],[16,'w0only']]) },
+    { idx: 433, name: 'cab2b.psx',   headHash: 0x9504086e, expMesh: 15, bellyMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[8,'w0only']]) },
+    { idx: 988, name: 'cab2b_L.psx', headHash: 0x9504086e, expMesh: 15, bellyMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[8,'w0only']]) },
+    { idx: 391, name: 'campb2.psx',  headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
+    { idx: 1030, name: 'campb2_L.psx', headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
+    { idx: 435, name: 'campb2b.psx', headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
+    { idx: 1032, name: 'campb2bL.psx', headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
   ];
   for (const pc of psxChecks) {
     const orig = getWadEntry(fdRed, 455, hedDisk, pc.idx);
@@ -339,78 +339,65 @@ try {
     }
     if (zeroClut > 0) fail('PSX', `${pc.name}: ${zeroClut} cores 0x0000 (transparentes) indevidas na CLUT!`);
 
-    // Verify ONLY expMesh changed among all 19 meshes, w!=0 stitch verts locked, bbox encloses all verts, rad safe!
-    let otherMeshDiff = 0, wDiff = 0, normFaceDiff = 0, movedVerts = 0, maxR = 0;
-    let xmin = 32767, xmax = -32768, ymin = 32767, ymax = -32768, zmin = 32767, zmax = -32768;
+    // Verify ONLY HEAD (and Lulao's Pelvis/Stomach/Chest belly meshes) changed, stitch invariants respected, bbox/rad safe!
+    let otherMeshDiff = 0, wDiff = 0, normFaceDiff = 0, headMoved = 0, bellyMoved = 0;
     for (let m = 0; m < nMesh; m++) {
       const mo = meshOffs[m], mEnd = (m + 1 < nMesh) ? meshOffs[m + 1] : ptrMeta;
-      if (m !== pc.expMesh) {
+      const isHead = (m === pc.expMesh);
+      const bellyMode = pc.bellyMeshes.get(m);
+      if (!isHead && !bellyMode) {
         if (!orig.subarray(mo, mEnd).equals(cur.subarray(mo, mEnd))) {
-          fail('PSX', `${pc.name}: Mesh[${m}] (nao-HEAD) foi modificada indevidamente!`);
+          fail('PSX', `${pc.name}: Mesh[${m}] foi modificada indevidamente!`);
           otherMeshDiff++;
         }
       } else {
         const nV = orig.readUInt16LE(mo + 2), nN = orig.readUInt16LE(mo + 4);
         const vOff = mo + 28, nOff = vOff + nV * 8;
+        let xmin = 32767, xmax = -32768, ymin = 32767, ymax = -32768, zmin = 32767, zmax = -32768, maxR = 0;
         for (let v = 0; v < nV; v++) {
           const vo = vOff + v * 8;
           const ox = orig.readInt16LE(vo), oy = orig.readInt16LE(vo + 2), oz = orig.readInt16LE(vo + 4), ow = orig.readUInt16LE(vo + 6);
           const cx = cur.readInt16LE(vo), cy = cur.readInt16LE(vo + 2), cz = cur.readInt16LE(vo + 4), cw = cur.readUInt16LE(vo + 6);
           if (ow !== cw) wDiff++;
-          if (ow !== 0 && (ox !== cx || oy !== cy || oz !== cz)) wDiff++;
-          if (ox !== cx || oy !== cy || oz !== cz) movedVerts++;
-          if (cx < xmin) xmin = cx; if (cx > xmax) xmax = cx;
-          if (cy < ymin) ymin = cy; if (cy > ymax) ymax = cy;
-          if (cz < zmin) zmin = cz; if (cz > zmax) zmax = cz;
-          const r = Math.hypot(cx, cy, cz); if (r > maxR) maxR = r;
+          const moved = (ox !== cx || oy !== cy || oz !== cz);
+          // HEAD & Chest(w0only): NEVER touch w != 0! Pelvis/Stomach(w1ok): NEVER touch w === 2!
+          if (moved) {
+            if ((isHead || bellyMode === 'w0only') && ow !== 0) wDiff++;
+            if (bellyMode === 'w1ok' && ow === 2) wDiff++;
+            if (isHead) headMoved++; else bellyMoved++;
+          }
+          if (cw !== 2) {
+            if (cx < xmin) xmin = cx; if (cx > xmax) xmax = cx;
+            if (cy < ymin) ymin = cy; if (cy > ymax) ymax = cy;
+            if (cz < zmin) zmin = cz; if (cz > zmax) zmax = cz;
+            const r = Math.hypot(cx, cy, cz); if (r > maxR) maxR = r;
+          }
         }
         for (let p = nOff; p < mEnd; p++) if (orig[p] !== cur[p]) normFaceDiff++;
         const rad = cur.readUInt32LE(mo + 8);
         const bb = [0,1,2,3,4,5].map(k => cur.readInt16LE(mo + 12 + k * 2));
-        if (rad / 256 < maxR) fail('PSX', `${pc.name}: rad/256 (${(rad/256).toFixed(1)}) < maxVertR (${maxR.toFixed(1)})!`);
+        if (rad / 256 < maxR) fail('PSX', `${pc.name} M[${m}]: rad/256 (${(rad/256).toFixed(1)}) < maxVertR (${maxR.toFixed(1)})!`);
         if (bb[0]*16 < xmax || bb[1]*16 > xmin || bb[2]*16 < ymax || bb[3]*16 > ymin || bb[4]*16 < zmax || bb[5]*16 > zmin) {
-          fail('PSX', `${pc.name}: hdrBbox [${bb}] nao cobre todos os vertices!`);
-        }
-        if (movedVerts === 0) fail('PSX', `${pc.name}: HEAD Mesh[${m}] nao teve nenhum vertice esculpido!`);
-        if (wDiff > 0) fail('PSX', `${pc.name}: ${wDiff} stitch vertices (w!=0) foram violados!`);
-        if (normFaceDiff > 0) fail('PSX', `${pc.name}: ${normFaceDiff} bytes em normais/faces alterados!`);
-        if (!otherMeshDiff && !wDiff && !normFaceDiff && !zeroClut && movedVerts > 0) {
-          pass(`${pc.name}: HEAD Mesh[${m}] (${movedVerts} verts esculpidos, w!=0 travados, bbox/rad seguros, 0 CLUT 0x0000)`);
+          fail('PSX', `${pc.name} M[${m}]: hdrBbox [${bb}] nao cobre todos os vertices!`);
         }
       }
+    }
+    if (headMoved === 0) fail('PSX', `${pc.name}: HEAD Mesh[${pc.expMesh}] nao teve nenhum vertice esculpido!`);
+    if (pc.bellyMeshes.size > 0 && bellyMoved === 0) fail('PSX', `${pc.name}: barriguinha 3D nao teve nenhum vertice esculpido!`);
+    if (wDiff > 0) fail('PSX', `${pc.name}: ${wDiff} stitch vertices foram violados!`);
+    if (normFaceDiff > 0) fail('PSX', `${pc.name}: ${normFaceDiff} bytes em normais/faces alterados!`);
+    if (!otherMeshDiff && !wDiff && !normFaceDiff && !zeroClut && headMoved > 0 && (pc.bellyMeshes.size === 0 || bellyMoved > 0)) {
+      const bellyMsg = bellyMoved > 0 ? ` + Barriguinha (${bellyMoved}v)` : '';
+      pass(`${pc.name}: HEAD Mesh[${pc.expMesh}] (${headMoved}v)${bellyMsg}, costuras seguras, bbox/rad ok, 0 CLUT 0x0000`);
     }
   }
 
-  // Validate Level 1 Hangar Texture Library (skhan_l.psx, idx 13)
+  // Validate Level 1 Hangar Texture Library (skhan_l.psx, idx 13) restored 100% original!
   {
     const hOrig = getWadEntry(fdRed, 455, hedDisk, 13);
     const hCur = getWadEntry(fdMod, 455, hedDisk, 13);
-    if (hOrig.length !== hCur.length) fail('HANGAR', `skhan_l.psx tamanho alterado: ${hCur.length}`);
-    else {
-      let mpos = hOrig.readUInt32LE(4);
-      while (mpos < hOrig.length) { const tag = hOrig.readUInt32LE(mpos); mpos += 4; if (tag === 0xFFFFFFFF) break; mpos += 4 + hOrig.readUInt32LE(mpos); }
-      const nTexRefs = hOrig.readUInt32LE(mpos); mpos += 4 + nTexRefs * 4;
-      const nPal16 = hOrig.readUInt32LE(mpos); mpos += 4;
-      const pal16End = mpos + nPal16 * 36;
-      if (!hOrig.subarray(0, pal16End).equals(hCur.subarray(0, pal16End))) fail('HANGAR', 'Header ou paletas 4-bit de skhan_l.psx alteradas!');
-      mpos = pal16End;
-      const nPal256 = hOrig.readUInt32LE(mpos); mpos += 4;
-      const allowedWallPals = new Set([0xdcdfd62e, 0xd68c9cc6, 0x4a5bfdaa, 0x40231b5b, 0x9feab851, 0xbb6f18de]);
-      let palErr = 0, zeroClut = 0, modPals = 0;
-      for (let i = 0; i < nPal256; i++) {
-        const pid = hOrig.readUInt32LE(mpos);
-        if (pid !== hCur.readUInt32LE(mpos)) palErr++;
-        const changed = !hOrig.subarray(mpos + 4, mpos + 516).equals(hCur.subarray(mpos + 4, mpos + 516));
-        if (changed) {
-          if (!allowedWallPals.has(pid)) palErr++;
-          else modPals++;
-          for (let c = 0; c < 256; c++) if (hCur.readUInt16LE(mpos + 4 + c * 2) === 0) zeroClut++;
-        }
-        mpos += 516;
-      }
-      if (palErr || zeroClut || modPals !== 6) fail('HANGAR', `skhan_l.psx invalido: modPals=${modPals}/6 palErr=${palErr} zeroClut=${zeroClut}`);
-      else pass('skhan_l.psx (Fase 1 The Hangar 1P/2P): 6 murais 256 cores validados (0 CLUT 0x0000, tamanho exato 316.604 B)');
-    }
+    if (!hOrig.equals(hCur)) fail('HANGAR', `skhan_l.psx difere do original Redump (${hCur.length} B)!`);
+    else pass('skhan_l.psx (Fase 1 The Hangar 1P/2P): 100% restaurado ao original Redump (316.604 B intocados)');
   }
 
   // =========================================================================
