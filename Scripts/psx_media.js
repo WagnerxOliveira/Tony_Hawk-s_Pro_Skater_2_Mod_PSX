@@ -207,17 +207,37 @@ function inspectFile(filePath) {
   return { ...info, vidW, vidH, mdecVer, maxFrame, fn, ch, audCod, audInt };
 }
 
-function generateMkpsxisoXml(rootDir, stagingRawDir, outXmlPath, outBinPath, outCuePath) {
+function extractLicenseFromOriginalBin(origBinPath, outLicensePath) {
+  const fd = fs.openSync(origBinPath, 'r');
+  const licBuf = Buffer.alloc(16 * 2336);
+  const sec2352 = Buffer.alloc(2352);
+  for (let s = 0; s < 16; s++) {
+    fs.readSync(fd, sec2352, 0, 2352, s * 2352);
+    sec2352.copy(licBuf, s * 2336, 16, 2352);
+  }
+  fs.closeSync(fd);
+  fs.mkdirSync(path.dirname(path.resolve(outLicensePath)), { recursive: true });
+  fs.writeFileSync(outLicensePath, licBuf);
+  return outLicensePath;
+}
+
+function generateMkpsxisoXml(rootDir, stagingRawDir, outXmlPath, outBinPath, outCuePath, licensePath = null) {
   const esc = s => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const rawRef = rel => esc(path.resolve(stagingRawDir, rel));
   const dataRef = rel => esc(path.resolve(rootDir, rel));
 
-  // Level preview STR files (Mode 2 Form 1, 2048B/sector, video-only)
-  const levelStrs = ['B1.STR','BULLRING.STR','EDITOR.STR','HANGAR.STR','HEAVEN.STR','MAR.STR','NY.STR','PHILLY.STR','SCHOOL.STR','SS.STR','VENICE.STR'];
-  // Root mixed-mode STR/XA files (Mode 2 Form 2, 2336B/sector in stagingRawDir)
-  const rootMixedStrs = ['ATVILOGO.STR', 'INTRO.STR', 'LOGO.STR'];
-  const xStrs = fs.readdirSync(path.join(rootDir, 'X')).filter(f => /\.str$/i.test(f)).sort();
-  const bmxFiles = fs.readdirSync(path.join(rootDir, 'BMX')).sort();
+  // Exact original Redump NTSC-U (SLUS-01066) disc LBA order!
+  // Keeping identical file order preserves exact LBAs for all unmodified files (tiny, fast xdelta3 patches!).
+  const bmxOrder = [
+    'X.EXE', 'BOOT.BIN', 'FRONT.BIN', 'FE.WAD', 'FE.STR',
+    'GAME.BIN', 'BMXCD.HED', 'BMXCD.WAD', 'EXIT.BIN', 'EDITOR.BIN'
+  ];
+  const xOrder = [
+    'OD.STR', 'BAILS02.STR', 'BURNQUIS.STR', 'CABALLER.STR', 'CAMPBELL.STR',
+    'GLIFBERG.STR', 'HAWK.STR', 'KOSTON.STR', 'LASEK.STR', 'MS.STR',
+    'MULLEN.STR', 'MUSKA.STR', 'BAILS01.STR', 'PC.STR', 'REYNOLDS.STR',
+    'ROWLEY.STR', 'SM.STR', 'STEAMER.STR', 'THOMAS.STR'
+  ];
 
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -226,42 +246,50 @@ function generateMkpsxisoXml(rootDir, stagingRawDir, outXmlPath, outBinPath, out
     '    <identifiers',
     '      system="PLAYSTATION"',
     '      application="PLAYSTATION"',
-    '      volume="THPS2"',
-    '      volume_set="THPS2"',
-    '      publisher="ACTIVISION"',
-    '      data_preparer="NEVERSOFT"',
-    '      copyright="ACTIVISION"',
+    '      volume=""',
+    '      volume_set=""',
+    '      publisher=""',
+    '      data_preparer=""',
+    '      copyright=""',
     '    />',
+  ];
+
+  if (licensePath && fs.existsSync(licensePath)) {
+    lines.push(`    <license file="${esc(path.resolve(licensePath))}"/>`);
+  }
+
+  lines.push(
     '    <directory_tree>',
     `      <file name="SYSTEM.CNF" type="data" source="${dataRef('SYSTEM.CNF')}"/>`,
     `      <file name="SLUS_010.66" type="data" source="${dataRef('SLUS_010.66')}"/>`,
     `      <file name="CD.HED" type="data" source="${dataRef('CD.HED')}"/>`,
     `      <file name="CD.WAD" type="data" source="${dataRef('CD.WAD')}"/>`,
-  ];
-
-  for (const f of levelStrs) {
-    lines.push(`      <file name="${f}" type="data" source="${dataRef(f)}"/>`);
-  }
-  for (const f of rootMixedStrs) {
-    lines.push(`      <file name="${f}" type="str" source="${rawRef(f)}"/>`);
-  }
-  lines.push(`      <file name="COMPILED.XA" type="xa" source="${rawRef('COMPILED.XA')}"/>`);
-
-  lines.push('      <dir name="BMX">');
-  for (const f of bmxFiles) {
-    lines.push(`        <file name="${f}" type="data" source="${dataRef(path.join('BMX', f))}"/>`);
-  }
-  lines.push('      </dir>');
-
-  lines.push('      <dir name="X">');
-  for (const f of xStrs) {
-    lines.push(`        <file name="${f}" type="str" source="${rawRef(path.join('X', f))}"/>`);
-  }
-  lines.push('      </dir>');
-
-  lines.push('    </directory_tree>');
-  lines.push('  </track>');
-  lines.push('</iso_project>');
+    '      <dir name="BMX">',
+    ...bmxOrder.map(f => `        <file name="${f}" type="data" source="${dataRef(path.join('BMX', f))}"/>`),
+    '      </dir>',
+    `      <file name="EDITOR.STR" type="data" source="${dataRef('EDITOR.STR')}"/>`,
+    `      <file name="B1.STR" type="data" source="${dataRef('B1.STR')}"/>`,
+    `      <file name="BULLRING.STR" type="data" source="${dataRef('BULLRING.STR')}"/>`,
+    `      <file name="COMPILED.XA" type="xa" source="${rawRef('COMPILED.XA')}"/>`,
+    `      <file name="ATVILOGO.STR" type="str" source="${rawRef('ATVILOGO.STR')}"/>`,
+    `      <file name="HANGAR.STR" type="data" source="${dataRef('HANGAR.STR')}"/>`,
+    `      <file name="HEAVEN.STR" type="data" source="${dataRef('HEAVEN.STR')}"/>`,
+    `      <file name="LOGO.STR" type="str" source="${rawRef('LOGO.STR')}"/>`,
+    `      <file name="MAR.STR" type="data" source="${dataRef('MAR.STR')}"/>`,
+    `      <file name="NY.STR" type="data" source="${dataRef('NY.STR')}"/>`,
+    `      <file name="PHILLY.STR" type="data" source="${dataRef('PHILLY.STR')}"/>`,
+    `      <file name="SCHOOL.STR" type="data" source="${dataRef('SCHOOL.STR')}"/>`,
+    `      <file name="SS.STR" type="data" source="${dataRef('SS.STR')}"/>`,
+    `      <file name="VENICE.STR" type="data" source="${dataRef('VENICE.STR')}"/>`,
+    '      <dir name="X">',
+    ...xOrder.map(f => `        <file name="${f}" type="str" source="${rawRef(path.join('X', f))}"/>`),
+    '      </dir>',
+    `      <file name="INTRO.STR" type="str" source="${rawRef('INTRO.STR')}"/>`,
+    '      <dummy sectors="150"/>',
+    '    </directory_tree>',
+    '  </track>',
+    '</iso_project>'
+  );
 
   fs.mkdirSync(path.dirname(path.resolve(outXmlPath)), { recursive: true });
   fs.writeFileSync(outXmlPath, lines.join('\r\n') + '\r\n', 'utf8');
@@ -274,6 +302,7 @@ module.exports = {
   normalizeRaw2336Sectors,
   raw2336ToRiffCdxa,
   inspectFile,
+  extractLicenseFromOriginalBin,
   generateMkpsxisoXml,
 };
 

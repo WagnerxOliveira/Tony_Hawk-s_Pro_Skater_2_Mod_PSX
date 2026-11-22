@@ -12,13 +12,15 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { detectFormat, riffOr2352ToRaw2336, generateMkpsxisoXml } = require('./psx_media');
+const { detectFormat, riffOr2352ToRaw2336, extractLicenseFromOriginalBin, generateMkpsxisoXml } = require('./psx_media');
 
 const rootDir = path.resolve(__dirname, '..');
 const stagingDir = path.join(rootDir, 'build', 'staging_raw');
 const xmlPath = path.join(rootDir, 'tools', 'thps2_build.xml');
 const outBin = path.join(rootDir, 'build', 'THPS2_MOD.bin');
 const outCue = path.join(rootDir, 'build', 'THPS2_MOD.cue');
+const licensePath = path.join(rootDir, 'build', 'license_ntsc_u.dat');
+const origBinDir = path.join(rootDir, 'bin_cue_originais_do_jogo');
 const mkpsxisoExe = path.join(rootDir, 'tools', 'bin', 'mkpsxiso', 'mkpsxiso-2.30-win64', 'mkpsxiso.exe');
 
 if (!fs.existsSync(mkpsxisoExe)) {
@@ -57,9 +59,20 @@ for (const rel of mixedFiles) {
 }
 console.log(`Concluido: ${converted} convertidos, ${cached} reaproveitados do cache.\n`);
 
-console.log(`=== 2. Gerando XML do mkpsxiso ===`);
-generateMkpsxisoXml(rootDir, stagingDir, xmlPath, outBin, outCue);
-console.log(`  XML: ${xmlPath}\n`);
+console.log(`=== 2. Gerando XML do mkpsxiso (ordem LBA original Redump) ===`);
+let activeLicense = null;
+if (fs.existsSync(licensePath)) {
+  activeLicense = licensePath;
+} else if (fs.existsSync(origBinDir)) {
+  const bins = fs.readdirSync(origBinDir).filter(f => /\.bin$/i.test(f));
+  if (bins.length > 0) {
+    extractLicenseFromOriginalBin(path.join(origBinDir, bins[0]), licensePath);
+    activeLicense = licensePath;
+    console.log(`  License NTSC-U extraida de: ${bins[0]}`);
+  }
+}
+generateMkpsxisoXml(rootDir, stagingDir, xmlPath, outBin, outCue, activeLicense);
+console.log(`  XML: ${xmlPath}${activeLicense ? ' (com setores de licenca originais NTSC-U!)' : ''}\n`);
 
 console.log(`=== 3. Compilando ISO PS1 (.BIN / .CUE) com mkpsxiso ===`);
 const t0 = Date.now();

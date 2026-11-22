@@ -13,6 +13,21 @@
 
 ---
 
+## 🎮 Como Baixar e Jogar o Mod (3 Passos Simples — Patch `.xdelta`)
+
+Seguindo o padrão profissional e legal de ROM hacking, o mod é distribuído na aba **[Releases](https://github.com/WagnerxOliveira/Tony_Hawk-s_Pro_Skater_2_Mod_PSX/releases/latest)** como um **patch delta binário (`.xdelta`)**, contendo apenas as modificações (sem distribuir a imagem original comercial):
+
+1. **Baixe os arquivos da [Última Release](https://github.com/WagnerxOliveira/Tony_Hawk-s_Pro_Skater_2_Mod_PSX/releases/latest):**
+   - `THPS2_MOD_NTSC-U.xdelta` *(patch delta verificado bit-a-bit)*
+   - `THPS2_MOD_Patcher_e_Guia.zip` *(contém o aplicador em 1 clique `Aplicar_Patch_THPS2.bat`, `xdelta3.exe`, `THPS2_MOD.cue` e guia)*
+2. **Aplique sobre sua cópia original limpa** de *Tony Hawk's Pro Skater 2 (USA / NTSC-U `SLUS-01066`, Redump)*:
+   - **Base requerida:** `748.037.136 bytes` (`318.043 setores`) • MD5 `AC85AE22723EAF944B0F899AA53244DD` • SHA-1 `F5CB80A7D55AACED7FCC9C5A82A6C28B89DC489A`
+   - **Windows (1 clique):** extraia o ZIP, coloque o `.xdelta` na mesma pasta e **arraste o seu `.bin` original** para cima de `Aplicar_Patch_THPS2.bat`.
+   - **Alternativa GUI (Windows/Linux/macOS):** use o [Delta Patcher](https://github.com/marco-calautti/DeltaPatcher/releases) selecionando seu `.bin` original + `THPS2_MOD_NTSC-U.xdelta`.
+3. **Jogue no Emulador:** abra o arquivo **`THPS2_MOD.cue`** gerado no **DuckStation**, **PCSX-Redux** ou **RetroArch** *(ou grave/rode em PS1 compatível — a imagem preserva os 16 setores de licença originais e o layout LBA exato!)*.
+
+---
+
 ## 🎯 Visão Geral
 
 Este repositório é uma base aberta de **engenharia reversa, documentação binária e automação de build** para **Tony Hawk's Pro Skater 2 (PSX)**. Todo o mapeamento de endereços de RAM, offsets de arquivo, estruturas da engine Neversoft, formatos proprietários (`CD.HED`, `CD.WAD`, `.PRE`, `.TRG`, `tricks.bin`, `.BIN/.REL`, `.STR`, `.XA`) e scripts de empacotamento foi verificado diretamente contra os binários reais do jogo, com validação **bit-a-bit (SHA-256)** de desempacotamento e reempacotamento.
@@ -44,7 +59,9 @@ Cada subsistema do jogo possui seu próprio mapa dedicado com **endereços RAM (
 | :--- | :---: | :--- |
 | **[`Scripts/thps2_wad.js`](Scripts/thps2_wad.js)** | Node.js | Unpack/Repack completo de `CD.HED`, `CD.WAD` e todos os 14 `.PRE` com resolução automática de **1.161+ nomes reais** e integridade **SHA-256 bit-a-bit**. |
 | **[`Scripts/psx_media.js`](Scripts/psx_media.js)** | Node.js | Conversor streaming `RIFF-CDXA (44B+2352B) ↔ Raw Mode 2 (2336B)`, normalizador de contagem exata de setores e gerador do XML do `mkpsxiso`. |
-| **[`Scripts/build_iso.js`](Scripts/build_iso.js)** | Node.js | Compilador em um comando da imagem `.BIN/.CUE` via `mkpsxiso v2.30` (com cache inteligente de setores 2336B — build completo em ~2,5s). |
+| **[`Scripts/build_iso.js`](Scripts/build_iso.js)** | Node.js | Compilador em um comando da imagem `.BIN/.CUE` via `mkpsxiso v2.30` preservando a **ordem exata de LBAs Redump e os 16 setores de licença originais**. |
+| **[`Scripts/create_patch.js`](Scripts/create_patch.js)** | Node.js | Gera `THPS2_MOD_NTSC-U.xdelta` (`xdelta3 -9`, janela 1 GB) comparando com o `.BIN` original Redump e executa **validação round-trip SHA-256 automática**. |
+| **[`Scripts/sync_and_release.js`](Scripts/sync_and_release.js)** | Node.js | Pipeline mestre: recompila a ISO, regenera e valida o `.xdelta`, atualiza os 9 mapas `Docs/`, faz commit/push no GitHub e publica automaticamente a Release. |
 | **[`Scripts/replace_videos.js`](Scripts/replace_videos.js)** | Node.js | Pipeline cirúrgico (`ffmpeg` + `psxavenc`) para substituir `INTRO.STR` e os 19 `X\*.STR` mantendo `320×240`, `15 fps`, `MDEC v2`, `F=1 C=1`, taxa XA original e **exatamente o mesmo tamanho em bytes**. |
 | **[`Scripts/ghidra_apply_symbols.py`](Scripts/ghidra_apply_symbols.py)** | Ghidra Py | Rotula automaticamente todas as tabelas e funções mapeadas dentro do projeto Ghidra. |
 | **[`Scripts/generate_all_docs.js`](Scripts/generate_all_docs.js)** | Node.js | Regenera automaticamente os 9 mapas técnicos (`Docs/MAPA_01..09_*.md`) diretamente a partir dos binários extraídos. |

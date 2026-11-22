@@ -4,46 +4,46 @@
     <identifiers
       system="PLAYSTATION"
       application="PLAYSTATION"
-      volume="THPS2"
-      volume_set="THPS2"
-      publisher="ACTIVISION"
-      data_preparer="NEVERSOFT"
-      copyright="ACTIVISION"
+      volume=""
+      volume_set=""
+      publisher=""
+      data_preparer=""
+      copyright=""
     />
+    <license file="d:\thps2_extract_antigravity\build\license_ntsc_u.dat"/>
     <directory_tree>
       <file name="SYSTEM.CNF" type="data" source="d:\thps2_extract_antigravity\SYSTEM.CNF"/>
       <file name="SLUS_010.66" type="data" source="d:\thps2_extract_antigravity\SLUS_010.66"/>
       <file name="CD.HED" type="data" source="d:\thps2_extract_antigravity\CD.HED"/>
       <file name="CD.WAD" type="data" source="d:\thps2_extract_antigravity\CD.WAD"/>
+      <dir name="BMX">
+        <file name="X.EXE" type="data" source="d:\thps2_extract_antigravity\BMX\X.EXE"/>
+        <file name="BOOT.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\BOOT.BIN"/>
+        <file name="FRONT.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\FRONT.BIN"/>
+        <file name="FE.WAD" type="data" source="d:\thps2_extract_antigravity\BMX\FE.WAD"/>
+        <file name="FE.STR" type="data" source="d:\thps2_extract_antigravity\BMX\FE.STR"/>
+        <file name="GAME.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\GAME.BIN"/>
+        <file name="BMXCD.HED" type="data" source="d:\thps2_extract_antigravity\BMX\BMXCD.HED"/>
+        <file name="BMXCD.WAD" type="data" source="d:\thps2_extract_antigravity\BMX\BMXCD.WAD"/>
+        <file name="EXIT.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\EXIT.BIN"/>
+        <file name="EDITOR.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\EDITOR.BIN"/>
+      </dir>
+      <file name="EDITOR.STR" type="data" source="d:\thps2_extract_antigravity\EDITOR.STR"/>
       <file name="B1.STR" type="data" source="d:\thps2_extract_antigravity\B1.STR"/>
       <file name="BULLRING.STR" type="data" source="d:\thps2_extract_antigravity\BULLRING.STR"/>
-      <file name="EDITOR.STR" type="data" source="d:\thps2_extract_antigravity\EDITOR.STR"/>
+      <file name="COMPILED.XA" type="xa" source="d:\thps2_extract_antigravity\build\staging_raw\COMPILED.XA"/>
+      <file name="ATVILOGO.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\ATVILOGO.STR"/>
       <file name="HANGAR.STR" type="data" source="d:\thps2_extract_antigravity\HANGAR.STR"/>
       <file name="HEAVEN.STR" type="data" source="d:\thps2_extract_antigravity\HEAVEN.STR"/>
+      <file name="LOGO.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\LOGO.STR"/>
       <file name="MAR.STR" type="data" source="d:\thps2_extract_antigravity\MAR.STR"/>
       <file name="NY.STR" type="data" source="d:\thps2_extract_antigravity\NY.STR"/>
       <file name="PHILLY.STR" type="data" source="d:\thps2_extract_antigravity\PHILLY.STR"/>
       <file name="SCHOOL.STR" type="data" source="d:\thps2_extract_antigravity\SCHOOL.STR"/>
       <file name="SS.STR" type="data" source="d:\thps2_extract_antigravity\SS.STR"/>
       <file name="VENICE.STR" type="data" source="d:\thps2_extract_antigravity\VENICE.STR"/>
-      <file name="ATVILOGO.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\ATVILOGO.STR"/>
-      <file name="INTRO.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\INTRO.STR"/>
-      <file name="LOGO.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\LOGO.STR"/>
-      <file name="COMPILED.XA" type="xa" source="d:\thps2_extract_antigravity\build\staging_raw\COMPILED.XA"/>
-      <dir name="BMX">
-        <file name="BMXCD.HED" type="data" source="d:\thps2_extract_antigravity\BMX\BMXCD.HED"/>
-        <file name="BMXCD.WAD" type="data" source="d:\thps2_extract_antigravity\BMX\BMXCD.WAD"/>
-        <file name="BOOT.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\BOOT.BIN"/>
-        <file name="EDITOR.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\EDITOR.BIN"/>
-        <file name="EXIT.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\EXIT.BIN"/>
-        <file name="FE.STR" type="data" source="d:\thps2_extract_antigravity\BMX\FE.STR"/>
-        <file name="FE.WAD" type="data" source="d:\thps2_extract_antigravity\BMX\FE.WAD"/>
-        <file name="FRONT.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\FRONT.BIN"/>
-        <file name="GAME.BIN" type="data" source="d:\thps2_extract_antigravity\BMX\GAME.BIN"/>
-        <file name="X.EXE" type="data" source="d:\thps2_extract_antigravity\BMX\X.EXE"/>
-      </dir>
       <dir name="X">
-        <file name="BAILS01.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\BAILS01.STR"/>
+        <file name="OD.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\OD.STR"/>
         <file name="BAILS02.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\BAILS02.STR"/>
         <file name="BURNQUIS.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\BURNQUIS.STR"/>
         <file name="CABALLER.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\CABALLER.STR"/>
@@ -55,7 +55,7 @@
         <file name="MS.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\MS.STR"/>
         <file name="MULLEN.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\MULLEN.STR"/>
         <file name="MUSKA.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\MUSKA.STR"/>
-        <file name="OD.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\OD.STR"/>
+        <file name="BAILS01.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\BAILS01.STR"/>
         <file name="PC.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\PC.STR"/>
         <file name="REYNOLDS.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\REYNOLDS.STR"/>
         <file name="ROWLEY.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\ROWLEY.STR"/>
@@ -63,6 +63,8 @@
         <file name="STEAMER.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\STEAMER.STR"/>
         <file name="THOMAS.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\X\THOMAS.STR"/>
       </dir>
+      <file name="INTRO.STR" type="str" source="d:\thps2_extract_antigravity\build\staging_raw\INTRO.STR"/>
+      <dummy sectors="150"/>
     </directory_tree>
   </track>
 </iso_project>
