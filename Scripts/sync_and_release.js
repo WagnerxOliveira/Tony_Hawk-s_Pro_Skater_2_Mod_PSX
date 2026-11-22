@@ -42,10 +42,12 @@ function run(cmd, cmdArgs, opts = {}) {
   return r;
 }
 
-// 1. Rebuild ISO (.bin/.cue)
+// 1. Rebuild ISO (.bin/.cue) + Run 10-stage automated forensic audit
 if (!skipBuild) {
   console.log('=== 1. Recompilando imagem local THPS2_MOD.bin/.cue ===');
   run('node', [path.join(rootDir, 'tools', 'build_iso.js')]);
+  console.log('\n=== 1B. Executando auditoria forense completa (10 estagios) ===');
+  run('node', [path.join(rootDir, 'tools', 'audit_game.js')]);
 } else {
   console.log('=== 1. Pulando rebuild da ISO (--skip-build) ===');
 }
@@ -81,6 +83,8 @@ const scriptsToSync = [
   'create_patch.js',
   'replace_videos.js',
   'mod_skater_lulao.js',
+  'fix_game_errors.js',
+  'audit_game.js',
   'generate_all_docs.js',
   'ghidra_apply_symbols.py',
   'thps2_build.xml',
@@ -204,13 +208,52 @@ const guideTxt = `==============================================================
      * XDelta patch  : THPS2_MOD_NTSC-U.xdelta
      * Clique em "Apply patch" e renomeie o resultado para "THPS2_MOD.bin" ao lado de "THPS2_MOD.cue".
 
-4. COMO JOGAR NO EMULADOR
+4. COMO JOGAR NO EMULADOR (CONFIGURACAO RECOMENDADA SEM LAG E SEM SUMIR OBJETOS)
    - DuckStation (Recomendado): File -> Start File -> selecione "THPS2_MOD.cue"
+     * Para zero input lag e zero desaparecimento do skatista/objetos das fases:
+       - Copie o perfil "SLUS-01066.ini" (incluso neste ZIP!) para a pasta "gamesettings" do DuckStation, OU configure:
+         * PGXP Depth Buffer     : DESATIVADO (evita sumir skatista/rampas na Ordering Table do PS1)
+         * Widescreen Hack       : DESATIVADO / Aspect Ratio 4:3 (evita sumir objetos nas bordas)
+         * Max Queued Frames     : 2 (evita atraso de resposta no controle)
+         * PGXP CPU Mode         : ATIVADO (estabiliza geometria 3D sem quebrar profundidade)
    - PCSX-Redux / RetroArch (Beetle PSX HW / SwanStation): abra "THPS2_MOD.cue"
 
 Atualizado automaticamente em: ${manifest.generatedAt}
 `;
 fs.writeFileSync(path.join(patcherPkgDir, 'LEIA-ME_COMO_JOGAR.txt'), guideTxt.replace(/\r?\n/g, '\r\n'), 'utf8');
+
+const dsProfile = `[Console]
+Region = NTSC-U
+
+[GPU]
+ResolutionScale = 5
+Multisamples = 1
+PerSampleShading = false
+DownsampleMode = Disabled
+TextureFilter = Nearest
+SpriteTextureFilter = Nearest
+LineDetectMode = Disabled
+MaxQueuedFrames = 2
+PGXPEnable = true
+PGXPCPU = true
+PGXPVertexCache = false
+PGXPTextureCorrection = true
+PGXPColorCorrection = true
+PGXPDepthBuffer = false
+PGXPCulling = false
+PGXPTolerance = -1
+WidescreenHack = false
+ForceRoundTextureCoordinates = false
+
+[Display]
+AspectRatio = 4:3
+OptimalFramePacing = true
+VSync = false
+
+[CDROM]
+RegionCheck = false
+`;
+fs.writeFileSync(path.join(patcherPkgDir, 'SLUS-01066.ini'), dsProfile.replace(/\r?\n/g, '\r\n'), 'utf8');
 
 if (fs.existsSync(patcherZip)) fs.unlinkSync(patcherZip);
 run('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${patcherPkgDir}\\*' -DestinationPath '${patcherZip}' -Force`]);

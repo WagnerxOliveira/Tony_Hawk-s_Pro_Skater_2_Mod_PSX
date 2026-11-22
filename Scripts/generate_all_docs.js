@@ -105,7 +105,7 @@ for (const line of wadListRaw.split(/\r?\n/)) {
 | \`t_size\` (Tamanho RAM) | \`0x001C\` | \`${hex(tSize)}\` (\`${tSize}\` B) | Fim da imagem em RAM: \`${hex(tAddr + tSize)}\` |
 | \`s_addr\` (Stack) | \`0x0030\` | \`${hex(sp0)}\` | Topo da pilha (\`SYSTEM.CNF\` define \`801FFF00\`) |
 | Tamanho total em disco | — | \`${exe.length}\` bytes | \`0x800\` (header) + \`${hex(tSize)}\` (binário) |
-| License String | \`0x004C\` | \`${mdEsc(marker)}\` | *Pré-modificada.* Original NTSC-U: \`Sony Computer Entertainment Inc. for North America area\` |
+| License String | \`0x004C\` | \`${mdEsc(marker)}\` | Assinatura oficial NTSC-U (restaurada e validada) |
 
 ### Fórmula Exata de Conversão \`Offset no Arquivo ↔ Endereço RAM\`
 \`\`\`text
@@ -175,12 +175,21 @@ uint32_t Neversoft_HashFilename(const char *str) {
 
 ---
 
-## 5. Registro Forense de Patches Existentes no Workspace
+## 5. Registro Forense de Correções de Bugs em \`SLUS_010.66\`
 
-| Endereço RAM | Offset Arquivo | Original (\`.bak\`) | Modificado (\`SLUS_010.66\`) | Observação |
+Durante auditoria forense contra o binário limpo NTSC-U Redump, foi identificada e corrigida (\`Scripts/fix_game_errors.js\`) uma substituição hexadecimal cega pré-existente (\`78 00\` → \`2C 01\`, \`120\` → \`300\`) que havia corrompido **8 instruções MIPS** de física, posição do skatista, controle, fonte, áudio e alocador de heap — além do cabeçalho NTSC-U \`+0x4C\` e do byte não-ASCII \`0xE3\`:
+
+| Endereço RAM | Offset Arquivo | Corrompido (\`300\`) | Restaurado (\`120\`) | Função Real Descompilada (MIPS R3000A) |
 | :---: | :---: | :--- | :--- | :--- |
-| \`0x80016848\` | \`0x007048\` | \`24020078\` (\`li $v0, 120\`) | \`2402012C\` (\`li $v0, 300\`) | Altera constante de \`120\` para \`300\` antes de \`jal 0x8005566C\` |
-| \`0x8005F320\` | \`0x04FB20\` | \`2484FFF8\` (\`addiu $a0, -8\`) | *Corrompido apenas em \`rep\\*.bak\`* | **ATENÇÃO:** \`rep\\SLUS_010.66.bak\` tem \`0000FFF8\` (opcode inválido!) — nunca usar essa cópia |
+| \`0x80016848\` | \`0x007048\` | \`2402012C\` | \`24020078\` (\`li $v0, 120\`) | \`Vector3_Scale\` (\`0x8005566C\`) — comprimento do raycast de colisão do skatista (2,5× causava clipping!) |
+| \`0x80018EE0\` | \`0x0096E0\` | \`2404012C\` | \`24040078\` (\`li $a0, 120\`) | \`FixedPoint_Mul12\` (\`0x8006CBF4\`) — deslocamento \`pos.x\` do skatista no estado 5 (causava sumiço/teleporte!) |
+| \`0x80018EE4\` | \`0x0096E4\` | \`2404012C\` | \`24040078\` (\`li $a0, 120\`) | \`FixedPoint_Mul12\` (\`0x8006CBF4\`) — deslocamento \`pos.y\` do skatista no estado 5 |
+| \`0x80018F54\` | \`0x009754\` | \`2404012C\` | \`24040078\` (\`li $a0, 120\`) | \`FixedPoint_Mul12\` (\`0x8006CBF4\`) — deslocamento \`pos.z\` do skatista no estado 6 |
+| \`0x8006237C\` | \`0x052B7C\` | \`2404012C\` | \`24040078\` (\`li $a0, 120\`) | \`SFX_Play\` (\`0x800526B4\`) — tocava ID de efeito sonoro errado (\`300\` em vez de \`120\`) |
+| \`0x8006BC2C\` | \`0x05C42C\` | \`2404012C\` | \`24040078\` (\`li $a0, 120\`) | \`g_PadManager\` (\`0x800C08FC\`) — contador de hold do controle (aumentava 2 s → 5 s!) |
+| \`0x8007E880\` | \`0x06F080\` | \`2404012C\` | \`24040078\` (\`li $a0, 120\`) | \`Font_SetScale\` (\`0x80034CE0\`) — escala de fonte na UI (estourava texto 2,5×!) |
+| \`0x8008238C\` | \`0x072B8C\` | \`2404012C\` | \`24040078\` (\`li $a0, 120\`) | \`Mem_New\` (\`0x80084ABC → 0x800392B0\`) — tamanho de alocação de objeto C++ na heap de 2 MB |
+| \`0x8005F320\` | \`0x04FB20\` | *Apenas em \`rep\\*.bak\`* | \`2484FFF8\` (\`addiu $a0, -8\`) | **ATENÇÃO:** \`rep\\SLUS_010.66.bak\` tem \`0000FFF8\` (opcode inválido!) — nunca usar essa cópia |
 
 ---
 
@@ -207,11 +216,11 @@ Este guia mapeia os pontos críticos para modificar **tempo de sessão (cronôme
 
 | Ponto de Interesse | Endereço RAM | Offset em \`SLUS_010.66\` | Instrução / Dado | Como Modificar |
 | :--- | :---: | :---: | :--- | :--- |
-| Constante \`120\` → \`300\` (já patcheada no binário atual) | \`0x80016848\` | \`0x007048\` | \`addiu $v0, $zero, 0x0078\` (\`120\`) → \`0x012C\` (\`300\`) | Altere os 2 bytes inferiores (Little-Endian) para o valor desejado (ex.: \`0x0258\` = 600) |
-| Função chamada logo após carregar a constante | \`0x8005566C\` | \`0x045E6C\` | \`jal 0x8005566C\` (recebe \`&480($sp)\` em \`$a2\`) | Use breakpoint no PCSX-Redux neste endereço para rastrear o ponteiro da struct de timer em RAM |
 | Constante \`60000\` (\`0xEA60\` = 1 min em ms) | \`0x800833E8\` | \`0x073BE8\` | Imediato \`0xEA60\` (60.000 ms) | Rotina de conversão / formatação de minutos e segundos do cronômetro |
 | Modos de jogo (\`CAREER\`, \`PRACTICE\`, \`SINGLE\`, \`CONTEST\`, etc.) | \`0x800BA600\` | \`0x0AAE00\` | Tabela de ponteiros de modo (\`NONE\`..\`CONTEST\`) | Permite identificar quando o timer está ativo (Career/Single = 2:00, Contest = 1:00, Free Skate = infinito) |
 | HUD do relógio (fonte \`time.fnt\`) | \`CD.WAD +0x1C8000\` | \`panel.pre\` (idx 15) | Fonte numérica do cronômetro na tela | Extraia \`panel.pre\` via \`thps2_wad.js unpack --pre\` para alterar aparência do relógio |
+
+> **⚠️ AVISO CRÍTICO:** **NUNCA** faça substituição cega de \`78 00\` (\`120\`) por \`2C 01\` (\`300\`) em \`SLUS_010.66\`! Os endereços \`0x80016848\` (\`Vector3_Scale\`), \`0x80018EE0/EE4/F54\` (posição do skatista), \`0x8006237C\` (\`SFX_Play\`), \`0x8006BC2C\` (\`g_PadManager\`), \`0x8007E880\` (\`Font_SetScale\`) e \`0x8008238C\` (\`Mem_New\`) **NÃO** são o cronômetro e causam bugs graves de física, sumiço do skatista e atraso de controle se alterados!
 
 ### Procedimento Rápido para Congelar ou Customizar o Cronômetro (PCSX-Redux + Ghidra)
 1. Inicie uma sessão no **The Hangar** no PCSX-Redux com **Search RAM (32-bit)** procurando o contador decrescente em milissegundos/frames (entre \`120000\` e \`0\` ou \`7200\` e \`0\`).

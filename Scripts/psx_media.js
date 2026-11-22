@@ -125,7 +125,16 @@ function normalizeRaw2336Sectors(raw2336Path, out2336Path, targetSectors, opts =
     }
   }
 
-  // Mark EOF on very last sector submode if audio (optional, clean)
+  // Clear any premature mid-stream 0x80 EOF submode flag injected by psxavenc on non-final sectors
+  // (matches original Neversoft THPS2 STR files which keep submode 0x64/0x48 without mid-stream EOF!)
+  for (let s = 0; s < targetSectors - 1; s++) {
+    const base = s * 2336;
+    if (out[base + 2] & 0x80) {
+      out[base + 2] &= 0x7F;
+      out[base + 6] = out[base + 2];
+    }
+  }
+
   fs.mkdirSync(path.dirname(path.resolve(out2336Path)), { recursive: true });
   fs.writeFileSync(out2336Path, out);
   return { srcSectors, targetSectors };

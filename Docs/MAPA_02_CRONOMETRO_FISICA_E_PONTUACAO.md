@@ -8,11 +8,11 @@ Este guia mapeia os pontos críticos para modificar **tempo de sessão (cronôme
 
 | Ponto de Interesse | Endereço RAM | Offset em `SLUS_010.66` | Instrução / Dado | Como Modificar |
 | :--- | :---: | :---: | :--- | :--- |
-| Constante `120` → `300` (já patcheada no binário atual) | `0x80016848` | `0x007048` | `addiu $v0, $zero, 0x0078` (`120`) → `0x012C` (`300`) | Altere os 2 bytes inferiores (Little-Endian) para o valor desejado (ex.: `0x0258` = 600) |
-| Função chamada logo após carregar a constante | `0x8005566C` | `0x045E6C` | `jal 0x8005566C` (recebe `&480($sp)` em `$a2`) | Use breakpoint no PCSX-Redux neste endereço para rastrear o ponteiro da struct de timer em RAM |
 | Constante `60000` (`0xEA60` = 1 min em ms) | `0x800833E8` | `0x073BE8` | Imediato `0xEA60` (60.000 ms) | Rotina de conversão / formatação de minutos e segundos do cronômetro |
 | Modos de jogo (`CAREER`, `PRACTICE`, `SINGLE`, `CONTEST`, etc.) | `0x800BA600` | `0x0AAE00` | Tabela de ponteiros de modo (`NONE`..`CONTEST`) | Permite identificar quando o timer está ativo (Career/Single = 2:00, Contest = 1:00, Free Skate = infinito) |
 | HUD do relógio (fonte `time.fnt`) | `CD.WAD +0x1C8000` | `panel.pre` (idx 15) | Fonte numérica do cronômetro na tela | Extraia `panel.pre` via `thps2_wad.js unpack --pre` para alterar aparência do relógio |
+
+> **⚠️ AVISO CRÍTICO:** **NUNCA** faça substituição cega de `78 00` (`120`) por `2C 01` (`300`) em `SLUS_010.66`! Os endereços `0x80016848` (`Vector3_Scale`), `0x80018EE0/EE4/F54` (posição do skatista), `0x8006237C` (`SFX_Play`), `0x8006BC2C` (`g_PadManager`), `0x8007E880` (`Font_SetScale`) e `0x8008238C` (`Mem_New`) **NÃO** são o cronômetro e causam bugs graves de física, sumiço do skatista e atraso de controle se alterados!
 
 ### Procedimento Rápido para Congelar ou Customizar o Cronômetro (PCSX-Redux + Ghidra)
 1. Inicie uma sessão no **The Hangar** no PCSX-Redux com **Search RAM (32-bit)** procurando o contador decrescente em milissegundos/frames (entre `120000` e `0` ou `7200` e `0`).

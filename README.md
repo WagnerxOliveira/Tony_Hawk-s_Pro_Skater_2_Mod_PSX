@@ -25,6 +25,7 @@ Seguindo o padrão profissional e legal de ROM hacking, o mod é distribuído na
    - **Windows (1 clique):** extraia o ZIP, coloque o `.xdelta` na mesma pasta e **arraste o seu `.bin` original** para cima de `Aplicar_Patch_THPS2.bat`.
    - **Alternativa GUI (Windows/Linux/macOS):** use o [Delta Patcher](https://github.com/marco-calautti/DeltaPatcher/releases) selecionando seu `.bin` original + `THPS2_MOD_NTSC-U.xdelta`.
 3. **Jogue no Emulador:** abra o arquivo **`THPS2_MOD.cue`** gerado no **DuckStation**, **PCSX-Redux** ou **RetroArch** *(ou grave/rode em PS1 compatível — a imagem preserva os 16 setores de licença originais e o layout LBA exato!)*.
+   - **Perfil otimizado DuckStation (`SLUS-01066.ini`, incluso no ZIP):** copie para a pasta `gamesettings/` do DuckStation para garantir **zero input lag** (`MaxQueuedFrames = 2`), **zero sumiço do skatista/objetos** (`PGXPDepthBuffer = false`, `WidescreenHack = false`, `4:3`) e gráfico limpo em 1080p!
 
 ---
 
@@ -41,7 +42,7 @@ Cada subsistema do jogo possui seu próprio mapa dedicado com **endereços RAM (
 | Documento | Escopo Mapeado |
 | :--- | :--- |
 | 📘 **[MAPA 01 — Memória e Executável (`SLUS_010.66`)](Docs/MAPA_01_MEMORIA_E_EXECUTAVEL.md)** | Cabeçalho `PS-X EXE`, conversão `File ↔ RAM`, mapa completo dos 2 MB de RAM, Entry Point `0x800A2910`, algoritmo exato `Neversoft_HashFilename` (`0x80053F10`), registro forense de patches e integração Ghidra. |
-| ⏱️ **[MAPA 02 — Cronômetro, Física e Pontuação](Docs/MAPA_02_CRONOMETRO_FISICA_E_PONTUACAO.md)** | Pontos de cronômetro (`0x80016848`, `0x800833E8`), modos de jogo (`0x800BA600`), camadas de física/gravidade/equilíbrio, stats base, bônus de decks e multiplicadores de pontuação. |
+| ⏱️ **[MAPA 02 — Cronômetro, Física e Pontuação](Docs/MAPA_02_CRONOMETRO_FISICA_E_PONTUACAO.md)** | Rotinas de cronômetro (`0x800833E8`), modos de jogo (`0x800BA600`), camadas de física/gravidade/equilíbrio, stats base, bônus de decks e multiplicadores de pontuação. |
 | 🗺️ **[MAPA 03 — Fases (`g_LevelTable`) e Objetos (`.TRG`)](Docs/MAPA_03_FASES_E_OBJETOS_TRG.md)** | Todas as **11 fases** em `0x800B8444` (stride `0x174`), objetivos, dinheiro, gap lists, anatomia do formato `_TRG v2.0`, e **todos os 25 arquivos `.TRG`** com **coordenadas reais `(X, Y, Z)`** de spawns, coletáveis (S-K-A-T-E, fitas, cash) e objetos. |
 | 🛹 **[MAPA 04 — Personagens (`g_SkaterTable`), Stats e Decks](Docs/MAPA_04_PERSONAGENS_E_STATS.md)** | Todos os **20 skatistas** em `0x800B6834` (stride `0x154`), modelos 3D (`.PSX`/`.PSH`), rostos (`.BMP`), 10 atributos iniciais (`+0x128`), todos os **8 decks por skatista**, bios (`+0x138`) e especiais (`+0x150`). |
 | 🤸 **[MAPA 05 — Todas as Manobras (`tricks.bin`)](Docs/MAPA_05_MANOBRAS_TRICKS_BIN.md)** | Anatomia do bytecode (`0x0B <nome>\0 0x0A <uint16 pontos>`) e **catálogo completo de todas as manobras** com offset interno, offset absoluto no `CD.WAD`, tipo (Normal / Special) e pontuação base. |
@@ -60,8 +61,11 @@ Cada subsistema do jogo possui seu próprio mapa dedicado com **endereços RAM (
 | **[`Scripts/thps2_wad.js`](Scripts/thps2_wad.js)** | Node.js | Unpack/Repack completo de `CD.HED`, `CD.WAD` e todos os 14 `.PRE` com resolução automática de **1.161+ nomes reais** e integridade **SHA-256 bit-a-bit**. |
 | **[`Scripts/psx_media.js`](Scripts/psx_media.js)** | Node.js | Conversor streaming `RIFF-CDXA (44B+2352B) ↔ Raw Mode 2 (2336B)`, normalizador de contagem exata de setores e gerador do XML do `mkpsxiso`. |
 | **[`Scripts/build_iso.js`](Scripts/build_iso.js)** | Node.js | Compilador em um comando da imagem `.BIN/.CUE` via `mkpsxiso v2.30` preservando a **ordem exata de LBAs Redump e os 16 setores de licença originais**. |
-| **[`Scripts/create_patch.js`](Scripts/create_patch.js)** | Node.js | Gera `THPS2_MOD_NTSC-U.xdelta` (`xdelta3 -9`, janela 1 GB) comparando com o `.BIN` original Redump e executa **validação round-trip SHA-256 automática**. |
-| **[`Scripts/sync_and_release.js`](Scripts/sync_and_release.js)** | Node.js | Pipeline mestre: recompila a ISO, regenera e valida o `.xdelta`, atualiza os 9 mapas `Docs/`, faz commit/push no GitHub e publica automaticamente a Release. |
+| **[`Scripts/create_patch.js`](Scripts/create_patch.js)** | Node.js | Gera `THPS2_MOD_NTSC-U.xdelta` (`xdelta3 -3 -S none`) comparando com o `.BIN` original Redump e executa **validação round-trip SHA-256 automática**. |
+| **[`Scripts/sync_and_release.js`](Scripts/sync_and_release.js)** | Node.js | Pipeline mestre: recompila a ISO, audita 10 estágios forenses (`audit_game.js`), regenera e valida o `.xdelta`, atualiza os 9 mapas `Docs/`, faz commit/push no GitHub e publica automaticamente a Release. |
+| **[`Scripts/mod_skater_lulao.js`](Scripts/mod_skater_lulao.js)** | Node.js | Transformação cirúrgica do Steve Caballero em **Lulao** (nome, retrato `s2face2.bmp`, texturas BGR555 e escultura 3D da cabeça nos 4 modelos `.PSX` com detecção por hash). |
+| **[`Scripts/fix_game_errors.js`](Scripts/fix_game_errors.js)** | Node.js | Correção cirúrgica e reprodutível de todos os bugs binários (8 opcodes MIPS `120→300`, header NTSC-U `+0x4C`, caractere `0xE3`, `cab_L.psx Mesh[15]` e flag EOF prematura nos `.STR`). |
+| **[`Scripts/audit_game.js`](Scripts/audit_game.js)** | Node.js | Validador forense automatizado em **10 estágios** (código MIPS, 174 strings, 1.531 entradas `CD.WAD`, 4 `.PSX`, 48 LBAs, 16 setores de licença, 20 `.STR`, `COMPILED.XA` e 318.043 setores EDC/MSF). |
 | **[`Scripts/replace_videos.js`](Scripts/replace_videos.js)** | Node.js | Pipeline cirúrgico (`ffmpeg` + `psxavenc`) para substituir `INTRO.STR` e os 19 `X\*.STR` mantendo `320×240`, `15 fps`, `MDEC v2`, `F=1 C=1`, taxa XA original e **exatamente o mesmo tamanho em bytes**. |
 | **[`Scripts/ghidra_apply_symbols.py`](Scripts/ghidra_apply_symbols.py)** | Ghidra Py | Rotula automaticamente todas as tabelas e funções mapeadas dentro do projeto Ghidra. |
 | **[`Scripts/generate_all_docs.js`](Scripts/generate_all_docs.js)** | Node.js | Regenera automaticamente os 9 mapas técnicos (`Docs/MAPA_01..09_*.md`) diretamente a partir dos binários extraídos. |

@@ -660,6 +660,7 @@ function parsePsxStructure(buf) {
     if (tag === 0xFFFFFFFF) break;
     mpos += 4 + buf.readUInt32LE(mpos);
   }
+  const meshHashes = Array.from({length: numMeshes}, (_, i) => buf.readUInt32LE(mpos + i * 4));
   mpos += numMeshes * 4;
   const numTexRefs = buf.readUInt32LE(mpos); mpos += 4 + numTexRefs * 4;
   const numPal16 = buf.readUInt32LE(mpos); mpos += 4;
@@ -691,7 +692,7 @@ function parsePsxStructure(buf) {
       palInfo: palSize === 16 ? pal16.get(palId) : pal256.get(palId),
     });
   }
-  return { ptrMeta, numMeshes, meshOffs, textures };
+  return { ptrMeta, numMeshes, meshOffs, meshHashes, textures };
 }
 
 function writeTextureIntoPsx(buf, tex, rgba) {
@@ -854,19 +855,24 @@ function sculptHeadGeometryToLulao(buf, psxInfo, headMeshIdx, faceTexIdx) {
     };
   });
 
-  // Write sculpted vertices back into PSX buffer + update exact bounding box in header!
+  // Write sculpted vertices back into PSX buffer + update exact bounding box & safe bounding sphere radius!
   let xmin = 32767, xmax = -32768, ymin = 32767, ymax = -32768, zmin = 32767, zmax = -32768;
+  let maxVertR = 0;
   for (let v = 0; v < nVerts; v++) {
     const nv = newVerts[v];
     buf.writeInt16LE(nv.x, vOff + v * 8);
     buf.writeInt16LE(nv.y, vOff + v * 8 + 2);
     buf.writeInt16LE(nv.z, vOff + v * 8 + 4);
-    if (nv.w !== 2) {
-      if (nv.x < xmin) xmin = nv.x; if (nv.x > xmax) xmax = nv.x;
-      if (nv.y < ymin) ymin = nv.y; if (nv.y > ymax) ymax = nv.y;
-      if (nv.z < zmin) zmin = nv.z; if (nv.z > zmax) zmax = nv.z;
-    }
+    if (nv.x < xmin) xmin = nv.x; if (nv.x > xmax) xmax = nv.x;
+    if (nv.y < ymin) ymin = nv.y; if (nv.y > ymax) ymax = nv.y;
+    if (nv.z < zmin) zmin = nv.z; if (nv.z > zmax) zmax = nv.z;
+    const r = Math.hypot(nv.x, nv.y, nv.z);
+    if (r > maxVertR) maxVertR = r;
   }
+  // Ensure bounding sphere radius (mo + 0x08, fixed-point /256) never under-bounds sculpted vertices
+  const origRad = buf.readUInt32LE(mo + 0x08);
+  const safeRad = Math.max(origRad, Math.ceil(maxVertR / 16) * 4096);
+  buf.writeUInt32LE(safeRad, mo + 0x08);
   // Update int16 bounding box in mesh header (+0x0C..+0x17, units = coords / 16 rounded outward)
   buf.writeInt16LE(Math.ceil(xmax / 16), mo + 0x0C);
   buf.writeInt16LE(Math.floor(xmin / 16), mo + 0x0E);
@@ -972,7 +978,7 @@ const hairRgba32 = buildSilverHairTexture32();
 // Modify all 4 .PSX models in memory (same byte size!)
 const modelSpecs = [
   {
-    name: 'cab.psx', headMesh: 12, faceTexIdx: 3,
+    name: 'cab.psx', headMeshHash: 0x0f88a1f8, faceTexIdx: 3,
     texMap: {
       0xf59659e3: torsoRgba128,  // Torso (128x64)
       0x7a948d36: pantsRgba128,  // Pants (128x64)
@@ -981,7 +987,7 @@ const modelSpecs = [
     }
   },
   {
-    name: 'cab_L.psx', headMesh: 12, faceTexIdx: 7,
+    name: 'cab_L.psx', headMeshHash: 0x0f88a1f8, faceTexIdx: 7,
     texMap: {
       0xf59659e3: torsoRgba128,
       0x7a948d36: pantsRgba128,
@@ -990,7 +996,7 @@ const modelSpecs = [
     }
   },
   {
-    name: 'cab2b.psx', headMesh: 15, faceTexIdx: 6,
+    name: 'cab2b.psx', headMeshHash: 0x9504086e, faceTexIdx: 6,
     texMap: {
       0x2fd2c5c1: torsoRgba128,  // Shirt -> Suit + Sash (128x64)
       0xf98267a1: headRgba64,    // Head/Face (64x64)
@@ -1001,7 +1007,7 @@ const modelSpecs = [
     }
   },
   {
-    name: 'cab2b_L.psx', headMesh: 15, faceTexIdx: 6,
+    name: 'cab2b_L.psx', headMeshHash: 0x9504086e, faceTexIdx: 6,
     texMap: {
       0x2fd2c5c1: torsoRgba128,
       0xf98267a1: headRgba64,
@@ -1021,6 +1027,10 @@ console.log('\n=== 2. Aplicando texturas PS1 (BGR555) e esculpindo geometria 3D 
 for (const spec of modelSpecs) {
   const psxBuf = getOrigWadSlice(spec.name);
   const info = parsePsxStructure(psxBuf);
+  const headMeshIdx = info.meshHashes.indexOf(spec.headMeshHash);
+  if (headMeshIdx < 0) {
+    throw new Error(`HEAD mesh hash 0x${spec.headMeshHash.toString(16)} nao encontrado em ${spec.name}!`);
+  }
   let replacedTex = 0;
   for (const t of info.textures) {
     const newRgba = spec.texMap[t.palId];
@@ -1032,10 +1042,10 @@ for (const spec of modelSpecs) {
       }
     }
   }
-  const sculpt = sculptHeadGeometryToLulao(psxBuf, info, spec.headMesh, spec.faceTexIdx);
+  const sculpt = sculptHeadGeometryToLulao(psxBuf, info, headMeshIdx, spec.faceTexIdx);
   if (spec.name === 'cab.psx') cabSculpt = sculpt;
   modifiedModels.set(spec.name, psxBuf);
-  console.log(`  [OK] ${spec.name.padEnd(12)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${spec.headMesh}] (${sculpt.newVerts.length} verts) esculpido!`);
+  console.log(`  [OK] ${spec.name.padEnd(12)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${headMeshIdx}] (0x${spec.headMeshHash.toString(16)}, ${sculpt.newVerts.length} verts) esculpido!`);
 }
 
 // Save visual verification previews in build/_lulao_preview/

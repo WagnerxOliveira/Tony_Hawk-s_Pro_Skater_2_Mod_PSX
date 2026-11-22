@@ -17,7 +17,7 @@
 | `t_size` (Tamanho RAM) | `0x001C` | `0x000D2800` (`862208` B) | Fim da imagem em RAM: `0x800E2800` |
 | `s_addr` (Stack) | `0x0030` | `0x801FFFF0` | Topo da pilha (`SYSTEM.CNF` define `801FFF00`) |
 | Tamanho total em disco | — | `864256` bytes | `0x800` (header) + `0x000D2800` (binário) |
-| License String | `0x004C` | `Nossa Fi Oiam Entertainment Inc. for Bursen Vurto Furto` | *Pré-modificada.* Original NTSC-U: `Sony Computer Entertainment Inc. for North America area` |
+| License String | `0x004C` | `Sony Computer Entertainment Inc. for North America area` | Assinatura oficial NTSC-U (restaurada e validada) |
 
 ### Fórmula Exata de Conversão `Offset no Arquivo ↔ Endereço RAM`
 ```text
@@ -87,12 +87,21 @@ uint32_t Neversoft_HashFilename(const char *str) {
 
 ---
 
-## 5. Registro Forense de Patches Existentes no Workspace
+## 5. Registro Forense de Correções de Bugs em `SLUS_010.66`
 
-| Endereço RAM | Offset Arquivo | Original (`.bak`) | Modificado (`SLUS_010.66`) | Observação |
+Durante auditoria forense contra o binário limpo NTSC-U Redump, foi identificada e corrigida (`Scripts/fix_game_errors.js`) uma substituição hexadecimal cega pré-existente (`78 00` → `2C 01`, `120` → `300`) que havia corrompido **8 instruções MIPS** de física, posição do skatista, controle, fonte, áudio e alocador de heap — além do cabeçalho NTSC-U `+0x4C` e do byte não-ASCII `0xE3`:
+
+| Endereço RAM | Offset Arquivo | Corrompido (`300`) | Restaurado (`120`) | Função Real Descompilada (MIPS R3000A) |
 | :---: | :---: | :--- | :--- | :--- |
-| `0x80016848` | `0x007048` | `24020078` (`li $v0, 120`) | `2402012C` (`li $v0, 300`) | Altera constante de `120` para `300` antes de `jal 0x8005566C` |
-| `0x8005F320` | `0x04FB20` | `2484FFF8` (`addiu $a0, -8`) | *Corrompido apenas em `rep\*.bak`* | **ATENÇÃO:** `rep\SLUS_010.66.bak` tem `0000FFF8` (opcode inválido!) — nunca usar essa cópia |
+| `0x80016848` | `0x007048` | `2402012C` | `24020078` (`li $v0, 120`) | `Vector3_Scale` (`0x8005566C`) — comprimento do raycast de colisão do skatista (2,5× causava clipping!) |
+| `0x80018EE0` | `0x0096E0` | `2404012C` | `24040078` (`li $a0, 120`) | `FixedPoint_Mul12` (`0x8006CBF4`) — deslocamento `pos.x` do skatista no estado 5 (causava sumiço/teleporte!) |
+| `0x80018EE4` | `0x0096E4` | `2404012C` | `24040078` (`li $a0, 120`) | `FixedPoint_Mul12` (`0x8006CBF4`) — deslocamento `pos.y` do skatista no estado 5 |
+| `0x80018F54` | `0x009754` | `2404012C` | `24040078` (`li $a0, 120`) | `FixedPoint_Mul12` (`0x8006CBF4`) — deslocamento `pos.z` do skatista no estado 6 |
+| `0x8006237C` | `0x052B7C` | `2404012C` | `24040078` (`li $a0, 120`) | `SFX_Play` (`0x800526B4`) — tocava ID de efeito sonoro errado (`300` em vez de `120`) |
+| `0x8006BC2C` | `0x05C42C` | `2404012C` | `24040078` (`li $a0, 120`) | `g_PadManager` (`0x800C08FC`) — contador de hold do controle (aumentava 2 s → 5 s!) |
+| `0x8007E880` | `0x06F080` | `2404012C` | `24040078` (`li $a0, 120`) | `Font_SetScale` (`0x80034CE0`) — escala de fonte na UI (estourava texto 2,5×!) |
+| `0x8008238C` | `0x072B8C` | `2404012C` | `24040078` (`li $a0, 120`) | `Mem_New` (`0x80084ABC → 0x800392B0`) — tamanho de alocação de objeto C++ na heap de 2 MB |
+| `0x8005F320` | `0x04FB20` | *Apenas em `rep\*.bak`* | `2484FFF8` (`addiu $a0, -8`) | **ATENÇÃO:** `rep\SLUS_010.66.bak` tem `0000FFF8` (opcode inválido!) — nunca usar essa cópia |
 
 ---
 
