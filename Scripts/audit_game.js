@@ -107,11 +107,13 @@ try {
   // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
   const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode } = require('./patch_random_videos_and_voices');
   const expectedSlusHooks = new Map([
-    [0x8003CFB0, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 0 (Activision -> random custom video)
-    [0x8003CFE8, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 1 (Neversoft  -> random custom video)
-    [0x8003D024, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 2 (Intro      -> random custom video)
+    [0x80038950, jalWord(ADDR.Hook_CdMix)],            // Hook XA_UpdateVolume CdMix -> 25% (-12 dB) in Skater Select
+    [0x8003CFB0, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 0 (Activision -> random custom video, 208f cap)
+    [0x8003CFE8, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 1 (Neversoft  -> random custom video, 266f cap)
+    [0x8003D024, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 2 (Intro      -> random custom video, 1486f cap)
     [0x80053690, 0x28620017],                          // Reserve SPU Voice 23 for skater voices (slti v0,v1,23)
     [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..1 + FlushCache
+    [0x80082B80, jalWord(ADDR.Tramp_RunPlaySel)],      // Hook Overlay_Run playsel -> instant music ducking on enter/restore on exit
     [0x800A2950, 0x24843800],                          // InitHeap start -> 0x800E3800
     [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800E3800
   ]);
