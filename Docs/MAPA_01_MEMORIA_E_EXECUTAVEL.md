@@ -105,6 +105,22 @@ Durante auditoria forense contra o binário limpo NTSC-U Redump, foi identificad
 
 ---
 
+## 5B. Hooks MIPS R3000A do Mod (`patch_random_videos_and_voices.js`)
+
+Arena dedicada de **4,5 KB** reservada abaixo da heap (`0x800E2678..0x800E37FF`, sem alterar o tamanho do `SLUS_010.66` nem os 48 LBAs originais da ISO):
+
+| Endereço RAM | Arquivo / Origem | Alteração | Função |
+| :---: | :---: | :--- | :--- |
+| `0x800E2674` | `SLUS_010.66` | `0x800E2678 → 0x800E3800` | Nova base da heap THPS2 (`0x8006C8E4`) |
+| `0x800A2950` | `SLUS_010.66` | `addiu $a0,$a0,0x3800` | Nova base `InitHeap` no Entry Point |
+| `0x80053690` | `SLUS_010.66` | `slti $v0,$v1,23` | Reserva a **Voz 23** da SPU exclusivamente para vozes de skatistas (SFX usa `0..22`) |
+| `0x8006CAD4` | `SLUS_010.66` | `jal 0x800E2680` | `Mod_BootInit`: executa `Movies_Init()`, lê Setores `0..1` de `\VOICES.DAT;1` para `0x800E2800..0x800E37FF` e chama BIOS `FlushCache()` (`0x800AF500`) |
+| `0x8003CFB0` / `CFE8` / `D024` | `SLUS_010.66` | `jal 0x800E2758` | `BootRand_PlaySlot`: sorteia 3 vídeos distintos (Activision, Neversoft e Intro) entre os 20 vídeos customizados com entropia persistente no Setor `60` (`0x3C`) do Memory Card + Root Counters HW |
+| `playsel.bin +0x3388` | `CD.WAD[61]` | `jal 0x800E2780` | `Hook_PlaySel_Scroll`: ao navegar Left/Right até **Lulao (idx 2)** ou **Bolsonaro (idx 3)**, rotaciona e toca o próximo áudio SPU-ADPCM na Voz 23 |
+| `playsel.bin +0x100C` | `CD.WAD[61]` | `jal 0x800E27A8` | `Hook_PlaySel_Confirm`: ao confirmar **Lulao** ou **Bolsonaro** com **X**, toca o chime + próximo áudio SPU-ADPCM do skatista |
+
+---
+
 ## 6. Como Aplicar Símbolos Automaticamente no Ghidra
 
 1. Abra o projeto no Ghidra com o plugin **`ghidra_psx_ldr`**.

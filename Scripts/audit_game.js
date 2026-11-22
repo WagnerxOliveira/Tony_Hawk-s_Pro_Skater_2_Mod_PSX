@@ -104,22 +104,48 @@ try {
   if (gotLic !== expLic) fail('SLUS', `Header +0x4C invalido: "${gotLic}"`);
   else pass('Header PS-X EXE +0x4C NTSC-U 100% valido');
 
-  // Verify ZERO diffs in executable MIPS code regions (outside known rodata/string pools)
-  // Known embedded text pools inside SLUS_010.66:
-  //   - 0x059BC0..0x05BC00 (UI/Menu strings)
-  //   - 0x0A0000..0x0D3000 (.rodata / .data strings & tables)
-  const isTextPool = (off) => (off >= 0x059BC0 && off < 0x05BC00) || (off >= 0x0A0000 && off < 0x0D3000);
-  let codeDiffWords = 0;
+  // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
+  const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode } = require('./patch_random_videos_and_voices');
+  const expectedSlusHooks = new Map([
+    [0x8003CFB0, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 0 (Activision -> random custom video)
+    [0x8003CFE8, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 1 (Neversoft  -> random custom video)
+    [0x8003D024, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 2 (Intro      -> random custom video)
+    [0x80053690, 0x28620017],                          // Reserve SPU Voice 23 for skater voices (slti v0,v1,23)
+    [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..1 + FlushCache
+    [0x800A2950, 0x24843800],                          // InitHeap start -> 0x800E3800
+    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800E3800
+  ]);
+  const isTextPool = (off) => (off >= 0x059BC0 && off < 0x05BC00) || (off >= 0x0A0000 && off < 0x0D2E74);
+  const isModTail = (ram) => ram >= 0x800E2680 && ram < 0x800E2800;
+  let codeDiffWords = 0, verifiedHooks = 0;
   for (let off = 0x800; off < slusOrig.length; off += 4) {
     const wO = slusOrig.readUInt32LE(off);
     const wC = slusIso.readUInt32LE(off);
+    const ram = 0x80010000 + (off - 0x800);
+    if (expectedSlusHooks.has(ram)) {
+      if (wC !== expectedSlusHooks.get(ram)) {
+        fail('SLUS', `Hook MIPS esperado em 0x${ram.toString(16).toUpperCase()} incorreto: 0x${wC.toString(16)} != 0x${expectedSlusHooks.get(ram).toString(16)}`);
+        codeDiffWords++;
+      } else {
+        verifiedHooks++;
+      }
+      continue;
+    }
+    if (isModTail(ram)) continue;
     if (wO !== wC && !isTextPool(off)) {
-      const ram = 0x80010000 + (off - 0x800);
       fail('SLUS', `Codigo MIPS modificado inesperadamente em 0x${ram.toString(16).toUpperCase()} (off 0x${off.toString(16)}): 0x${wO.toString(16)} -> 0x${wC.toString(16)}`);
       codeDiffWords++;
     }
   }
-  if (codeDiffWords === 0) pass('ZERO instrucoes MIPS corrompidas/alteradas em todo o segmento executavel .text!');
+  const expTail = assembleSlusTailClean();
+  const gotTail = slusIso.subarray(0x800 + (0x800E2680 - 0x80010000), 0x800 + (0x800E2800 - 0x80010000));
+  if (!gotTail.equals(expTail)) {
+    fail('SLUS', 'Bootstrapper/trampolins em 0x800E2680..0x800E27FF diferem do binario MIPS esperado!');
+    codeDiffWords++;
+  }
+  if (codeDiffWords === 0 && verifiedHooks === expectedSlusHooks.size) {
+    pass(`Codigo MIPS 100% integro (${verifiedHooks}/${expectedSlusHooks.size} hooks cirurgicos + bootstrapper 0x800E2680..0x800E27FF verificados, 0 diffs inesperados)`);
+  }
 
   // Verify known bad opcode 0x0000FFF8 at 0x8005F320 is absent
   if (slusIso.readUInt32LE(0x04FB20) === 0x0000FFF8) {
@@ -134,6 +160,9 @@ try {
   let strErr = 0;
   for (let p = 0x800; p < slusOrig.length; p++) {
     if (slusOrig[p] === slusIso[p]) continue;
+    const pRam = (0x80010000 + (p - 0x800)) >>> 0;
+    const pRamAligned = (pRam & ~3) >>> 0;
+    if (expectedSlusHooks.has(pRamAligned) || isModTail(pRam)) continue;
     let s = p;
     // Walk back only through printable ASCII bytes (avoid stepping back into preceding MIPS code bytes!)
     while (s > 0x800 && slusOrig[s - 1] >= 0x20 && slusOrig[s - 1] <= 0x7E) s--;
@@ -191,7 +220,7 @@ try {
     pass('CD.HED 100% identico ao Redump original');
   }
 
-  const allowedWadIdxs = new Set([13, 45, 370, 371, 389, 391, 433, 435, 986, 988, 1030, 1032]);
+  const allowedWadIdxs = new Set([13, 45, 61, 370, 371, 389, 391, 433, 435, 986, 988, 1030, 1032]);
   let wadChecked = 0, wadUnexpected = 0;
   for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
     const h = hedDisk.readUInt32LE(idx * 12);
@@ -207,7 +236,26 @@ try {
       wadUnexpected++;
     }
   }
-  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas + ${allowedWadIdxs.size} mods: Lulao, Bolsonaro e Hangar)`);
+  // Verify playsel.bin (idx 61) ONLY modified +0x3388 (Scroll hook) and +0x100C (Confirm hook)
+  {
+    const psOrig = getWadEntry(fdRed, 455, hedDisk, 61);
+    const psMod  = getWadEntry(fdMod, 455, hedDisk, 61);
+    const expPlaySelHooks = new Map([
+      [0x3388, jalWord(ADDR.Tramp_PlaySelScroll)],
+      [0x100C, jalWord(ADDR.Tramp_PlaySelConfirm)],
+    ]);
+    let psErr = 0;
+    for (let o = 0; o < psOrig.length; o += 4) {
+      const wO = psOrig.readUInt32LE(o), wM = psMod.readUInt32LE(o);
+      if (expPlaySelHooks.has(o)) {
+        if (wM !== expPlaySelHooks.get(o)) { fail('WAD', `playsel.bin hook +0x${o.toString(16)} incorreto: 0x${wM.toString(16)}`); psErr++; }
+      } else if (wO !== wM) {
+        fail('WAD', `playsel.bin alterado fora dos hooks em +0x${o.toString(16)}: 0x${wO.toString(16)} -> 0x${wM.toString(16)}`); psErr++;
+      }
+    }
+    if (psErr === 0) pass('playsel.bin (idx=61): 2/2 hooks Skater Select (+0x3388 Scroll, +0x100C Confirm) validos, 31.632 B restantes intactos');
+  }
+  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas + ${allowedWadIdxs.size} mods: Lulao, Bolsonaro, Hangar e playsel.bin)`);
 
   // =========================================================================
   // STAGE 4: s2face2.bmp, s2face3.bmp & options.pre INTEGRITY
@@ -364,13 +412,13 @@ try {
   }
 
   // =========================================================================
-  // STAGE 6: ISO-9660 LBA ORDER, SIZES, XA ATTRIBUTES & UNMODIFIED FILES
+  // STAGE 6: ISO-9660 LBA ORDER, SIZES, XA ATTRIBUTES, UNMODIFIED FILES & VOICES.DAT
   // =========================================================================
-  console.log('\n[STAGE 6] ISO-9660 — 48/48 Arquivos, Ordem LBA Redump & Overlays BMX/*.BIN');
+  console.log('\n[STAGE 6] ISO-9660 — 48/48 Arquivos Originais Redump + 49o VOICES.DAT (MODCODE + 28 Clips SPU)');
   const pvdR = readSectorsUser(fdRed, 16, 1), pvdM = readSectorsUser(fdMod, 16, 1);
   const filesR = parseIsoDir(fdRed, pvdR.readUInt32LE(158), pvdR.readUInt32LE(166), '').sort((a, b) => a.lba - b.lba);
   const filesM = parseIsoDir(fdMod, pvdM.readUInt32LE(158), pvdM.readUInt32LE(166), '').sort((a, b) => a.lba - b.lba);
-  if (filesR.length !== 48 || filesM.length !== 48) fail('ISO', `Contagem de arquivos: ${filesM.length} (esperado 48)`);
+  if (filesR.length !== 48 || filesM.length !== 49) fail('ISO', `Contagem de arquivos: ${filesM.length} (esperado 49 = 48 Redump + VOICES.DAT)`);
   const modMap = new Map(filesM.map(f => [f.path, f]));
   const expectedModFiles = new Set([
     'SLUS_010.66', 'CD.WAD', 'COMPILED.XA', 'INTRO.STR',
@@ -395,7 +443,57 @@ try {
       else unmodOk++;
     }
   }
-  if (lbaOk === 48) pass(`48/48 arquivos com LBA, tamanho e atributos CD-XA 100% identicos ao Redump (${unmodOk} arquivos intocados bit-a-bit)`);
+  if (lbaOk === 48) pass(`48/48 arquivos originais com LBA, tamanho e atributos CD-XA 100% identicos ao Redump (${unmodOk} arquivos intocados bit-a-bit)`);
+
+  // Validate 49th file VOICES.DAT (MODCODE Sector 0 + VOICETBL Sector 1 + 28 SPU-ADPCM payloads)
+  const voicesFile = modMap.get('VOICES.DAT');
+  let voicesSectors = 0;
+  if (!voicesFile) {
+    fail('VOICES', 'VOICES.DAT ausente na ISO!');
+  } else {
+    voicesSectors = Math.ceil(voicesFile.size / 2048);
+    const voicesBuf = readSectorsUser(fdMod, voicesFile.lba, voicesSectors);
+    const voicesDisk = fs.readFileSync(path.join(rootDir, 'VOICES.DAT'));
+    if (!voicesBuf.equals(voicesDisk)) fail('VOICES', 'VOICES.DAT na ISO difere do arquivo no workspace!');
+    const expModCode = assembleModCode();
+    if (!voicesBuf.subarray(0, 2048).equals(expModCode)) fail('VOICES', 'Setor 0 (MODCODE) em VOICES.DAT difere do assembly esperado!');
+    const magic = voicesBuf.readUInt32LE(2048);
+    const lCnt = voicesBuf.readUInt32LE(2052);
+    const bCnt = voicesBuf.readUInt32LE(2056);
+    const spuBase = voicesBuf.readUInt32LE(2060);
+    if (magic !== 0x564F4943 || lCnt !== 14 || bCnt !== 14 || spuBase !== 0x58000) {
+      fail('VOICES', `VOICETBL invalido: magic=0x${magic.toString(16)}, lulao=${lCnt}, bolso=${bCnt}, spu=0x${spuBase.toString(16)}`);
+    } else {
+      let clipErr = 0, maxSpu = 0;
+      const totalClips = lCnt + bCnt;
+      for (let i = 0; i < totalClips; i++) {
+        const eb = 2048 + 16 + i * 16;
+        const sOff = voicesBuf.readUInt32LE(eb);
+        const sCnt = voicesBuf.readUInt32LE(eb + 4);
+        const bSz = voicesBuf.readUInt32LE(eb + 8);
+        const pitch = voicesBuf.readUInt32LE(eb + 12);
+        if (bSz > maxSpu) maxSpu = bSz;
+        if (bSz === 0 || (bSz % 64) !== 0 || bSz > (0x7EFF0 - 0x58000) || pitch !== 0x0400 || (sOff + sCnt) > voicesSectors) {
+          fail('VOICES', `Clip #${i} invalido: sOff=${sOff} sCnt=${sCnt} bSz=${bSz} pitch=0x${pitch.toString(16)}`);
+          clipErr++; continue;
+        }
+        const payload = voicesBuf.subarray(sOff * 2048, sOff * 2048 + bSz);
+        let hasLoopRepeat = false, hasEnd = false;
+        for (let o = 0; o + 16 <= bSz; o += 16) {
+          const fl = payload[o + 1];
+          if (fl & 0x02) hasLoopRepeat = true;
+          if (fl & 0x01) hasEnd = true;
+        }
+        if (hasLoopRepeat || !hasEnd) {
+          fail('VOICES', `Clip #${i} flags ADPCM invalidas: hasEnd=${hasEnd} hasLoopRepeat=${hasLoopRepeat}`);
+          clipErr++;
+        }
+      }
+      if (clipErr === 0) {
+        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): MODCODE + VOICETBL + ${totalClips}/28 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
+      }
+    }
+  }
 
   // =========================================================================
   // STAGE 7: LICENSE SECTORS 0..15 & CUE SHEET
@@ -484,13 +582,14 @@ try {
   }
 
   // =========================================================================
-  // STAGE 10: FULL DISC 318,043-SECTOR SYNC / MSF / MODE / SUBHEADER / EDC SCAN
+  // STAGE 10: FULL DISC SECTOR SYNC / MSF / MODE / SUBHEADER / EDC SCAN
   // =========================================================================
-  console.log('\n[STAGE 10] Varredura Completa de Todos os 318.043 Setores (748 MB) de THPS2_MOD.bin');
   const modSize = fs.statSync(modBin).size;
   const redSize = fs.statSync(redumpBin).size;
-  if (modSize !== redSize) fail('DISC', `Tamanho do BIN (${modSize}) != Redump (${redSize})`);
+  const expModSize = redSize + voicesSectors * 2352;
   const totalSec = modSize / 2352;
+  console.log(`\n[STAGE 10] Varredura Completa de Todos os ${totalSec.toLocaleString('pt-BR')} Setores (${(modSize/1048576).toFixed(1)} MB) de THPS2_MOD.bin`);
+  if (modSize !== expModSize) fail('DISC', `Tamanho do BIN (${modSize}) != esperado Redump + VOICES.DAT (${expModSize})`);
   const syncPat = Buffer.from([0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00]);
   const scanBuf = Buffer.alloc(CHUNK * 2352);
   let badSync = 0, badMsf = 0, badMode = 0, badSub = 0, badEdc1 = 0, badEdc2 = 0;
@@ -518,7 +617,7 @@ try {
   if (badSync || badMsf || badMode || badSub || badEdc1 || badEdc2) {
     fail('DISC', `Erros de setor: sync=${badSync} msf=${badMsf} mode=${badMode} sub=${badSub} edc1=${badEdc1} edc2=${badEdc2}`);
   } else {
-    pass(`318.043/318.043 setores 100% perfeitos (0 erros de Sync, MSF, Mode 2, Subheader ou EDC Form1/Form2)`);
+    pass(`${totalSec.toLocaleString('pt-BR')}/${totalSec.toLocaleString('pt-BR')} setores 100% perfeitos (0 erros de Sync, MSF, Mode 2, Subheader ou EDC Form1/Form2)`);
   }
 
 } finally {

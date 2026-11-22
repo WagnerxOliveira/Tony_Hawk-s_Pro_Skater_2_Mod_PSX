@@ -112,3 +112,45 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 | 32 | `0x800C2134` | `0x0B2934` | `\X\PC.STR;1` | Private Carrera | 320×240 | **1144** | `0x025800` | Sim | str (2336B) |
 | 33 | `0x800C2158` | `0x0B2958` | `\X\SM.STR;1` | Spider-Man | 320×240 | **1236** | `0x025800` | Sim | str (2336B) |
 | 34 | `0x800C217C` | `0x0B297C` | `\X\MS.STR;1` | 80's Tony | 320×240 | **821** | `0x025800` | Sim | str (2336B) |
+
+---
+
+## 4. Banco de Vozes SPU-ADPCM (`VOICES.DAT`) & Vídeos Aleatórios de Boot
+
+- **49º Arquivo da ISO (`\VOICES.DAT;1`):** posicionado após `INTRO.STR` e antes do postgap de 150 setores, preservando **48/48 LBAs originais Redump**.
+- **Layout de `VOICES.DAT` (1.161.216 B / 567 setores):**
+  - **Setor 0 (`0x0000..0x07FF`):** `MODCODE` MIPS R3000A carregado em `0x800E2800` no boot via `Mod_BootInit` + `FlushCache()`.
+  - **Setor 1 (`0x0800..0x0FFF`):** `VOICETBL` carregado em `0x800E3000` (`magic = 0x564F4943`, 14 clips Lulao + 14 clips Bolsonaro).
+  - **Setores `2..566`:** 28 streams SPU-ADPCM mono `11025 Hz` (`pitch = 0x0400`, maior clip = `128320 B` / `159728 B` na SPU RAM `0x58000..0x7EFF0`).
+- **Vídeos Aleatórios no Boot:** `BootRand_PlaySlot` substitui os 3 slots de inicialização (`ATVILOGO`, `LOGO`, `INTRO`) por 3 vídeos customizados distintos entre os 20 disponíveis (`[2, 16..34]`), usando contador persistente no **Setor 60 (`0x3C`)** do Memory Card + timers de hardware (`0x1F801100/10/20`) + `VSync(-1)`.
+
+| # | Skatista | Arquivo Original | Duração | Bytes SPU | Setores | Offset Setor |
+| :-: | :--- | :--- | :-: | :-: | :-: | :-: |
+| 0 | **Lulao** (idx 2) | `cade_o_ze_gotinha.mp3` | 6.07s | 38272 B | 19 | +2 |
+| 1 | **Lulao** (idx 2) | `lula_cantando_numb.mp3` | 14.16s | 89216 B | 44 | +21 |
+| 2 | **Lulao** (idx 2) | `lula_cara_sem_dente.mp3` | 6.19s | 38976 B | 20 | +65 |
+| 3 | **Lulao** (idx 2) | `lula_o_cracudo_nao_arruma_desculpas.mp3` | 17.18s | 108224 B | 53 | +85 |
+| 4 | **Lulao** (idx 2) | `lula_pobre_andar_de_aviao.mp3` | 5.79s | 36480 B | 18 | +138 |
+| 5 | **Lulao** (idx 2) | `lula_por_favor_me_ajuda.mp3` | 5.15s | 32448 B | 16 | +156 |
+| 6 | **Lulao** (idx 2) | `lula_saco_de_pe_nao_para_vazio.mp3` | 3.02s | 19008 B | 10 | +172 |
+| 7 | **Lulao** (idx 2) | `lula_vai_todo_mindo_se_fdr.mp3` | 5.14s | 32384 B | 16 | +182 |
+| 8 | **Lulao** (idx 2) | `o_bagulho_e_loko_manolo.mp3` | 2.52s | 15872 B | 8 | +198 |
+| 9 | **Lulao** (idx 2) | `o_brasil_acabou.mp3` | 4.28s | 26944 B | 14 | +206 |
+| 10 | **Lulao** (idx 2) | `pense_no_lula.mp3` | 12.56s | 79104 B | 39 | +220 |
+| 11 | **Lulao** (idx 2) | `pergunta_pro_google.mp3` | 1.31s | 8256 B | 5 | +259 |
+| 12 | **Lulao** (idx 2) | `setembro_vai_entrar_o_grosso-lula.mp3` | 8.20s | 51648 B | 26 | +264 |
+| 13 | **Lulao** (idx 2) | `solta_meu_pai.mp3` | 3.69s | 23232 B | 12 | +290 |
+| 14 | **Bolsonaro** (idx 3) | `a_sra_nao_pode.mp3` | 3.49s | 22016 B | 11 | +302 |
+| 15 | **Bolsonaro** (idx 3) | `bolsonaro_acabou_porra.mp3` | 1.27s | 8000 B | 4 | +313 |
+| 16 | **Bolsonaro** (idx 3) | `bolsonaro_cara_de_homossexual.mp3` | 4.01s | 25280 B | 13 | +317 |
+| 17 | **Bolsonaro** (idx 3) | `bolsonaro_familia.mp3` | 20.37s | 128320 B | 63 | +330 |
+| 18 | **Bolsonaro** (idx 3) | `bolsonaro_historico_de_atleta.mp3` | 14.58s | 91840 B | 45 | +393 |
+| 19 | **Bolsonaro** (idx 3) | `bolsonaro_popcorn_and_ice_cream.mp3` | 13.00s | 81920 B | 40 | +438 |
+| 20 | **Bolsonaro** (idx 3) | `bolsonaro_posso_fazer_uma_brincadeira.mp3` | 3.09s | 19456 B | 10 | +478 |
+| 21 | **Bolsonaro** (idx 3) | `bolsonaro_prisao.mp3` | 1.56s | 9856 B | 5 | +488 |
+| 22 | **Bolsonaro** (idx 3) | `bolsonaro_risada.mp3` | 6.54s | 41216 B | 21 | +493 |
+| 23 | **Bolsonaro** (idx 3) | `bolsonaro_tomar_um_cafe.mp3` | 2.84s | 17920 B | 9 | +514 |
+| 24 | **Bolsonaro** (idx 3) | `canalhas_canalhas.mp3` | 4.33s | 27264 B | 14 | +523 |
+| 25 | **Bolsonaro** (idx 3) | `eu_tenho_nada_a_ver_com_isso.mp3` | 1.36s | 8576 B | 5 | +537 |
+| 26 | **Bolsonaro** (idx 3) | `explica.mp3` | 4.17s | 26240 B | 13 | +542 |
+| 27 | **Bolsonaro** (idx 3) | `fica_aqui.mp3` | 3.61s | 22720 B | 12 | +555 |

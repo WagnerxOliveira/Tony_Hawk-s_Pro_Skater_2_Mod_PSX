@@ -193,6 +193,22 @@ Durante auditoria forense contra o binário limpo NTSC-U Redump, foi identificad
 
 ---
 
+## 5B. Hooks MIPS R3000A do Mod (\`patch_random_videos_and_voices.js\`)
+
+Arena dedicada de **4,5 KB** reservada abaixo da heap (\`0x800E2678..0x800E37FF\`, sem alterar o tamanho do \`SLUS_010.66\` nem os 48 LBAs originais da ISO):
+
+| Endereço RAM | Arquivo / Origem | Alteração | Função |
+| :---: | :---: | :--- | :--- |
+| \`0x800E2674\` | \`SLUS_010.66\` | \`0x800E2678 → 0x800E3800\` | Nova base da heap THPS2 (\`0x8006C8E4\`) |
+| \`0x800A2950\` | \`SLUS_010.66\` | \`addiu $a0,$a0,0x3800\` | Nova base \`InitHeap\` no Entry Point |
+| \`0x80053690\` | \`SLUS_010.66\` | \`slti $v0,$v1,23\` | Reserva a **Voz 23** da SPU exclusivamente para vozes de skatistas (SFX usa \`0..22\`) |
+| \`0x8006CAD4\` | \`SLUS_010.66\` | \`jal 0x800E2680\` | \`Mod_BootInit\`: executa \`Movies_Init()\`, lê Setores \`0..1\` de \`\\VOICES.DAT;1\` para \`0x800E2800..0x800E37FF\` e chama BIOS \`FlushCache()\` (\`0x800AF500\`) |
+| \`0x8003CFB0\` / \`CFE8\` / \`D024\` | \`SLUS_010.66\` | \`jal 0x800E2758\` | \`BootRand_PlaySlot\`: sorteia 3 vídeos distintos (Activision, Neversoft e Intro) entre os 20 vídeos customizados com entropia persistente no Setor \`60\` (\`0x3C\`) do Memory Card + Root Counters HW |
+| \`playsel.bin +0x3388\` | \`CD.WAD[61]\` | \`jal 0x800E2780\` | \`Hook_PlaySel_Scroll\`: ao navegar Left/Right até **Lulao (idx 2)** ou **Bolsonaro (idx 3)**, rotaciona e toca o próximo áudio SPU-ADPCM na Voz 23 |
+| \`playsel.bin +0x100C\` | \`CD.WAD[61]\` | \`jal 0x800E27A8\` | \`Hook_PlaySel_Confirm\`: ao confirmar **Lulao** ou **Bolsonaro** com **X**, toca o chime + próximo áudio SPU-ADPCM do skatista |
+
+---
+
 ## 6. Como Aplicar Símbolos Automaticamente no Ghidra
 
 1. Abra o projeto no Ghidra com o plugin **\`ghidra_psx_ldr\`**.
@@ -820,6 +836,24 @@ Referenciada por \`0x80038AEC\` e \`0x80038CBC\`. Ao substituir músicas em \`CO
     const aud = exe.readUInt32LE(o + 24);
     const mode = aud === 0 ? 'data (2048B)' : 'str (2336B)';
     md += `| ${i} | \`${hex(a)}\` | \`${hex(o,6)}\` | \`${sPath}\` | ${mdEsc(sLab)} | ${w}×${h} | **${nf}** | \`${hex(fb,6)}\` | ${aud ? 'Sim' : 'Não'} | ${mode} |\n`;
+  }
+
+  // Section 4: VOICES.DAT + Random Boot Videos
+  const vManifestPath = path.join(rootDir, 'build', 'voices_manifest.json');
+  if (fs.existsSync(vManifestPath)) {
+    const vm = JSON.parse(fs.readFileSync(vManifestPath, 'utf8'));
+    md += `\n---\n\n## 4. Banco de Vozes SPU-ADPCM (\`VOICES.DAT\`) & Vídeos Aleatórios de Boot\n\n`;
+    md += `- **49º Arquivo da ISO (\`\\VOICES.DAT;1\`):** posicionado após \`INTRO.STR\` e antes do postgap de 150 setores, preservando **48/48 LBAs originais Redump**.\n`;
+    md += `- **Layout de \`VOICES.DAT\` (${vm.voicesDatBytes.toLocaleString('pt-BR')} B / ${vm.voicesDatSectors} setores):**\n`;
+    md += `  - **Setor 0 (\`0x0000..0x07FF\`):** \`MODCODE\` MIPS R3000A carregado em \`0x800E2800\` no boot via \`Mod_BootInit\` + \`FlushCache()\`.\n`;
+    md += `  - **Setor 1 (\`0x0800..0x0FFF\`):** \`VOICETBL\` carregado em \`0x800E3000\` (\`magic = 0x564F4943\`, ${vm.lulaoCount} clips Lulao + ${vm.bolsoCount} clips Bolsonaro).\n`;
+    md += `  - **Setores \`2..${vm.voicesDatSectors - 1}\`:** ${vm.entries.length} streams SPU-ADPCM mono \`${vm.sampleRateHz} Hz\` (\`pitch = ${vm.spuPitchHex}\`, maior clip = \`${vm.maxClipBytes} B\` / \`${vm.spuSlotMaxBytes} B\` na SPU RAM \`${vm.spuSlotStartHex}..0x7EFF0\`).\n`;
+    md += `- **Vídeos Aleatórios no Boot:** \`BootRand_PlaySlot\` substitui os 3 slots de inicialização (\`ATVILOGO\`, \`LOGO\`, \`INTRO\`) por 3 vídeos customizados distintos entre os 20 disponíveis (\`[2, 16..34]\`), usando contador persistente no **Setor 60 (\`0x3C\`)** do Memory Card + timers de hardware (\`0x1F801100/10/20\`) + \`VSync(-1)\`.\n\n`;
+    md += `| # | Skatista | Arquivo Original | Duração | Bytes SPU | Setores | Offset Setor |\n| :-: | :--- | :--- | :-: | :-: | :-: | :-: |\n`;
+    for (let i = 0; i < vm.entries.length; i++) {
+      const e = vm.entries[i];
+      md += `| ${i} | **${e.skater}** (idx ${e.skaterIdx}) | \`${mdEsc(e.file)}\` | ${e.durationSec.toFixed(2)}s | ${e.byteSize} B | ${e.sectorCount} | +${e.sectorOffset} |\n`;
+    }
   }
 
   writeDoc('MAPA_08_AUDIO_XA_VAB_E_VIDEOS_STR.md', md);

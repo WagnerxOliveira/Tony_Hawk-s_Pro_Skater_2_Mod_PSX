@@ -294,6 +294,9 @@ function generateMkpsxisoXml(rootDir, stagingRawDir, outXmlPath, outBinPath, out
     ...xOrder.map(f => `        <file name="${f}" type="str" source="${rawRef(path.join('X', f))}"/>`),
     '      </dir>',
     `      <file name="INTRO.STR" type="str" source="${rawRef('INTRO.STR')}"/>`,
+    ...(fs.existsSync(path.join(rootDir, 'VOICES.DAT'))
+      ? [`      <file name="VOICES.DAT" type="data" source="${dataRef('VOICES.DAT')}"/>`]
+      : []),
     '      <dummy sectors="150"/>',
     '    </directory_tree>',
     '  </track>',

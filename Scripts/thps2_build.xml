@@ -64,6 +64,7 @@
         <file name="THOMAS.STR" type="str" source="D:\thps2_extract_antigravity\build\staging_raw\X\THOMAS.STR"/>
       </dir>
       <file name="INTRO.STR" type="str" source="D:\thps2_extract_antigravity\build\staging_raw\INTRO.STR"/>
+      <file name="VOICES.DAT" type="data" source="D:\thps2_extract_antigravity\VOICES.DAT"/>
       <dummy sectors="150"/>
     </directory_tree>
   </track>
