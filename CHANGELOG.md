@@ -15,6 +15,12 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 - **Natan Oliver (`Slot 10` — `rowley2*`):** Style A (camiseta azul `"LACTA"` limpa + cordão vermelho/crachá + relógio dourado + jeans), Style B (terno preto 2 botões + gravata vermelha + punhos brancos) e retrato `s2face11.bmp`.
 - **Biblioteca Compartilhada [`Scripts/psx_skater_lib.js`](Scripts/psx_skater_lib.js):** quantizadores BGR555 8-bit & 4-bit (regra anti-`0x0000`), texto espelhado para polaridade UV da GTE (`flipX: true`) e renderizador 3D multi-ângulo de QA com projeção real PS1.
 
+### ✍️ Biografias PT-BR com Acentuação Nativa (`Scripts/mod_skater_bios.js` & `s2bio.fnt`)
+- **Suporte Nativo a Acentuação PT-BR (`á, ã, ç, é, ê, í, ó`) em `s2bio.fnt` + `SLUS_010.66`:**
+  - Aplicadas **5 palavras MIPS cirúrgicas in-place** em `Font_CharToGlyph @ RAM 0x8005B9B4` (`0x8005BAC4/BAF4/BAFC/BB0C/BB1C`) remapeando 4 slots não utilizados em NTSC-U (`œ/ä/ö/ü` → Glifos `90..93`) para `ã (0xE3)`, `ê (0xEA)`, `í (0xED)` e `ó (0xF3)` e separando `ê` de `é`.
+  - Desenhados pixel-a-pixel em 4bpp na paleta oficial de `s2bio.fnt` (`4.468 B` exatos, sincronizado in-place em `CD.WAD[458]` e `player.pre +0x14`) os acentos agudos (`á, é, í, ó`), til (`ã`) e circunflexo (`ê`), preservando o `ç` original da Neversoft e mantendo `CD.HED` 100% inalterado.
+- **Biografias Customizadas (32 Linhas 1:1 Inline, 0 Overflows):** inseridas integralmente nos slots originais de **Lulao (`Slot 2`, `0x800B9DEC`, 16 linhas)** e **Bolsonaro (`Slot 3`, `0x800B9E30`, 16 linhas)** com largura máxima de `152 px` (dentro do teto original `158 px` da caixa de biografia).
+
 ### 🔧 Correções Cirúrgicas & Restaurações
 - **Mapeamento Real dos Retratos de Mural (`s2face*.bmp`):** corrigido o deslocamento histórico da tabela alfabética da Neversoft (`Slot ≠ s2faceN.bmp`), restaurando **Bucky Lasek (`s2face7.bmp`)** 100% ao original Redump e posicionando Francis (`s2face9`), Valter (`s2face10`) e Natan (`s2face11`) nos slots exatos referenciados por `SLUS_010.66` (com validação cruzada dinâmica no Estágio 4 de `audit_game.js`).
 - **Fluxo "Continuar" na Seleção de Skatistas:** isolada a flag privada `g_InPlaySel @ 0x800E27DC` (sem tocar em `23464($gp)`), corrigindo definitivamente o retorno indevido para a Roda Gigante (`State 0`) e garantindo transição limpa para *Level Select* (`State 2`).

@@ -106,12 +106,21 @@ try {
 
   // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
   const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode } = require('./patch_random_videos_and_voices');
+  const {
+    FONT_PATCH_WORDS,
+    PTBR_ALLOWED_HIGH_BYTES,
+    BIO_LULAO,
+    BIO_BOLSONARO,
+    BIO_SLOT_OFFSETS,
+    buildPatchedS2BioFnt,
+  } = require('./mod_skater_bios');
   const expectedSlusHooks = new Map([
     [0x80038950, jalWord(ADDR.Hook_CdMix)],            // Hook XA_UpdateVolume CdMix -> 25% (-12 dB) in Skater Select
     [0x8003CFB0, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 0 (Activision -> random custom video, 208f cap)
     [0x8003CFE8, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 1 (Neversoft  -> random custom video, 266f cap)
     [0x8003D024, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 2 (Intro      -> random custom video, 1486f cap)
     [0x80053690, 0x28620017],                          // Reserve SPU Voice 23 for skater voices (slti v0,v1,23)
+    ...FONT_PATCH_WORDS.map(p => [p.ram, p.patched]),  // Font_CharToGlyph @ 0x8005B9B4: 5 words for native PT-BR accents (ã,ê,í,ó)
     [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..1 + FlushCache
     [0x80082B80, jalWord(ADDR.Tramp_RunPlaySel)],      // Hook Overlay_Run playsel -> instant music ducking on enter/restore on exit
     [0x800A2950, 0x24843800],                          // InitHeap start -> 0x800E3800
@@ -187,17 +196,20 @@ try {
       fail('STRINGS', `Printf mismatch em 0x${ram.toString(16)}: "${fmtO}" vs "${fmtC}"`);
       strErr++;
     }
+    const isPtBrBio = BIO_SLOT_OFFSETS.has(s);
     for (let k = 0; k < curStr.length; k++) {
       const b = curStr[k];
-      if (b < 0x20 || b > 0x7E) {
+      const okAscii = b >= 0x20 && b <= 0x7E;
+      const okPtBr = isPtBrBio && PTBR_ALLOWED_HIGH_BYTES.has(b);
+      if (!okAscii && !okPtBr) {
         fail('STRINGS', `Byte fora do ASCII .FNT (0x${b.toString(16)}) em 0x${ram.toString(16)} +${k}: "${curStr.toString('latin1')}"`);
         strErr++;
       }
     }
   }
-  const chkStr = (off, exp) => {
+  const chkStr = (off, exp, encoding = 'ascii') => {
     const end = slusIso.indexOf(0, off);
-    const got = slusIso.subarray(off, end).toString('ascii');
+    const got = slusIso.subarray(off, end).toString(encoding);
     if (got !== exp) fail('STRINGS', `Esperado "${exp}" em +0x${off.toString(16)}, encontrado "${got}"`);
   };
   chkStr(0x0C45F0, 'Lulao');
@@ -211,7 +223,10 @@ try {
   chkStr(0x0C4DC4, 'Valter');
   chkStr(0x0C873C, 'Valter Pacheco');
   chkStr(0x0A2034, "Valter's only been");
-  if (strErr === 0) pass(`${checkedStrs.size} strings modificadas validadas (0 overflows, 0 erros printf, 0 bytes fora do .FNT)`);
+  for (const item of [...BIO_LULAO, ...BIO_BOLSONARO]) {
+    chkStr(item.fileOff, item.text, 'latin1');
+  }
+  if (strErr === 0) pass(`${checkedStrs.size} strings modificadas validadas (incl. 32 linhas de biografias PT-BR Lulao/Bolsonaro; 0 overflows, 0 erros printf, 0 bytes fora do .FNT)`);
 
   // =========================================================================
   // STAGE 3: CD.HED & CD.WAD ALL 1,531 ENTRIES
@@ -227,7 +242,7 @@ try {
   }
 
   const allowedWadIdxs = new Set([
-    45, 61,                                         // options.pre, playsel.bin
+    45, 60, 61, 458,                                // options.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
     370, 371, 372, 377, 378, 379,                   // 6 custom portraits: s2face2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     389, 986, 433, 988,                             // Lulao (4 .PSX)
     391, 1030, 435, 1032,                           // Bolsonaro (4 .PSX)
@@ -270,7 +285,22 @@ try {
     }
     if (psErr === 0) pass('playsel.bin (idx=61): 2/2 hooks Skater Select (+0x3388 Scroll, +0x100C Confirm) validos, 31.632 B restantes intactos');
   }
-  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 6 skatistas customizados + playsel.bin)`);
+  // Verify s2bio.fnt (idx 458) & player.pre (idx 60) ONLY modified s2bio.fnt (+0x14..+0x1187) identically!
+  {
+    const fntOrig = getWadEntry(fdRed, 455, hedDisk, 458);
+    const fntMod  = getWadEntry(fdMod, 455, hedDisk, 458);
+    const preOrig = getWadEntry(fdRed, 455, hedDisk, 60);
+    const preMod  = getWadEntry(fdMod, 455, hedDisk, 60);
+    const expFnt  = buildPatchedS2BioFnt(fntOrig);
+    let fntErr = 0;
+    if (!fntMod.equals(expFnt)) { fail('WAD', 's2bio.fnt (idx=458) difere do binario PT-BR esperado!'); fntErr++; }
+    if (!preMod.subarray(0x14, 0x14 + 4468).equals(expFnt)) { fail('WAD', 'player.pre (idx=60) +0x14 dessincronizado de s2bio.fnt!'); fntErr++; }
+    if (!preOrig.subarray(0, 0x14).equals(preMod.subarray(0, 0x14)) || !preOrig.subarray(0x14 + 4468).equals(preMod.subarray(0x14 + 4468))) {
+      fail('WAD', 'player.pre (idx=60) alterado fora do slot de s2bio.fnt!'); fntErr++;
+    }
+    if (fntErr === 0) pass('s2bio.fnt (idx=458) & player.pre (idx=60 +0x14): fonte PT-BR (á,ã,ç,é,ê,í,ó, 4.468 B) 100% sincronizada, 219.528 B restantes de player.pre intactos');
+  }
+  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 6 skatistas, s2bio.fnt/player.pre e playsel.bin)`);
 
   // =========================================================================
   // STAGE 4: ALL 6 PORTRAITS (s2face2,3,4,9,10,11) + SLUS CROSS-CHECK + BUCKY LASEK (s2face7) ORIGINAL

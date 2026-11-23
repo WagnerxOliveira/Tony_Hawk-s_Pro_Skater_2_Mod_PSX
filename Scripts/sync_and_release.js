@@ -89,6 +89,7 @@ const scriptsToSync = [
   'mod_skater_francis.js',
   'mod_skater_natan.js',
   'mod_skater_valter.js',
+  'mod_skater_bios.js',
   'mod_hangar_walls.js',
   'build_skater_voices.js',
   'patch_random_videos_and_voices.js',
