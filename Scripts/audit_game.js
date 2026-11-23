@@ -228,7 +228,7 @@ try {
 
   const allowedWadIdxs = new Set([
     45, 61,                                         // options.pre, playsel.bin
-    370, 371, 372, 375, 377, 378,                   // 6 custom portraits: s2face2,3,4,7,9,10
+    370, 371, 372, 377, 378, 379,                   // 6 custom portraits: s2face2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     389, 986, 433, 988,                             // Lulao (4 .PSX)
     391, 1030, 435, 1032,                           // Bolsonaro (4 .PSX)
     393, 994, 437, 996,                             // Wagner Oliver (4 .PSX)
@@ -273,20 +273,26 @@ try {
   if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 6 skatistas customizados + playsel.bin)`);
 
   // =========================================================================
-  // STAGE 4: ALL 6 PORTRAITS (s2face2,3,4,7,9,10) & options.pre INTEGRITY
+  // STAGE 4: ALL 6 PORTRAITS (s2face2,3,4,9,10,11) + SLUS CROSS-CHECK + BUCKY LASEK (s2face7) ORIGINAL
   // =========================================================================
-  console.log('\n[STAGE 4] options.pre & 6 Retratos Customizados (Lulao, Bolsonaro, Wagner, Francis, Valter, Natan)');
+  console.log('\n[STAGE 4] options.pre & 6 Retratos Customizados (validacao cruzada SLUS_010.66 <-> CD.WAD <-> options.pre)');
   const optOrig = getWadEntry(fdRed, 455, hedDisk, 45);
   const optMod = getWadEntry(fdMod, 455, hedDisk, 45);
   const portraitSpecs = [
-    { nm: 's2face2.bmp',  idx: 370, magIdx: 5,  preOff: 0x256C4 },
-    { nm: 's2face3.bmp',  idx: 371, magIdx: 39, preOff: 0x266CC },
-    { nm: 's2face4.bmp',  idx: 372, magIdx: 26, preOff: 0x276D4 },
-    { nm: 's2face7.bmp',  idx: 375, magIdx: 0,  preOff: 0x2A6EC },
-    { nm: 's2face9.bmp',  idx: 377, magIdx: 0,  preOff: 0x2C6FC },
-    { nm: 's2face10.bmp', idx: 378, magIdx: 18, preOff: 0x2D708 },
+    { nm: 's2face2.bmp',  idx: 370, magIdx: 5,  preOff: 0x256C4, slusFaceOff: 0x0C46E0, slusNameOff: 0x0C45F0, skater: 'Lulao' },
+    { nm: 's2face3.bmp',  idx: 371, magIdx: 39, preOff: 0x266CC, slusFaceOff: 0x0C47F4, slusNameOff: 0x0C4714, skater: 'Bolsonaro' },
+    { nm: 's2face4.bmp',  idx: 372, magIdx: 26, preOff: 0x276D4, slusFaceOff: 0x0C4910, slusNameOff: 0x0C4824, skater: 'Wagner Oliver' },
+    { nm: 's2face9.bmp',  idx: 377, magIdx: 0,  preOff: 0x2C6FC, slusFaceOff: 0x0C4C58, slusNameOff: 0x0C4B68, skater: 'Francis Paulo' },
+    { nm: 's2face10.bmp', idx: 378, magIdx: 18, preOff: 0x2D708, slusFaceOff: 0x0C4EA0, slusNameOff: 0x0C4DB4, skater: 'Valter Pacheco' },
+    { nm: 's2face11.bmp', idx: 379, magIdx: 7,  preOff: 0x2E714, slusFaceOff: 0x0C4FA8, slusNameOff: 0x0C4EDC, skater: 'Natan Oliver' },
   ];
   for (const ps of portraitSpecs) {
+    // Dynamic cross-check against SLUS_010.66 skater table!
+    const slusFace = slusIso.subarray(ps.slusFaceOff, slusIso.indexOf(0, ps.slusFaceOff)).toString('ascii');
+    const slusSkater = slusIso.subarray(ps.slusNameOff, slusIso.indexOf(0, ps.slusNameOff)).toString('ascii').trim();
+    if (slusFace !== ps.nm || slusSkater !== ps.skater) {
+      fail('PORTRAIT', `Divergencia SLUS_010.66 para ${ps.skater}: esperado ${ps.nm}, encontrado ${slusSkater} -> ${slusFace}`);
+    }
     const o = getWadEntry(fdRed, 455, hedDisk, ps.idx);
     const m = getWadEntry(fdMod, 455, hedDisk, ps.idx);
     if (m.length !== 4088 || !o.subarray(0, 54).equals(m.subarray(0, 54))) {
@@ -299,6 +305,14 @@ try {
       fail('PORTRAIT', `${ps.nm} nao encontrado no offset 0x${ps.preOff.toString(16)} de options.pre!`);
     }
   }
+  // Explicitly assert Bucky Lasek (s2face7.bmp, idx=375, +0x2A6EC) is 100% Redump original!
+  {
+    const f7Orig = getWadEntry(fdRed, 455, hedDisk, 375);
+    const f7Mod  = getWadEntry(fdMod, 455, hedDisk, 375);
+    if (!f7Orig.equals(f7Mod) || !optMod.subarray(0x2A6EC, 0x2A6EC + 4088).equals(f7Orig)) {
+      fail('PORTRAIT', 's2face7.bmp (Bucky Lasek) nao esta 100% identico ao original Redump!');
+    }
+  }
   let optOutsideDiff = 0;
   for (let i = 0; i < optOrig.length; i++) {
     const inAny = portraitSpecs.some(ps => i >= ps.preOff && i < ps.preOff + 4088);
@@ -306,7 +320,7 @@ try {
     if (optOrig[i] !== optMod[i]) optOutsideDiff++;
   }
   if (optOutsideDiff > 0) fail('PORTRAIT', `options.pre tem ${optOutsideDiff} bytes alterados fora dos 6 retratos!`);
-  else pass('6/6 retratos (s2face2,3,4,7,9,10) com header 4088 B, chaves magenta #FF00FF e options.pre 100% integros');
+  else pass('6/6 retratos (s2face2,3,4,9,10,11) validados contra SLUS_010.66 + s2face7 (Bucky Lasek) 100% original + options.pre integro');
 
   // =========================================================================
   // STAGE 5: ALL 24 SKATER .PSX MODELS (6 SKATERS x 4 LOD/STYLES) & HANGAR skhan_l.psx

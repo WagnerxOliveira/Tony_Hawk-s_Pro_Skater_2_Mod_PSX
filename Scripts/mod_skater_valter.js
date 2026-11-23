@@ -9,7 +9,7 @@
  *    * 0x0C4DC4 ( 8 B): "Valter\0\0"
  *    * 0x0C873C (16 B): "Valter Pacheco\0\0"
  *    * 0x0A2034 (20 B): "Valter's only been\0\0"
- *  - Portrait s2face9.bmp (CD.WAD[377] + options.pre +0x2C6FC, EXACT 4,088 B, magenta idx 0)
+ *  - Portrait s2face10.bmp (SLUS 0x0C4EA0 -> CD.WAD[378] + options.pre +0x2D708, EXACT 4,088 B, magenta idx 18)
  *  - Automatic white-scratch inpainting + vintage contrast recovery on valter.jpg (1205x1606)!
  *  - 3D Head (Mesh[15] 0x1ab6ae9d across rynld2, rynld_L, rynld2b, rynld2bL):
  *    * Neat short salt-and-pepper graying hair + mustache + clean fair white skin (0x5fd59d39) + fair hands (0x8a0750ed)
@@ -96,7 +96,7 @@ function buildValterPortrait(origBmp) {
       inner[d] = c[0]; inner[d + 1] = c[1]; inner[d + 2] = c[2]; inner[d + 3] = 255;
     }
   }
-  return buildPortraitBmpFromInner46x36(origBmp, inner, 0); // Verified magenta idx=0 in s2face9.bmp!
+  return buildPortraitBmpFromInner46x36(origBmp, inner, 18); // Verified magenta idx=18 in s2face10.bmp (Slot 9 Valter)!
 }
 
 // 2. 64x64 3D Head Texture anchored to uv_head_rynld2.png (eyes v=29, nose (32,35), mustache v=41..45, lips v=46, chin v=54)
@@ -450,8 +450,8 @@ function patchSlusValterNames() {
 // MAIN (--preview or full apply)
 // ============================================================================
 const previewOnly = process.argv.includes('--preview');
-console.log('=== VALTER PACHECO (Slot 9, ex-Andrew Reynolds: rynld2, rynld_L, rynld2b, rynld2bL + s2face9.bmp + SLUS) ===');
-const portrait = buildValterPortrait(getOrigWadSlice('s2face9.bmp'));
+console.log('=== VALTER PACHECO (Slot 9, ex-Andrew Reynolds: rynld2, rynld_L, rynld2b, rynld2bL + s2face10.bmp + SLUS) ===');
+const portrait = buildValterPortrait(getOrigWadSlice('s2face10.bmp'));
 const head64 = buildValterHead64();
 const torsoA = buildValterStyleATorso64x64();
 const sleeveA = buildValterStyleASleeves32x64();
@@ -491,7 +491,7 @@ for (const sp of modelSpecs) {
 
 fs.mkdirSync(previewDir, { recursive: true });
 writePng(path.join(previewDir, 'preview_valter_repaired_photo.png'), SW, SH, faceSrc);
-writePng(path.join(previewDir, 'preview_s2face9.png'), 62, 47, portrait.previewRgba);
+writePng(path.join(previewDir, 'preview_s2face10.png'), 62, 47, portrait.previewRgba);
 writePng(path.join(previewDir, 'preview_head_64x64.png'), 64, 64, head64);
 renderPs1SkaterPreview(modified.get('rynld2.psx'), [0, 7, 8, 15], [{ yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }], 150, 220, 0.14, 0, path.join(previewDir, 'preview_valter_styleA_ps1.png'));
 renderPs1SkaterPreview(modified.get('rynld2b.psx'), [0, 7, 8, 15], [{ yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }], 150, 220, 0.14, 0, path.join(previewDir, 'preview_valter_styleB_ps1.png'));
@@ -501,6 +501,6 @@ console.log(`Previews salvos em: ${previewDir}`);
 
 if (!previewOnly) {
   patchSlusValterNames();
-  patchWadAndOptionsPre({ portraitName: 's2face9.bmp', portraitBuf: portrait.outBmp, preOffset: 0x2C6FC, modelsMap: modified });
+  patchWadAndOptionsPre({ portraitName: 's2face10.bmp', portraitBuf: portrait.outBmp, preOffset: 0x2D708, modelsMap: modified });
   console.log('=== VALTER PACHECO APLICADO EM SLUS_010.66 + CD.WAD + options.pre COM 100% DE PRECISAO! ===');
 }

@@ -4,7 +4,7 @@
 /**
  * THPS2 PS1 (SLUS-01066) Surgical Skater Customization: Natan Oliver (Slot 10 / Geoff Rowley base)
  *
- *  - Portrait s2face10.bmp (CD.WAD[378] + options.pre +0x2D708, EXACT 4,088 B, magenta idx 18)
+ *  - Portrait s2face11.bmp (SLUS 0x0C4FA8 -> CD.WAD[379] + options.pre +0x2E714, EXACT 4,088 B, magenta idx 7)
  *  - 3D Head (Mesh[15] 0xba25cbf5 across rowley2, rowley_L, rowley2b, rowly2bL):
  *    * Sharp frontal 3x4 natan.jpg (847x804) -> clean fair white skin + short dark upswept hair + 360° neck!
  *    * Updates BOTH Style A head (0xdce93a50) & Style B head (0x775fc79d) + fair white hands (0x5ceb082c)
@@ -58,7 +58,7 @@ function buildNatanPortrait(origBmp) {
       inner[d] = c[0]; inner[d + 1] = c[1]; inner[d + 2] = c[2]; inner[d + 3] = 255;
     }
   }
-  return buildPortraitBmpFromInner46x36(origBmp, inner, 18); // Verified magenta idx=18 in s2face10.bmp!
+  return buildPortraitBmpFromInner46x36(origBmp, inner, 7); // Verified magenta idx=7 in s2face11.bmp (Slot 10 Natan)!
 }
 
 // 2. 64x64 3D Head Texture anchored to uv_head_rowley2.png (eyes v=29, nose (31,38), lips v=46, chin v=54)
@@ -416,8 +416,8 @@ function sculptNatanHead(buf, info, headMi) {
 // MAIN (--preview or full apply)
 // ============================================================================
 const previewOnly = process.argv.includes('--preview');
-console.log('=== NATAN OLIVER (Slot 10: rowley2, rowley_L, rowley2b, rowly2bL + s2face10.bmp) ===');
-const portrait = buildNatanPortrait(getOrigWadSlice('s2face10.bmp'));
+console.log('=== NATAN OLIVER (Slot 10: rowley2, rowley_L, rowley2b, rowly2bL + s2face11.bmp) ===');
+const portrait = buildNatanPortrait(getOrigWadSlice('s2face11.bmp'));
 const head64 = buildNatanHead64();
 const torsoA = buildNatanStyleATorso128x64();
 const sleeveA = buildNatanStyleASleeves32x64();
@@ -456,7 +456,7 @@ for (const sp of modelSpecs) {
 }
 
 fs.mkdirSync(previewDir, { recursive: true });
-writePng(path.join(previewDir, 'preview_s2face10.png'), 62, 47, portrait.previewRgba);
+writePng(path.join(previewDir, 'preview_s2face11.png'), 62, 47, portrait.previewRgba);
 writePng(path.join(previewDir, 'preview_head_64x64.png'), 64, 64, head64);
 renderPs1SkaterPreview(modified.get('rowley2.psx'), [0, 7, 8, 15], [{ yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }], 150, 220, 0.14, 0, path.join(previewDir, 'preview_natan_styleA_ps1.png'));
 renderPs1SkaterPreview(modified.get('rowley2b.psx'), [0, 7, 8, 15], [{ yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }], 150, 220, 0.14, 0, path.join(previewDir, 'preview_natan_styleB_ps1.png'));
@@ -465,6 +465,6 @@ renderPs1SkaterPreview(modified.get('rowley2b.psx'), [0,1,2,3,4,5,6,7,8,9,10,11,
 console.log(`Previews salvos em: ${previewDir}`);
 
 if (!previewOnly) {
-  patchWadAndOptionsPre({ portraitName: 's2face10.bmp', portraitBuf: portrait.outBmp, preOffset: 0x2D708, modelsMap: modified });
+  patchWadAndOptionsPre({ portraitName: 's2face11.bmp', portraitBuf: portrait.outBmp, preOffset: 0x2E714, modelsMap: modified });
   console.log('=== NATAN OLIVER APLICADO EM CD.WAD + options.pre COM 100% DE PRECISAO! ===');
 }

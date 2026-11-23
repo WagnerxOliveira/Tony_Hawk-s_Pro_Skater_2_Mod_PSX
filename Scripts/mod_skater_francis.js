@@ -4,7 +4,7 @@
 /**
  * THPS2 PS1 (SLUS-01066) Surgical Skater Customization: Francis Paulo (Slot 7 / Rodney Mullen base)
  *
- *  - Portrait s2face7.bmp (CD.WAD[375] + options.pre +0x2A6EC, EXACT 4,088 B, magenta idx 0)
+ *  - Portrait s2face9.bmp (SLUS 0x0C4C58 -> CD.WAD[377] + options.pre +0x2C6FC, EXACT 4,088 B, magenta idx 0)
  *  - 3D Head (Mesh[15] 0xba25cbf5 across mullen, mullen_L, mullen2b, mulln2bL):
  *    * Levels francis.png (+19° CCW straightening) + strong backlit shadow recovery -> clean fair white skin!
  *    * Sculpts Francis's voluminous fluffy dark hair silhouette & clean facial contours (100% w != 0 locked!)
@@ -79,7 +79,7 @@ function buildFrancisPortrait(origBmp) {
       inner[d] = c[0]; inner[d + 1] = c[1]; inner[d + 2] = c[2]; inner[d + 3] = 255;
     }
   }
-  return buildPortraitBmpFromInner46x36(origBmp, inner, 0); // Verified magenta idx=0 in s2face7.bmp!
+  return buildPortraitBmpFromInner46x36(origBmp, inner, 0); // Verified magenta idx=0 in s2face9.bmp (Slot 7 Francis)!
 }
 
 // 2. 64x64 3D Head Texture anchored to uv_head_mullen.png (eyes v=29, nose (30.5,38), mouth v=46, chin v=54)
@@ -431,8 +431,8 @@ function sculptFrancisHead(buf, info, headMi) {
 // MAIN (--preview or full apply)
 // ============================================================================
 const previewOnly = process.argv.includes('--preview');
-console.log('=== FRANCIS PAULO (Slot 7: mullen, mullen_L, mullen2b, mulln2bL + s2face7.bmp) ===');
-const portrait = buildFrancisPortrait(getOrigWadSlice('s2face7.bmp'));
+console.log('=== FRANCIS PAULO (Slot 7: mullen, mullen_L, mullen2b, mulln2bL + s2face9.bmp) ===');
+const portrait = buildFrancisPortrait(getOrigWadSlice('s2face9.bmp'));
 const head64 = buildFrancisHead64();
 const torsoA = buildFrancisStyleATorso128x64();
 const sleeveA = buildFrancisStyleASleeves32x64();
@@ -471,7 +471,7 @@ for (const sp of modelSpecs) {
 }
 
 fs.mkdirSync(previewDir, { recursive: true });
-writePng(path.join(previewDir, 'preview_s2face7.png'), 62, 47, portrait.previewRgba);
+writePng(path.join(previewDir, 'preview_s2face9.png'), 62, 47, portrait.previewRgba);
 writePng(path.join(previewDir, 'preview_head_64x64.png'), 64, 64, head64);
 renderPs1SkaterPreview(modified.get('mullen.psx'), [0, 7, 8, 15], [{ yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }], 150, 220, 0.14, 0, path.join(previewDir, 'preview_francis_styleA_ps1.png'));
 renderPs1SkaterPreview(modified.get('mullen2b.psx'), [0, 7, 8, 15], [{ yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }], 150, 220, 0.14, 0, path.join(previewDir, 'preview_francis_styleB_ps1.png'));
@@ -480,6 +480,6 @@ renderPs1SkaterPreview(modified.get('mullen2b.psx'), [0,1,2,3,4,5,6,7,8,9,10,11,
 console.log(`Previews salvos em: ${previewDir}`);
 
 if (!previewOnly) {
-  patchWadAndOptionsPre({ portraitName: 's2face7.bmp', portraitBuf: portrait.outBmp, preOffset: 0x2A6EC, modelsMap: modified });
+  patchWadAndOptionsPre({ portraitName: 's2face9.bmp', portraitBuf: portrait.outBmp, preOffset: 0x2C6FC, modelsMap: modified });
   console.log('=== FRANCIS PAULO APLICADO EM CD.WAD + options.pre COM 100% DE PRECISAO! ===');
 }
