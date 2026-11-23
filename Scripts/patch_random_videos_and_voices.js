@@ -52,6 +52,7 @@ const SYM = {
   Overlay_Run:            0x80023418,
   GetSelectedSkaterIdx:   0x8008A3A8,
   SFX_Play:               0x800526B4,
+  SFX_FindGlobal:         0x80053A04,
   Mem_Alloc:              0x8005515C,
   Mem_Free:               0x800551A8,
   CDWAD_WaitIdle:         0x800544C4,
@@ -95,12 +96,16 @@ const ADDR = {
   g_ModLoaded:         0x800E27C8,
   Str_VoicesPath:      0x800E27CC, // "\VOICES.DAT;1\0" (14 B -> padded 16 B to 0x800E27DC)
   g_InPlaySel:         0x800E27DC, // Dedicated 4-byte flag (1 while inside playsel.bin; NEVER touches 23464($gp)!)
+  Tramp_BailSfx:       0x800E27E0, // 4-word (16 B) trampoline -> Hook_BailSfx @ 0x800E3200
+  g_BailScreamIdx:     0x800E27F0, // Dedicated 4-byte strict round-robin index (0..8)
+  g_LastBailFrame:     0x800E27F4, // Dedicated 4-byte VSync(-1) frame timestamp for anti-overlap cooldown
   ModCodeBase:         0x800E2800, // Sector 0 of VOICES.DAT (2048 B)
   Entry_BootMovie:     0x800E2800,
   Entry_PlaySelScroll: 0x800E2808,
   Entry_PlaySelConfirm:0x800E2810,
   Entry_RunPlaySel:    0x800E2818,
-  VoiceTblBase:        0x800E3000, // Sector 1 of VOICES.DAT (2048 B)
+  VoiceTblBase:        0x800E3000, // Sector 1 of VOICES.DAT (0x800E3000..0x800E31FF = VOICETBL)
+  Hook_BailSfx:        0x800E3200, // Sector 1 upper region (0x800E3200..0x800E37FF = 1536 B resident Bail Round-Robin code!)
   SpuVoiceBuf:         0x00058000, // Upper SPU RAM (0x58000..0x7EFF0 = 159,728 B free)
 };
 
@@ -418,10 +423,131 @@ function assembleSlusTailCompact() {
   a.padTo(ADDR.g_InPlaySel);
   a.word(0); // g_InPlaySel (0 = outside playsel, 1 = inside playsel)
 
+  // Trampoline for SFX_Play Bail Round-Robin @ 0x800E27E0..0x800E27EF (reuses Tramp_Dispatch!)
+  emitTramp(ADDR.Tramp_BailSfx, ADDR.Hook_BailSfx, SYM.SFX_FindGlobal);
+
+  a.padTo(ADDR.g_BailScreamIdx);
+  a.word(0); // g_BailScreamIdx (0..8)
+  a.padTo(ADDR.g_LastBailFrame);
+  a.word(0); // g_LastBailFrame (VSync(-1) frame stamp)
+
   a.padTo(0x800E2800);
   const bin = a.emit();
   if (bin.length !== 0x180) throw new Error(`SLUS tail size mismatch: ${bin.length} != 384`);
   return bin;
+}
+
+// ============================================================================
+// 1B. Assemble Resident Bail Scream Round-Robin Hook (0x800E3200..0x800E37FF)
+//     Loaded inside VOICES.DAT Sector 1 (+0x200) at boot & covered by FlushCache!
+// ============================================================================
+function assembleBailHookCode() {
+  const a = new MipsAsm(ADDR.Hook_BailSfx);
+
+  // Called from SFX_Play @ 0x800527B8 replacing `jal SFX_FindGlobal(a0)`:
+  //   a0 = s0 = s1 = 16-bit sfxId
+  //   s4 = volume, s5 = loopFlag, s6 = -1, s7 = pitch
+  //   Safe caller-saved temps: t0..t3, v0, v1, a0..a3
+  a.label('Hook_BailSfx');
+  a.addiu(R.t0, R.a0, -28);
+  a.sltiu(R.t1, R.t0, 3);                      // 28..30 (Skater_BailImpactSFX ground slam)
+  a.bne(R.t1, R.zero, 'is_bail');
+  a.addiu(R.t0, R.a0, -181);                   // delay slot
+  a.sltiu(R.t1, R.t0, 7);                      // 181..187 (bail anim grunts + pit falls)
+  a.bne(R.t1, R.zero, 'is_bail');
+  a.addiu(R.t0, R.a0, -384);                   // delay slot
+  a.sltiu(R.t1, R.t0, 2);                      // 384..385 (long scream)
+  a.bne(R.t1, R.zero, 'is_bail');
+  a.addiu(R.t0, R.a0, -393);                   // delay slot
+  a.sltiu(R.t1, R.t0, 3);                      // 393..395 (2P female bail remaps)
+  a.bne(R.t1, R.zero, 'is_bail');
+  a.nop();
+
+  // Fast path (~6 cycles) for all non-bail SFX
+  a.j(SYM.SFX_FindGlobal);
+  a.nop();
+
+  // Bail voice SFX intercepted!
+  a.label('is_bail');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 16, R.sp);
+
+  // VSync(-1) -> v0 = current 60Hz VBlank counter (preserves s0..s7 per MIPS O32 ABI)
+  a.jal(SYM.VSync);
+  a.addiu(R.a0, R.zero, -1);
+
+  // Cooldown anti-overlap check (50 frames ~= 0.83 s): prevent 2 screams overlapping on same fall!
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t1, ADDR.g_LastBailFrame & 0xffff, R.t0);
+  a.nop();
+  a.beq(R.t1, R.zero, 'do_rotate');
+  a.subu(R.t2, R.v0, R.t1);                    // delay slot: elapsed = now - prev
+  a.sltiu(R.t3, R.t2, 50);
+  a.beq(R.t3, R.zero, 'do_rotate');
+  a.nop();
+
+  // Suppress duplicate overlapping bail grunt cleanly: s0 = 0xFFFF -> SFX_FindLevel fails too, return -1
+  a.ori(R.s0, R.zero, 0xFFFF);
+  a.addiu(R.v0, R.zero, -1);
+  a.lw(R.ra, 16, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // Strict non-repeating Round-Robin rotation: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 0
+  a.label('do_rotate');
+  a.sw(R.v0, ADDR.g_LastBailFrame & 0xffff, R.t0);
+  a.lw(R.t1, ADDR.g_BailScreamIdx & 0xffff, R.t0);
+  a.nop();
+  a.sltiu(R.t2, R.t1, 9);
+  a.bne(R.t2, R.zero, 'idx_ok');
+  a.nop();
+  a.move(R.t1, R.zero);
+
+  a.label('idx_ok');
+  a.addiu(R.t2, R.t1, 1);
+  a.addiu(R.t3, R.zero, 9);
+  a.bne(R.t2, R.t3, 'save_next');
+  a.nop();
+  a.move(R.t2, R.zero);
+
+  a.label('save_next');
+  a.sw(R.t2, ADDR.g_BailScreamIdx & 0xffff, R.t0);
+
+  // Load newSfxId = BailIdTable[idx] (9 x u16)
+  a.la(R.t3, 'BailIdTable');
+  a.sll(R.t1, R.t1, 1);
+  a.addu(R.t3, R.t3, R.t1);
+  a.lhu(R.a0, 0, R.t3);
+  a.nop();
+  a.move(R.s0, R.a0);
+  a.move(R.s1, R.a0);
+
+  // Boost volume floor to 10240 so screams cut cleanly over COMPILED.XA & concrete slam SFX
+  a.slti(R.t2, R.s4, 10240);
+  a.beq(R.t2, R.zero, 'vol_ok');
+  a.nop();
+  a.addiu(R.s4, R.zero, 10240);
+
+  a.label('vol_ok');
+  a.lw(R.ra, 16, R.sp);
+  a.addiu(R.sp, R.sp, 24);
+  a.j(SYM.SFX_FindGlobal);
+  a.nop();
+
+  a.align(4);
+  a.label('BailIdTable');
+  const tbl = Buffer.alloc(20, 0);
+  const ids = [28, 29, 30, 181, 182, 183, 185, 186, 187];
+  for (let i = 0; i < ids.length; i++) tbl.writeUInt16LE(ids[i], i * 2);
+  a.bytes(tbl);
+
+  const used = a.pc() - ADDR.Hook_BailSfx;
+  if (used > 1536) throw new Error(`Hook_BailSfx excede 1536 B (${used} B)!`);
+  console.log(`  [ASM] Hook_BailSfx: 0x${ADDR.Hook_BailSfx.toString(16)}..0x${a.pc().toString(16)} (${used} B / 1536 B, livre: ${1536 - used} B)`);
+
+  a.padTo(ADDR.Hook_BailSfx + 1536);
+  return a.emit();
 }
 
 // ============================================================================
@@ -1128,22 +1254,24 @@ function applyAll() {
     }
   }
 
-  // 1. Assemble SLUS tail (0x800E2680..0x800E27FF) & MODCODE (0x800E2800..0x800E2FFF)
+  // 1. Assemble SLUS tail (0x800E2680..0x800E27FF), MODCODE (0x800E2800..0x800E2FFF) & Hook_BailSfx (0x800E3200..0x800E37FF)
   const slusTail = assembleSlusTailCompact();
   const modCode = assembleModCode();
+  const bailHookCode = assembleBailHookCode();
 
-  // 2. Build/update VOICES.DAT with assembled MODCODE in Sector 0 + VOICETBL in Sector 1 + 28 SPU clips
+  // 2. Build/update VOICES.DAT with MODCODE (Sec 0) + VOICETBL & Hook_BailSfx (Sec 1) + 28 SPU clips
   console.log('');
-  const manifest = buildVoicesBank(modCode, false);
+  const manifest = buildVoicesBank(modCode, false, bailHookCode);
 
   // 3. Patch SLUS_010.66 (exact same file size 864,256 B!)
-  console.log('\n=== Aplicando 9 Hooks Cirurgicos em SLUS_010.66 ===');
+  console.log('\n=== Aplicando 10 Hooks Cirurgicos em SLUS_010.66 ===');
   const slus = fs.readFileSync(slusPath);
   const ramToOff = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
 
   patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674');
   patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x24843800,                   'InitHeap addiu @ 0x800A2950');
   patchWord(slus, ramToOff(0x80053690), 0x28620018, 0x28620017,                   'Reserve SPU Voice 23 @ 0x80053690');
+  patchWord(slus, ramToOff(0x800527B8), jalWord(SYM.SFX_FindGlobal),      jalWord(ADDR.Tramp_BailSfx),     'Hook SFX_Play Bail Round-Robin @ 0x800527B8');
   patchWord(slus, ramToOff(0x8006CAD4), jalWord(SYM.Movies_Init),         jalWord(ADDR.Mod_BootInit),      'Hook Movies_Init @ 0x8006CAD4');
   patchWord(slus, ramToOff(0x8003CFB0), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),   'Boot Slot 0 (Activision) @ 0x8003CFB0', [jalWord(0x800E2758)]);
   patchWord(slus, ramToOff(0x8003CFE8), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),   'Boot Slot 1 (Neversoft)  @ 0x8003CFE8', [jalWord(0x800E2758)]);
@@ -1170,10 +1298,10 @@ function applyAll() {
   fs.writeFileSync(wadPath, wad);
   console.log(`  [OK] CD.WAD gravado (${wad.length} B — todos os offsets 100% preservados!)`);
 
-  return { slusTail, modCode, manifest };
+  return { slusTail, modCode, bailHookCode, manifest };
 }
 
-module.exports = { applyAll, ADDR, SYM, jalWord, assembleSlusTailClean: assembleSlusTailCompact, assembleModCode };
+module.exports = { applyAll, ADDR, SYM, jalWord, assembleSlusTailClean: assembleSlusTailCompact, assembleModCode, assembleBailHookCode };
 
 if (require.main === module) {
   applyAll();

@@ -26,7 +26,11 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 - **Fluxo "Continuar" na Seleção de Skatistas:** isolada a flag privada `g_InPlaySel @ 0x800E27DC` (sem tocar em `23464($gp)`), corrigindo definitivamente o retorno indevido para a Roda Gigante (`State 0`) e garantindo transição limpa para *Level Select* (`State 2`).
 - **Fase 1 (*The Hangar* — `skhan_l.psx`):** restaurada 100% bit-a-bit ao original Redump (`316.604 B`).
 
-### 🔊 Motor Residente MIPS R3000A (`VOICES.DAT` & `0x800E2680..0x800E37FF`)
+### 🔊 Motor Residente MIPS R3000A (`VOICES.DAT` & `0x800E2680..0x800E37FF`) & Gritos de Queda (`.VAB`)
+- **9 Gritos Alternados de Queda (*Bail*) em Partida (`Scripts/mod_bail_screams.js` + `Hook_BailSfx @ 0x800E3200`):**
+  - Extraídos e auditados 9 gritos distintos dos vídeos (`6` de *Loko em casa sozinho.mp4* + `3` de *A-melhor-Luta-de-2016_720p.mp4*), pré-processados via DSP (`85 Hz–3,6 kHz`, normalização `-0,8 dBFS`, fades anti-clique) e codificados em SPU-ADPCM 4-bit Sony VABTool (`7.796 Hz`, `center=90`, `26.512 B ≤ 26.784 B`).
+  - Injetados in-place no `Program 2` dos 3 bancos globais (`skate2.vab/sfx`, `skate2g.vab/sfx`, `skate2p.vab/sfx`) mantendo **tamanho exato Redump (`0 B` extras em SPU RAM, `CD.HED` 100% intacto)** — seguro mesmo na fase mais pesada (`WAD[538]`, `516.944 / 520.176 B` SPU RAM).
+  - Hook cirúrgico em `SFX_Play @ 0x800527B8` (`Tramp_BailSfx @ 0x800E27E0` → `Hook_BailSfx @ 0x800E3200` no Setor 1 de `VOICES.DAT`) garantindo **rotação estrita round-robin (`0→1→...→8→0`, um grito diferente a cada queda)** + **cooldown anti-sobreposição de 50 frames (`~0,83 s`)**.
 - **Vídeos Aleatórios Persistentes no Boot (`BootRand_PlaySlot`):** sorteia 3 vídeos customizados distintos nos slots Activision (`208f`), Neversoft (`266f`) e Intro (`≤1486f`) usando entropia persistente no Setor 60 (`0x3C`) do Memory Card + timers HW, preservando intactos os vídeos de final de carreira.
 - **28 Vozes SPU-ADPCM Rotativas (`14` Lulao + `14` Bolsonaro):** empacotadas no 49º arquivo da ISO (`VOICES.DAT @ LBA 317893`), reproduzidas na **Voz 23 dedicada** ao navegar Left/Right e confirmar com **X**, com **atenuação automática de `-12 dB` (25%)** da música `COMPILED.XA` durante a Seleção de Skatistas (`Hook_CdMix` + `Hook_RunPlaySel`) e restauração imediata a 100% nas fases.
 

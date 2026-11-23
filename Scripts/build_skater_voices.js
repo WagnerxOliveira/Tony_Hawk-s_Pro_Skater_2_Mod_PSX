@@ -128,7 +128,7 @@ function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   return spu;
 }
 
-function buildVoicesBank(modCodeSector = null, force = false) {
+function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null) {
   if (!fs.existsSync(lulaoDir) || !fs.existsSync(bolsoDir)) {
     throw new Error(`Pastas de audio nao encontradas em ${audiosRoot}`);
   }
@@ -139,8 +139,8 @@ function buildVoicesBank(modCodeSector = null, force = false) {
   if (lulaoFiles.length === 0 || bolsoFiles.length === 0) {
     throw new Error(`Clips insuficientes: lulao=${lulaoFiles.length}, bolsonaro=${bolsoFiles.length}`);
   }
-  if (lulaoFiles.length > MAX_CLIPS_PER_SKATER || bolsoFiles.length > MAX_CLIPS_PER_SKATER) {
-    throw new Error(`Limite de ${MAX_CLIPS_PER_SKATER} clips por skatista excedido.`);
+  if (lulaoFiles.length + bolsoFiles.length > 30) {
+    throw new Error(`Total de vozes excede limite de 30 entradas (0x10..0x1F0) para preservar Hook_BailSfx @ +0x200.`);
   }
 
   console.log(`=== Codificando Banco de Vozes PS1 SPU-ADPCM (${SPU_SAMPLE_RATE} Hz Mono) ===`);
@@ -218,6 +218,15 @@ function buildVoicesBank(modCodeSector = null, force = false) {
     sec1.writeUInt32LE(e.sectorCount, base + 4);
     sec1.writeUInt32LE(e.byteSize, base + 8);
     sec1.writeUInt32LE(e.spuPitch, base + 12);
+  }
+
+  // Embed resident Bail Round-Robin MIPS hook in Sector 1 upper region (+0x200..+0x7FF -> RAM 0x800E3200..0x800E37FF)
+  if (sec1ExtraCode) {
+    if (sec1ExtraCode.length > 1536) throw new Error(`sec1ExtraCode excede 1536 B (${sec1ExtraCode.length} B)`);
+    sec1ExtraCode.copy(sec1, 0x200);
+  } else if (fs.existsSync(voicesDatPath)) {
+    const prev = fs.readFileSync(voicesDatPath);
+    if (prev.length >= 4096) prev.copy(sec1, 0x200, 2048 + 0x200, 4096);
   }
 
   const finalBuf = Buffer.concat([sec0, sec1, ...payloads]);

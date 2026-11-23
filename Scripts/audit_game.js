@@ -105,7 +105,15 @@ try {
   else pass('Header PS-X EXE +0x4C NTSC-U 100% valido');
 
   // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
-  const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode } = require('./patch_random_videos_and_voices');
+  const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode, assembleBailHookCode } = require('./patch_random_videos_and_voices');
+  const {
+    VAB_TARGETS,
+    BAIL_SFX_IDS,
+    BAIL_CENTER_NOTE,
+    loadAll9BailVags,
+    patchSingleVab,
+    patchSingleSfx,
+  } = require('./mod_bail_screams');
   const {
     FONT_PATCH_WORDS,
     PTBR_ALLOWED_HIGH_BYTES,
@@ -119,6 +127,7 @@ try {
     [0x8003CFB0, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 0 (Activision -> random custom video, 208f cap)
     [0x8003CFE8, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 1 (Neversoft  -> random custom video, 266f cap)
     [0x8003D024, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 2 (Intro      -> random custom video, 1486f cap)
+    [0x800527B8, jalWord(ADDR.Tramp_BailSfx)],         // Hook SFX_Play -> 9 rotating bail screams (round-robin + 50f cooldown)
     [0x80053690, 0x28620017],                          // Reserve SPU Voice 23 for skater voices (slti v0,v1,23)
     ...FONT_PATCH_WORDS.map(p => [p.ram, p.patched]),  // Font_CharToGlyph @ 0x8005B9B4: 5 words for native PT-BR accents (ã,ê,í,ó)
     [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..1 + FlushCache
@@ -242,6 +251,7 @@ try {
   }
 
   const allowedWadIdxs = new Set([
+    3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
     45, 60, 61, 458,                                // options.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
     370, 371, 372, 377, 378, 379,                   // 6 custom portraits: s2face2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     389, 986, 433, 988,                             // Lulao (4 .PSX)
@@ -300,7 +310,29 @@ try {
     }
     if (fntErr === 0) pass('s2bio.fnt (idx=458) & player.pre (idx=60 +0x14): fonte PT-BR (á,ã,ç,é,ê,í,ó, 4.468 B) 100% sincronizada, 219.528 B restantes de player.pre intactos');
   }
-  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 6 skatistas, s2bio.fnt/player.pre e playsel.bin)`);
+  // Verify skate2, skate2g, skate2p .VAB + .SFX (WAD[3,4,520,521,522,523]): 9 rotating bail screams, exact Redump size, 0 SPU bloat!
+  {
+    const bailClips = loadAll9BailVags(false);
+    let vabErr = 0;
+    for (const cfg of VAB_TARGETS) {
+      const vOrig = getWadEntry(fdRed, 455, hedDisk, cfg.vabIdx);
+      const vMod  = getWadEntry(fdMod, 455, hedDisk, cfg.vabIdx);
+      const sOrig = getWadEntry(fdRed, 455, hedDisk, cfg.sfxIdx);
+      const sMod  = getWadEntry(fdMod, 455, hedDisk, cfg.sfxIdx);
+      const expV  = patchSingleVab(vOrig, cfg, bailClips);
+      const expS  = patchSingleSfx(sOrig, cfg);
+      if (vMod.subarray(0, 4).toString('ascii') !== 'pBAV' || vMod.length !== vOrig.length || !vMod.equals(expV)) {
+        fail('WAD', `${cfg.name}.vab (idx=${cfg.vabIdx}) difere do banco de 9 gritos esperado!`);
+        vabErr++;
+      }
+      if (sMod.length !== sOrig.length || !sMod.equals(expS)) {
+        fail('WAD', `${cfg.name}.sfx (idx=${cfg.sfxIdx}) difere do mapeamento de 9 gritos esperado!`);
+        vabErr++;
+      }
+    }
+    if (vabErr === 0) pass(`skate2/skate2g/skate2p .VAB+.SFX (idx=3,4,520..523): 9 gritos de queda (${BAIL_SFX_IDS.length} IDs, center=${BAIL_CENTER_NOTE}) 100% validos, 0 B extras em SPU RAM`);
+  }
+  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 6 skatistas, 9 gritos .VAB/.SFX, s2bio.fnt e playsel.bin)`);
 
   // =========================================================================
   // STAGE 4: ALL 6 PORTRAITS (s2face2,3,4,9,10,11) + SLUS CROSS-CHECK + BUCKY LASEK (s2face7) ORIGINAL
@@ -523,6 +555,8 @@ try {
     if (!voicesBuf.equals(voicesDisk)) fail('VOICES', 'VOICES.DAT na ISO difere do arquivo no workspace!');
     const expModCode = assembleModCode();
     if (!voicesBuf.subarray(0, 2048).equals(expModCode)) fail('VOICES', 'Setor 0 (MODCODE) em VOICES.DAT difere do assembly esperado!');
+    const expBailHook = assembleBailHookCode();
+    if (!voicesBuf.subarray(2048 + 0x200, 4096).equals(expBailHook)) fail('VOICES', 'Setor 1 +0x200 (Hook_BailSfx) em VOICES.DAT difere do assembly esperado!');
     const magic = voicesBuf.readUInt32LE(2048);
     const lCnt = voicesBuf.readUInt32LE(2052);
     const bCnt = voicesBuf.readUInt32LE(2056);
