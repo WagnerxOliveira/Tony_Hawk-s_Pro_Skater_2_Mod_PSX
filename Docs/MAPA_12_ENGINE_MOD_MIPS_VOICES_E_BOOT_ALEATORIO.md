@@ -12,8 +12,10 @@ Para hospedar o código MIPS customizado e a tabela de metadados de vozes sem al
 | :---: | :---: | :--- | :--- |
 | `0x800E2674` | `4 B` | `HeapStartPtr = 0x800E3800` | Patch inline em `SLUS_010.66` (+ `InitHeap` @ `0x800A2950`) |
 | `0x800E2680..0x800E27FF` | `384 B` | **Bootstrapper + Trampolins + Estado Privado** (`Mod_BootInit`, `Tramp_*`, `g_InPlaySel @ 0x800E27DC`, `g_VoicesLba`, `g_PlaySelState`) | Embutido no fim de `SLUS_010.66` (área `.bss` livre) |
-| `0x800E2800..0x800E2FFF` | `2.048 B` | **`MODCODE`** (`2.044 B` usados / `4 B` livres): `BootRand_PlaySlot`, `PlaySel_PlayVoice`, `Hook_CdMix`, `Hook_RunPlaySel` | Carregado no boot a partir do **Setor 0** de `VOICES.DAT` |
-| `0x800E3000..0x800E37FF` | `2.048 B` | **`VOICETBL`** (`magic = 0x564F4943` `"COIV"`): contadores e descritores de offset/setores/tamanho dos **28 clipes SPU-ADPCM** | Carregado no boot a partir do **Setor 1** de `VOICES.DAT` |
+| `0x800E2800..0x800E2FFF` | `2.048 B` | **`MODCODE`** (`1.936 B` usados / `112 B` livres): `BootRand_PlaySlot`, `SkaterVoice_Play`, `Hook_PlaySel_Scroll/Confirm`, `Hook_RunPlaySel` | Carregado no boot a partir do **Setor 0** de `VOICES.DAT` |
+| `0x800E3000..0x800E33FF` | `1.024 B` | **`VOICETBL`** (`magic = 0x564F4943`): `lulaoCount=14`, `bolsoCount=14`, `silvioCount=13 @ +0x3F0`, 41 descritores (até 62 suportados) e índices rotativos `@ +0x3F4..+0x3FC` | Carregado no boot a partir do **Setor 1** (`+0x000..+0x3FF`) de `VOICES.DAT` |
+| `0x800E3400..0x800E35FF` | `512 B` | **`Hook_BailSfx`** (`268 B` usados): rotação estrita round-robin dos **9 gritos de queda** em partida + cooldown anti-sobreposição de 50 frames | Carregado no boot a partir do **Setor 1** (`+0x400..+0x5FF`) de `VOICES.DAT` |
+| `0x800E3600..0x800E37FF` | `512 B` | **`VoiceSelect_Lookup` (`0x800E3600`) & `VoiceSelect_SeedAll` (`0x800E3680`)** (`224 B` usados): dispatcher multi-skatista (Slots `1`, `2` e `3`) | Carregado no boot a partir do **Setor 1** (`+0x600..+0x7FF`) de `VOICES.DAT` |
 
 ---
 
@@ -60,8 +62,8 @@ flowchart TD
 - **Duração Exata & Integridade da Carreira:** antes de invocar o player MDEC/STR, salva `g_MovieTable[idx].num_frames`, aplica temporariamente o limite original do slot (`208` / `266` / `≤1486` frames) e **restaura o valor cheio original** imediatamente após a reprodução — mantendo os vídeos de final de carreira (`0x8003CC7C`) 100% intactos.
 
 ### B. Layout de `VOICES.DAT` (49º Arquivo da ISO @ `LBA 317893`)
-- **Tamanho total:** `1.161.216 B` (`567 setores` Mode 2 Form 1 `2048 B`).
-- **Codificação SPU-ADPCM:** `11.025 Hz` mono (`pitch = 0x0400`), normalização via `ffmpeg`, **14 falas de Lulao + 14 falas de Bolsonaro** (`28` clipes no total; maior clipe = `128.320 B` dentro da janela dedicada `0x58000..0x7EFF0` = `159.728 B` na SPU RAM).
+- **Tamanho total:** `1.787.904 B` (`873 setores` Mode 2 Form 1 `2048 B`).
+- **Codificação SPU-ADPCM:** `11.025 Hz` mono (`pitch = 0x0400`), normalização via `ffmpeg`, **14 falas de Lulao (`Slot 2`) + 14 de Bolsonaro (`Slot 3`) + 13 de Silvio Santos (`Slot 1`)** (`41` clipes no total; maior clipe = `ritmo_de_dance.mp3` com `148.928 B` dentro da janela dedicada `0x58000..0x7EFF0` = `159.728 B` na SPU RAM, `10.800 B` de folga).
 
 ### C. Causa Raiz e Correção Cirúrgica do Bug "Continuar → Roda Gigante"
 - Em uma versão inicial do ducking de música, o estado de detecção de `playsel.bin` compartilhava o registrador global `23464($gp)` usado internamente pelo THPS2 para decidir a transição de estado do menu — fazendo com que clicar em *"Continuar"* retornasse para `State 0` (Roda Gigante) em vez de avançar para `State 2` (*Level Select*).

@@ -96,7 +96,7 @@ const ADDR = {
   g_ModLoaded:         0x800E27C8,
   Str_VoicesPath:      0x800E27CC, // "\VOICES.DAT;1\0" (14 B -> padded 16 B to 0x800E27DC)
   g_InPlaySel:         0x800E27DC, // Dedicated 4-byte flag (1 while inside playsel.bin; NEVER touches 23464($gp)!)
-  Tramp_BailSfx:       0x800E27E0, // 4-word (16 B) trampoline -> Hook_BailSfx @ 0x800E3200
+  Tramp_BailSfx:       0x800E27E0, // 4-word (16 B) trampoline -> Hook_BailSfx @ 0x800E3400
   g_BailScreamIdx:     0x800E27F0, // Dedicated 4-byte strict round-robin index (0..8)
   g_LastBailFrame:     0x800E27F4, // Dedicated 4-byte VSync(-1) frame timestamp for anti-overlap cooldown
   ModCodeBase:         0x800E2800, // Sector 0 of VOICES.DAT (2048 B)
@@ -104,8 +104,14 @@ const ADDR = {
   Entry_PlaySelScroll: 0x800E2808,
   Entry_PlaySelConfirm:0x800E2810,
   Entry_RunPlaySel:    0x800E2818,
-  VoiceTblBase:        0x800E3000, // Sector 1 of VOICES.DAT (0x800E3000..0x800E31FF = VOICETBL)
-  Hook_BailSfx:        0x800E3200, // Sector 1 upper region (0x800E3200..0x800E37FF = 1536 B resident Bail Round-Robin code!)
+  VoiceTblBase:        0x800E3000, // Sector 1 of VOICES.DAT (0x800E3000..0x800E33EF = VOICETBL up to 62 clips!)
+  SilvioCountAddr:     0x800E33F0, // uint32 silvioCount (Slot 1)
+  g_SilvioClipIdx:     0x800E33F4, // uint32 runtime round-robin clip index for Silvio Santos (Slot 1)
+  g_LulaoClipIdx:      0x800E33F8, // uint32 runtime round-robin clip index for Lulao (Slot 2)
+  g_BolsoClipIdx:      0x800E33FC, // uint32 runtime round-robin clip index for Bolsonaro (Slot 3)
+  Hook_BailSfx:        0x800E3400, // Sector 1 +0x400..+0x5FF (512 B: 9 rotating bail screams)
+  VoiceSelect_Lookup:  0x800E3600, // Sector 1 +0x600..+0x67F (128 B: multi-skater voice dispatcher: Slots 1, 2, 3)
+  VoiceSelect_SeedAll: 0x800E3680, // Sector 1 +0x680..+0x7FF (384 B: PRNG seeder for Slots 1, 2, 3)
   SpuVoiceBuf:         0x00058000, // Upper SPU RAM (0x58000..0x7EFF0 = 159,728 B free)
 };
 
@@ -542,11 +548,96 @@ function assembleBailHookCode() {
   for (let i = 0; i < ids.length; i++) tbl.writeUInt16LE(ids[i], i * 2);
   a.bytes(tbl);
 
-  const used = a.pc() - ADDR.Hook_BailSfx;
-  if (used > 1536) throw new Error(`Hook_BailSfx excede 1536 B (${used} B)!`);
-  console.log(`  [ASM] Hook_BailSfx: 0x${ADDR.Hook_BailSfx.toString(16)}..0x${a.pc().toString(16)} (${used} B / 1536 B, livre: ${1536 - used} B)`);
+  const bailUsed = a.pc() - ADDR.Hook_BailSfx;
+  if (bailUsed > 512) throw new Error(`Hook_BailSfx excede 512 B (${bailUsed} B)!`);
+  console.log(`  [ASM] Hook_BailSfx: 0x${ADDR.Hook_BailSfx.toString(16)}..0x${a.pc().toString(16)} (${bailUsed} B / 512 B, livre: ${512 - bailUsed} B)`);
 
-  a.padTo(ADDR.Hook_BailSfx + 1536);
+  // --------------------------------------------------------------------------
+  // VoiceSelect_Lookup(int skaterIdx in $a0) @ 0x800E3600 (leaf function)
+  //   Returns: $v0 = clipCount (0 if skater has no voices)
+  //            $v1 = baseEntryIdx in VOICETBL
+  //            $a1 = &g_SkaterClipIdx
+  //   Supports Slot 1 (Silvio Santos), Slot 2 (Lulao), Slot 3 (Bolsonaro)!
+  // --------------------------------------------------------------------------
+  a.padTo(ADDR.VoiceSelect_Lookup);
+  a.label('VoiceSelect_Lookup');
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t1, ADDR.VoiceTblBase + 4 & 0xffff, R.t0);   // t1 = lulaoCount
+  a.lw(R.t2, ADDR.VoiceTblBase + 8 & 0xffff, R.t0);   // t2 = bolsoCount
+  a.addiu(R.v0, R.zero, 2);                           // fills lw delay slot!
+  a.beq(R.a0, R.v0, 'vs_lulao');
+  a.addiu(R.v0, R.zero, 3);
+  a.beq(R.a0, R.v0, 'vs_bolso');
+  a.addiu(R.v0, R.zero, 1);
+  a.beq(R.a0, R.v0, 'vs_silvio');
+  a.move(R.v0, R.zero);                               // delay slot: default 0 (no voice)
+  a.jr(R.ra);
+  a.nop();
+
+  a.label('vs_lulao');
+  a.move(R.v0, R.t1);                                 // count = lulaoCount
+  a.move(R.v1, R.zero);                               // baseEntry = 0
+  a.jr(R.ra);
+  a.addiu(R.a1, R.t0, ADDR.g_LulaoClipIdx & 0xffff);
+
+  a.label('vs_bolso');
+  a.move(R.v0, R.t2);                                 // count = bolsoCount
+  a.move(R.v1, R.t1);                                 // baseEntry = lulaoCount
+  a.jr(R.ra);
+  a.addiu(R.a1, R.t0, ADDR.g_BolsoClipIdx & 0xffff);
+
+  a.label('vs_silvio');
+  a.lw(R.v0, ADDR.SilvioCountAddr & 0xffff, R.t0);    // count = silvioCount
+  a.addu(R.v1, R.t1, R.t2);                           // fills lw delay slot! baseEntry = lulaoCount + bolsoCount
+  a.jr(R.ra);
+  a.addiu(R.a1, R.t0, ADDR.g_SilvioClipIdx & 0xffff);
+
+  // --------------------------------------------------------------------------
+  // VoiceSelect_SeedAll(uint32 seed in $a0) @ 0x800E3680 (leaf function)
+  //   Initializes g_LulaoClipIdx, g_BolsoClipIdx & g_SilvioClipIdx from boot PRNG!
+  // --------------------------------------------------------------------------
+  a.padTo(ADDR.VoiceSelect_SeedAll);
+  a.label('VoiceSelect_SeedAll');
+  a.lui(R.t0, 0x800E);
+
+  // Lulao (Slot 2)
+  a.lw(R.t1, ADDR.VoiceTblBase + 4 & 0xffff, R.t0);
+  a.nop();
+  a.beq(R.t1, R.zero, 'seed_bolso');
+  a.nop();
+  a.divu(R.a0, R.t1);
+  a.mfhi(R.t2);
+  a.sw(R.t2, ADDR.g_LulaoClipIdx & 0xffff, R.t0);
+
+  // Bolsonaro (Slot 3)
+  a.label('seed_bolso');
+  a.lw(R.t1, ADDR.VoiceTblBase + 8 & 0xffff, R.t0);
+  a.srl(R.t3, R.a0, 8);
+  a.beq(R.t1, R.zero, 'seed_silvio');
+  a.nop();
+  a.divu(R.t3, R.t1);
+  a.mfhi(R.t2);
+  a.sw(R.t2, ADDR.g_BolsoClipIdx & 0xffff, R.t0);
+
+  // Silvio Santos (Slot 1)
+  a.label('seed_silvio');
+  a.lw(R.t1, ADDR.SilvioCountAddr & 0xffff, R.t0);
+  a.srl(R.t3, R.a0, 16);
+  a.beq(R.t1, R.zero, 'seed_done');
+  a.nop();
+  a.divu(R.t3, R.t1);
+  a.mfhi(R.t2);
+  a.sw(R.t2, ADDR.g_SilvioClipIdx & 0xffff, R.t0);
+
+  a.label('seed_done');
+  a.jr(R.ra);
+  a.nop();
+
+  const vsUsed = a.pc() - ADDR.VoiceSelect_Lookup;
+  if (vsUsed > 512) throw new Error(`VoiceSelect excede 512 B (${vsUsed} B)!`);
+  console.log(`  [ASM] VoiceSelect:  0x${ADDR.VoiceSelect_Lookup.toString(16)}..0x${a.pc().toString(16)} (${vsUsed} B / 512 B, livre: ${512 - vsUsed} B)`);
+
+  a.padTo(ADDR.Hook_BailSfx + 1024);
   return a.emit();
 }
 
@@ -789,24 +880,9 @@ function assembleModCode() {
   a.la(R.t2, 'g_BootSlots');
   a.sb(R.v1, 2, R.t2);
 
-  // Seed initial Lulao & Bolsonaro voice clip indices from PRNG seed
-  a.lwSym(R.t0, ADDR.VoiceTblBase + 4);
-  a.nop();
-  a.beq(R.t0, R.zero, 'br_skip_v1');
-  a.nop();
-  a.divu(R.s3, R.t0);
-  a.mfhi(R.t1);
-  a.swSym(R.t1, R.t2, 'g_LulaoClipIdx');
-  a.label('br_skip_v1');
-
-  a.lwSym(R.t0, ADDR.VoiceTblBase + 8);
-  a.nop();
-  a.beq(R.t0, R.zero, 'br_skip_v2');
-  a.srl(R.t3, R.s3, 8);
-  a.divu(R.t3, R.t0);
-  a.mfhi(R.t1);
-  a.swSym(R.t1, R.t2, 'g_BolsoClipIdx');
-  a.label('br_skip_v2');
+  // Seed initial Lulao, Bolsonaro & Silvio Santos voice clip indices from PRNG seed
+  a.jal(ADDR.VoiceSelect_SeedAll);
+  a.move(R.a0, R.s3);
 
   // Persist updated state to MC Sector 60 if card was present (s5 == 0)
   a.bne(R.s5, R.zero, 'br_mark_done');
@@ -914,21 +990,13 @@ function assembleModCode() {
   a.jal('SkaterVoice_Stop');
   a.move(R.s0, R.a0);
 
-  a.lwSym(R.s1, ADDR.VoiceTblBase + 4); // lulaoCount
-  a.lwSym(R.s2, ADDR.VoiceTblBase + 8); // bolsoCount
-  a.la(R.t5, 'g_LulaoClipIdx');
-  a.addiu(R.t0, R.zero, 2);
-  a.beq(R.s0, R.t0, 'vp_sel_l');
-  a.addiu(R.t0, R.zero, 3);
-  a.bne(R.s0, R.t0, 'vp_done');
-  a.move(R.t3, R.s2);                   // count = bolsoCount
-  a.move(R.t4, R.s1);                   // baseEntry = lulaoCount
-  a.j('vp_adv');
-  a.addiu(R.t5, R.t5, 4);               // &g_BolsoClipIdx == &g_LulaoClipIdx + 4
-
-  a.label('vp_sel_l');
-  a.move(R.t3, R.s1);                   // count = lulaoCount
-  a.move(R.t4, R.zero);                 // baseEntry = 0
+  // Resolve (count -> $v0, baseEntry -> $v1, &clipIdx -> $a1) for Silvio (1), Lulao (2), Bolsonaro (3)!
+  a.jal(ADDR.VoiceSelect_Lookup);
+  a.move(R.a0, R.s0);
+  a.beq(R.v0, R.zero, 'vp_done');
+  a.move(R.t3, R.v0);                   // count
+  a.move(R.t4, R.v1);                   // baseEntry
+  a.move(R.t5, R.a1);                   // &g_SkaterClipIdx
 
   a.label('vp_adv');
   a.beq(R.t3, R.zero, 'vp_done');
@@ -1095,10 +1163,9 @@ function assembleModCode() {
   a.nop();
   a.move(R.s0, R.v0);
 
-  a.addiu(R.t0, R.zero, 2);
-  a.beq(R.s0, R.t0, 'hs_play');
-  a.addiu(R.t0, R.zero, 3);
-  a.beq(R.s0, R.t0, 'hs_play');
+  a.jal(ADDR.VoiceSelect_Lookup);
+  a.move(R.a0, R.s0);
+  a.bne(R.v0, R.zero, 'hs_play');
   a.nop();
   a.jal('SkaterVoice_Stop');
   a.nop();
@@ -1124,6 +1191,7 @@ function assembleModCode() {
   a.addiu(R.sp, R.sp, -32);
   a.sw(R.ra, 24, R.sp);
   a.sw(R.s0, 20, R.sp);
+  a.sw(R.s1, 16, R.sp);
   a.jal(SYM.SFX_Play);
   a.nop();
   a.move(R.s0, R.v0);
@@ -1131,19 +1199,19 @@ function assembleModCode() {
   a.la(R.a0, SYM.g_Career);
   a.jal(SYM.GetSelectedSkaterIdx);
   a.nop();
+  a.move(R.s1, R.v0);
 
-  a.addiu(R.t0, R.zero, 2);
-  a.beq(R.v0, R.t0, 'hc_play');
-  a.addiu(R.t0, R.zero, 3);
-  a.bne(R.v0, R.t0, 'hc_ret');
+  a.jal(ADDR.VoiceSelect_Lookup);
+  a.move(R.a0, R.s1);
+  a.beq(R.v0, R.zero, 'hc_ret');
   a.nop();
 
-  a.label('hc_play');
   a.jal('SkaterVoice_Play');
-  a.move(R.a0, R.v0);
+  a.move(R.a0, R.s1);
 
   a.label('hc_ret');
   a.move(R.v0, R.s0);
+  a.lw(R.s1, 16, R.sp);
   a.lw(R.s0, 20, R.sp);
   a.lw(R.ra, 24, R.sp);
   a.nop();
@@ -1202,8 +1270,6 @@ function assembleModCode() {
   // --------------------------------------------------------------------------
   a.align(4);
   a.label('g_BootPicked');   a.word(0);
-  a.label('g_LulaoClipIdx'); a.word(0);
-  a.label('g_BolsoClipIdx'); a.word(0);
   a.label('g_BootSlots');    a.bytes(Buffer.from([2, 17, 18, 0]));
 
   // All 20 custom full-screen videos on disc: INTRO.STR (2) + all 19 X\*.STR (16..34)

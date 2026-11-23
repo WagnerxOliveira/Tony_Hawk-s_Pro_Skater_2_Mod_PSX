@@ -221,6 +221,11 @@ try {
     const got = slusIso.subarray(off, end).toString(encoding);
     if (got !== exp) fail('STRINGS', `Esperado "${exp}" em +0x${off.toString(16)}, encontrado "${got}"`);
   };
+  chkStr(0x0C44EC, 'Silvio Santos');
+  chkStr(0x0C44FC, 'Sil');
+  chkStr(0x0C8688, 'Silvio Santos');
+  chkStr(0x0A17D8, "Brazil's Silvio Santos");
+  chkStr(0x0C459C, "Can't Stop SS");
   chkStr(0x0C45F0, 'Lulao');
   chkStr(0x0C4600, 'Lulao');
   chkStr(0x0C8698, 'Lulao');
@@ -235,25 +240,50 @@ try {
   for (const item of [...BIO_LULAO, ...BIO_BOLSONARO]) {
     chkStr(item.fileOff, item.text, 'latin1');
   }
-  if (strErr === 0) pass(`${checkedStrs.size} strings modificadas validadas (incl. 32 linhas de biografias PT-BR Lulao/Bolsonaro; 0 overflows, 0 erros printf, 0 bytes fora do .FNT)`);
+  if (strErr === 0) pass(`${checkedStrs.size} strings modificadas validadas (incl. Silvio Santos + 32 linhas de biografias PT-BR Lulao/Bolsonaro; 0 overflows, 0 erros printf, 0 bytes fora do .FNT)`);
 
   // =========================================================================
   // STAGE 3: CD.HED & CD.WAD ALL 1,531 ENTRIES
   // =========================================================================
   console.log('\n[STAGE 3] CD.HED & CD.WAD — Integridade de Todas as 1.531 Entradas');
+  const { SILVIO_MIC_DELTA, SILVIO_MIC_VERTS, SILVIO_MIC_FACES } = require('./mod_skater_silvio');
   const hedRed = readSectorsUser(fdRed, 446, 9);
   const hedMod = readSectorsUser(fdMod, 446, 9);
   const hedDisk = fs.readFileSync(hedCurPath);
-  if (!hedRed.equals(hedMod) || !hedMod.subarray(0, hedDisk.length).equals(hedDisk)) {
-    fail('WAD', 'CD.HED difere do Redump original!');
+  if (!hedMod.subarray(0, hedDisk.length).equals(hedDisk)) {
+    fail('WAD', 'CD.HED na ISO difere do arquivo CD.HED no workspace!');
   } else {
-    pass('CD.HED 100% identico ao Redump original');
+    // Allow ONLY size-field update inside SAME CD sectors for burnq2.psx (idx=387) & burnq_l.psx (idx=1010) (+1,160 B 3D Mic!)
+    const allowedHedSizeDelta = new Map([
+      [387,  SILVIO_MIC_DELTA], // burnq2.psx:  60244 -> 61404 B (<= 61440 B, same 30 sectors)
+      [1010, SILVIO_MIC_DELTA], // burnq_l.psx: 51932 -> 53092 B (<= 53248 B, same 26 sectors)
+    ]);
+    let hedErr = 0;
+    for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
+      const hR = hedRed.readUInt32LE(idx * 12), hM = hedMod.readUInt32LE(idx * 12);
+      if (hR === 0xFFFFFFFF && hM === 0xFFFFFFFF) break;
+      const oR = hedRed.readUInt32LE(idx * 12 + 4), oM = hedMod.readUInt32LE(idx * 12 + 4);
+      const sR = hedRed.readUInt32LE(idx * 12 + 8), sM = hedMod.readUInt32LE(idx * 12 + 8);
+      const expS = sR + (allowedHedSizeDelta.get(idx) || 0);
+      const secR = Math.max(1, Math.ceil(sR / 2048));
+      const secM = Math.max(1, Math.ceil(sM / 2048));
+      if (hR !== hM || oR !== oM || sM !== expS || secR !== secM) {
+        fail('WAD', `CD.HED[${idx}] invalido: hash 0x${hR.toString(16)}->0x${hM.toString(16)}, off 0x${oR.toString(16)}->0x${oM.toString(16)}, sz ${sR}->${sM} (exp ${expS}), sec ${secR}->${secM}`);
+        hedErr++;
+      }
+    }
+    if (!hedRed.subarray(hedDisk.length).equals(hedMod.subarray(hedDisk.length))) {
+      fail('WAD', 'Bytes apos tabela CD.HED diferem do Redump!');
+      hedErr++;
+    }
+    if (hedErr === 0) pass('CD.HED 100% integro: 1.529/1.531 entradas bit-a-bit Redump + [387/1010] Silvio Mic 3D (+1.160 B nos mesmos setores, 0 deslocamento de offsets)');
   }
 
   const allowedWadIdxs = new Set([
     3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
     45, 60, 61, 458,                                // options.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
-    370, 371, 372, 377, 378, 379,                   // 6 custom portraits: s2face2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
+    369, 370, 371, 372, 377, 378, 379,              // 7 custom portraits: s2face1,2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
+    387, 1010, 431, 1012,                           // Silvio Santos (4 .PSX, incl. 3D Chest Mic on 387 & 1010)
     389, 986, 433, 988,                             // Lulao (4 .PSX)
     391, 1030, 435, 1032,                           // Bolsonaro (4 .PSX)
     393, 994, 437, 996,                             // Wagner Oliver (4 .PSX)
@@ -332,15 +362,16 @@ try {
     }
     if (vabErr === 0) pass(`skate2/skate2g/skate2p .VAB+.SFX (idx=3,4,520..523): 9 gritos de queda (${BAIL_SFX_IDS.length} IDs, center=${BAIL_CENTER_NOTE}) 100% validos, 0 B extras em SPU RAM`);
   }
-  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 6 skatistas, 9 gritos .VAB/.SFX, s2bio.fnt e playsel.bin)`);
+  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 7 skatistas, 9 gritos .VAB/.SFX, s2bio.fnt e playsel.bin)`);
 
   // =========================================================================
-  // STAGE 4: ALL 6 PORTRAITS (s2face2,3,4,9,10,11) + SLUS CROSS-CHECK + BUCKY LASEK (s2face7) ORIGINAL
+  // STAGE 4: ALL 7 PORTRAITS (s2face1,2,3,4,9,10,11) + SLUS CROSS-CHECK + BUCKY LASEK (s2face7) ORIGINAL
   // =========================================================================
-  console.log('\n[STAGE 4] options.pre & 6 Retratos Customizados (validacao cruzada SLUS_010.66 <-> CD.WAD <-> options.pre)');
+  console.log('\n[STAGE 4] options.pre & 7 Retratos Customizados (validacao cruzada SLUS_010.66 <-> CD.WAD <-> options.pre)');
   const optOrig = getWadEntry(fdRed, 455, hedDisk, 45);
   const optMod = getWadEntry(fdMod, 455, hedDisk, 45);
   const portraitSpecs = [
+    { nm: 's2face1.bmp',  idx: 369, magIdx: 21, preOff: 0x246BC, slusFaceOff: 0x0C45C8, slusNameOff: 0x0C44EC, skater: 'Silvio Santos' },
     { nm: 's2face2.bmp',  idx: 370, magIdx: 5,  preOff: 0x256C4, slusFaceOff: 0x0C46E0, slusNameOff: 0x0C45F0, skater: 'Lulao' },
     { nm: 's2face3.bmp',  idx: 371, magIdx: 39, preOff: 0x266CC, slusFaceOff: 0x0C47F4, slusNameOff: 0x0C4714, skater: 'Bolsonaro' },
     { nm: 's2face4.bmp',  idx: 372, magIdx: 26, preOff: 0x276D4, slusFaceOff: 0x0C4910, slusNameOff: 0x0C4824, skater: 'Wagner Oliver' },
@@ -381,14 +412,18 @@ try {
     if (inAny) continue;
     if (optOrig[i] !== optMod[i]) optOutsideDiff++;
   }
-  if (optOutsideDiff > 0) fail('PORTRAIT', `options.pre tem ${optOutsideDiff} bytes alterados fora dos 6 retratos!`);
-  else pass('6/6 retratos (s2face2,3,4,9,10,11) validados contra SLUS_010.66 + s2face7 (Bucky Lasek) 100% original + options.pre integro');
+  if (optOutsideDiff > 0) fail('PORTRAIT', `options.pre tem ${optOutsideDiff} bytes alterados fora dos 7 retratos!`);
+  else pass('7/7 retratos (s2face1,2,3,4,9,10,11) validados contra SLUS_010.66 + s2face7 (Bucky Lasek) 100% original + options.pre integro');
 
   // =========================================================================
-  // STAGE 5: ALL 24 SKATER .PSX MODELS (6 SKATERS x 4 LOD/STYLES) & HANGAR skhan_l.psx
+  // STAGE 5: ALL 28 SKATER .PSX MODELS (7 SKATERS x 4 LOD/STYLES) & HANGAR skhan_l.psx
   // =========================================================================
-  console.log('\n[STAGE 5] Modelos 3D .PSX (24 modelos: Lulao, Bolsonaro+Pescoco, Wagner, Francis, Natan, Valter) & Fase 1 Original');
+  console.log('\n[STAGE 5] Modelos 3D .PSX (28 modelos: Silvio+Mic3D, Lulao, Bolsonaro+Pescoco, Wagner, Francis, Natan, Valter) & Fase 1 Original');
   const psxChecks = [
+    { idx: 387,  name: 'burnq2.psx',   headHash: 0xf5cf6046, expMesh: 15, extraLabel: 'Mic3D',       extraMeshes: new Map([[8,'mic3d']]), allowDelta: SILVIO_MIC_DELTA, allowHeadUvRemap: true },
+    { idx: 1010, name: 'burnq_L.psx',  headHash: 0xf5cf6046, expMesh: 15, extraLabel: 'Mic3D',       extraMeshes: new Map([[8,'mic3d']]), allowDelta: SILVIO_MIC_DELTA, allowHeadUvRemap: true },
+    { idx: 431,  name: 'burnq2b.psx',  headHash: 0x9504086e, expMesh: 15, extraLabel: '',            extraMeshes: new Map() },
+    { idx: 1012, name: 'burnq2bL.psx', headHash: 0x9504086e, expMesh: 15, extraLabel: '',            extraMeshes: new Map() },
     { idx: 389,  name: 'cab.psx',      headHash: 0x0f88a1f8, expMesh: 12, extraLabel: 'Barriguinha', extraMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[13,'w0only']]) },
     { idx: 986,  name: 'cab_L.psx',    headHash: 0x0f88a1f8, expMesh: 15, extraLabel: 'Barriguinha', extraMeshes: new Map([[3,'w1ok'],[10,'w1ok'],[16,'w0only']]) },
     { idx: 433,  name: 'cab2b.psx',    headHash: 0x9504086e, expMesh: 15, extraLabel: 'Barriguinha', extraMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[8,'w0only']]) },
@@ -415,58 +450,99 @@ try {
     { idx: 1020, name: 'rynld2bL.psx', headHash: 0x1ab6ae9d, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
   ];
   for (const pc of psxChecks) {
-    const orig = getWadEntry(fdRed, 455, hedDisk, pc.idx);
-    const cur = getWadEntry(fdMod, 455, hedDisk, pc.idx);
-    if (orig.length !== cur.length) { fail('PSX', `${pc.name}: tamanho alterado`); continue; }
-    const ptrMeta = orig.readUInt32LE(4), nObj = orig.readUInt32LE(8);
+    const orig = getWadEntry(fdRed, 455, hedRed, pc.idx);
+    const cur  = getWadEntry(fdMod, 455, hedDisk, pc.idx);
+    const expDelta = pc.allowDelta || 0;
+    if (cur.length !== orig.length + expDelta) { fail('PSX', `${pc.name}: tamanho ${cur.length} != esperado ${orig.length + expDelta}`); continue; }
+    const ptrMetaO = orig.readUInt32LE(4), ptrMetaC = cur.readUInt32LE(4);
+    if (ptrMetaC !== ptrMetaO + expDelta) { fail('PSX', `${pc.name}: ptrMeta 0x${ptrMetaC.toString(16)} != 0x${(ptrMetaO + expDelta).toString(16)}`); continue; }
+    const nObj = orig.readUInt32LE(8);
     const nMeshOff = 12 + nObj * 36, nMesh = orig.readUInt32LE(nMeshOff);
-    const meshOffs = Array.from({ length: nMesh }, (_, i) => orig.readUInt32LE(nMeshOff + 4 + i * 4));
-    let mpos = ptrMeta;
-    while (mpos < orig.length) {
-      const tag = orig.readUInt32LE(mpos); mpos += 4;
+    const meshOffsO = Array.from({ length: nMesh }, (_, i) => orig.readUInt32LE(nMeshOff + 4 + i * 4));
+    const meshOffsC = Array.from({ length: nMesh }, (_, i) => cur.readUInt32LE(nMeshOff + 4 + i * 4));
+    let mposO = ptrMetaO, mposC = ptrMetaC;
+    while (mposO < orig.length) {
+      const tag = orig.readUInt32LE(mposO); mposO += 4; mposC += 4;
       if (tag === 0xFFFFFFFF) break;
-      mpos += 4 + orig.readUInt32LE(mpos);
+      const len = orig.readUInt32LE(mposO); mposO += 4 + len; mposC += 4 + len;
     }
-    const hashes = Array.from({ length: nMesh }, (_, i) => orig.readUInt32LE(mpos + i * 4));
+    const hashes = Array.from({ length: nMesh }, (_, i) => cur.readUInt32LE(mposC + i * 4));
     if (hashes[pc.expMesh] !== pc.headHash) fail('PSX', `${pc.name}: Mesh[${pc.expMesh}] nao tem hash esperado`);
-    mpos += nMesh * 4;
-    const nTexRefs = orig.readUInt32LE(mpos); mpos += 4 + nTexRefs * 4;
-    const nPal16 = orig.readUInt32LE(mpos); mpos += 4;
+    mposO += nMesh * 4; mposC += nMesh * 4;
+    const nTexRefs = orig.readUInt32LE(mposO); mposO += 4 + nTexRefs * 4; mposC += 4 + nTexRefs * 4;
+    const nPal16 = orig.readUInt32LE(mposO); mposO += 4; mposC += 4;
     let zeroClut = 0;
     for (let i = 0; i < nPal16; i++) {
       for (let c = 0; c < 16; c++) {
-        if (cur.readUInt16LE(mpos + 4 + c * 2) === 0 && orig.readUInt16LE(mpos + 4 + c * 2) !== 0) zeroClut++;
+        if (cur.readUInt16LE(mposC + 4 + c * 2) === 0 && orig.readUInt16LE(mposO + 4 + c * 2) !== 0) zeroClut++;
       }
-      mpos += 36;
+      mposO += 36; mposC += 36;
     }
-    const nPal256 = orig.readUInt32LE(mpos); mpos += 4;
+    const nPal256 = orig.readUInt32LE(mposO); mposO += 4; mposC += 4;
     for (let i = 0; i < nPal256; i++) {
       for (let c = 0; c < 256; c++) {
-        if (cur.readUInt16LE(mpos + 4 + c * 2) === 0 && orig.readUInt16LE(mpos + 4 + c * 2) !== 0) zeroClut++;
+        if (cur.readUInt16LE(mposC + 4 + c * 2) === 0 && orig.readUInt16LE(mposO + 4 + c * 2) !== 0) zeroClut++;
       }
-      mpos += 516;
+      mposO += 516; mposC += 516;
     }
     if (zeroClut > 0) fail('PSX', `${pc.name}: ${zeroClut} cores 0x0000 (transparentes) indevidas na CLUT!`);
 
-    // Verify ONLY HEAD (and documented extra meshes: Lulao belly / Bolsonaro Tony Hawk neck) changed, stitch invariants respected, bbox/rad safe!
+    // Verify ONLY HEAD (and documented extra meshes: Silvio 3D Chest Mic / Lulao belly / Bolsonaro Tony Hawk neck) changed, stitch invariants respected, bbox/rad safe!
     let otherMeshDiff = 0, wDiff = 0, normFaceDiff = 0, headMoved = 0, extraMoved = 0;
     for (let m = 0; m < nMesh; m++) {
-      const mo = meshOffs[m], mEnd = (m + 1 < nMesh) ? meshOffs[m + 1] : ptrMeta;
+      const moO = meshOffsO[m], mEndO = (m + 1 < nMesh) ? meshOffsO[m + 1] : ptrMetaO;
+      const moC = meshOffsC[m], mEndC = (m + 1 < nMesh) ? meshOffsC[m + 1] : ptrMetaC;
       const isHead = (m === pc.expMesh);
       const extraMode = pc.extraMeshes.get(m);
       if (!isHead && !extraMode) {
-        if (!orig.subarray(mo, mEnd).equals(cur.subarray(mo, mEnd))) {
+        if (!orig.subarray(moO, mEndO).equals(cur.subarray(moC, mEndC))) {
           fail('PSX', `${pc.name}: Mesh[${m}] foi modificada indevidamente!`);
           otherMeshDiff++;
         }
+      } else if (extraMode === 'mic3d') {
+        // Validate injected 3D geometric chest microphone in Mesh[8]:
+        //  - nV === oldNV + 23, nF === oldNF + 18, strict nN === nV + nF
+        //  - All original vertices [0..oldNV-1] 100% byte-identical (w=0/1/2 stitches untouched!)
+        //  - All added mic vertices [oldNV..nV-1] strictly w=0
+        //  - hdrBbox & rad cover every vertex (including protruding 3D mic!)
+        const oldNV = orig.readUInt16LE(moO + 2), oldNF = orig.readUInt16LE(moO + 6);
+        const curNV = cur.readUInt16LE(moC + 2), curNN = cur.readUInt16LE(moC + 4), curNF = cur.readUInt16LE(moC + 6);
+        if (curNV !== oldNV + SILVIO_MIC_VERTS || curNF !== oldNF + SILVIO_MIC_FACES || curNN !== curNV + curNF) {
+          fail('PSX', `${pc.name} M[${m}] Mic3D contagens invalidas: v=${curNV} n=${curNN} f=${curNF}`);
+          wDiff++;
+        }
+        if (!orig.subarray(moO + 28, moO + 28 + oldNV * 8).equals(cur.subarray(moC + 28, moC + 28 + oldNV * 8))) {
+          fail('PSX', `${pc.name} M[${m}] Mic3D alterou vertices originais do peito!`);
+          wDiff++;
+        }
+        let xmin = 32767, xmax = -32768, ymin = 32767, ymax = -32768, zmin = 32767, zmax = -32768, maxR = 0;
+        for (let v = 0; v < curNV; v++) {
+          const vo = moC + 28 + v * 8;
+          const cx = cur.readInt16LE(vo), cy = cur.readInt16LE(vo + 2), cz = cur.readInt16LE(vo + 4), cw = cur.readUInt16LE(vo + 6);
+          if (v >= oldNV && cw !== 0) wDiff++;
+          if (cw !== 2) {
+            if (cx < xmin) xmin = cx; if (cx > xmax) xmax = cx;
+            if (cy < ymin) ymin = cy; if (cy > ymax) ymax = cy;
+            if (cz < zmin) zmin = cz; if (cz > zmax) zmax = cz;
+            const r = Math.hypot(cx, cy, cz); if (r > maxR) maxR = r;
+          }
+        }
+        const rad = cur.readUInt32LE(moC + 8);
+        const bb = [0,1,2,3,4,5].map(k => cur.readInt16LE(moC + 12 + k * 2));
+        if (rad / 256 < maxR) fail('PSX', `${pc.name} M[${m}] Mic3D: rad/256 (${(rad/256).toFixed(1)}) < maxVertR (${maxR.toFixed(1)})!`);
+        if (bb[0]*16 < xmax || bb[1]*16 > xmin || bb[2]*16 < ymax || bb[3]*16 > ymin || bb[4]*16 < zmax || bb[5]*16 > zmin) {
+          fail('PSX', `${pc.name} M[${m}] Mic3D: hdrBbox [${bb}] nao cobre todos os vertices!`);
+        }
+        extraMoved = SILVIO_MIC_VERTS;
       } else {
-        const nV = orig.readUInt16LE(mo + 2), nN = orig.readUInt16LE(mo + 4);
-        const vOff = mo + 28, nOff = vOff + nV * 8;
+        const nV = orig.readUInt16LE(moO + 2), nN = orig.readUInt16LE(moO + 4);
+        const vOffO = moO + 28, nOffO = vOffO + nV * 8;
+        const vOffC = moC + 28, nOffC = vOffC + nV * 8;
         let xmin = 32767, xmax = -32768, ymin = 32767, ymax = -32768, zmin = 32767, zmax = -32768, maxR = 0;
         for (let v = 0; v < nV; v++) {
-          const vo = vOff + v * 8;
-          const ox = orig.readInt16LE(vo), oy = orig.readInt16LE(vo + 2), oz = orig.readInt16LE(vo + 4), ow = orig.readUInt16LE(vo + 6);
-          const cx = cur.readInt16LE(vo), cy = cur.readInt16LE(vo + 2), cz = cur.readInt16LE(vo + 4), cw = cur.readUInt16LE(vo + 6);
+          const voO = vOffO + v * 8, voC = vOffC + v * 8;
+          const ox = orig.readInt16LE(voO), oy = orig.readInt16LE(voO + 2), oz = orig.readInt16LE(voO + 4), ow = orig.readUInt16LE(voO + 6);
+          const cx = cur.readInt16LE(voC), cy = cur.readInt16LE(voC + 2), cz = cur.readInt16LE(voC + 4), cw = cur.readUInt16LE(voC + 6);
           if (ow !== cw) wDiff++;
           const moved = (ox !== cx || oy !== cy || oz !== cz);
           // HEAD & w0only: NEVER touch w != 0! w1ok (Lulao belly / Bolsonaro neck): NEVER touch w === 2!
@@ -482,9 +558,25 @@ try {
             const r = Math.hypot(cx, cy, cz); if (r > maxR) maxR = r;
           }
         }
-        for (let p = nOff; p < mEnd; p++) if (orig[p] !== cur[p]) normFaceDiff++;
-        const rad = cur.readUInt32LE(mo + 8);
-        const bb = [0,1,2,3,4,5].map(k => cur.readInt16LE(mo + 12 + k * 2));
+        if (!(isHead && pc.allowHeadUvRemap)) {
+          for (let p = 0; p < (mEndO - nOffO); p++) if (orig[nOffO + p] !== cur[nOffC + p]) normFaceDiff++;
+        } else {
+          // Allow ONLY U-coordinate remap (0..14) on texIdx=6 crown faces of Silvio Style A!
+          if (!orig.subarray(nOffO, nOffO + nN * 8).equals(cur.subarray(nOffC, nOffC + nN * 8))) normFaceDiff++;
+          const nF = orig.readUInt16LE(moO + 6);
+          let fpO = nOffO + nN * 8, fpC = nOffC + nN * 8;
+          for (let fi = 0; fi < nF; fi++) {
+            const fLen = orig.readUInt16LE(fpO + 2);
+            const tid = orig.readUInt32LE(fpO + 16);
+            for (let b = 0; b < fLen; b++) {
+              const isCrownU = (tid === 6 && (b === 20 || b === 22 || b === 24 || b === 26));
+              if (!isCrownU && orig[fpO + b] !== cur[fpC + b]) normFaceDiff++;
+            }
+            fpO += fLen; fpC += fLen;
+          }
+        }
+        const rad = cur.readUInt32LE(moC + 8);
+        const bb = [0,1,2,3,4,5].map(k => cur.readInt16LE(moC + 12 + k * 2));
         if (rad / 256 < maxR) fail('PSX', `${pc.name} M[${m}]: rad/256 (${(rad/256).toFixed(1)}) < maxVertR (${maxR.toFixed(1)})!`);
         if (bb[0]*16 < xmax || bb[1]*16 > xmin || bb[2]*16 < ymax || bb[3]*16 > ymin || bb[4]*16 < zmax || bb[5]*16 > zmin) {
           fail('PSX', `${pc.name} M[${m}]: hdrBbox [${bb}] nao cobre todos os vertices!`);
@@ -496,7 +588,7 @@ try {
     if (wDiff > 0) fail('PSX', `${pc.name}: ${wDiff} stitch vertices foram violados!`);
     if (normFaceDiff > 0) fail('PSX', `${pc.name}: ${normFaceDiff} bytes em normais/faces alterados!`);
     if (!otherMeshDiff && !wDiff && !normFaceDiff && !zeroClut && headMoved > 0 && (pc.extraMeshes.size === 0 || extraMoved > 0)) {
-      const extraMsg = extraMoved > 0 ? ` + ${pc.extraLabel} (${extraMoved}v)` : '';
+      const extraMsg = extraMoved > 0 ? ` + ${pc.extraLabel} (${extraMoved}v${pc.allowDelta ? '/18f' : ''})` : '';
       pass(`${pc.name.padEnd(12)}: HEAD M[${pc.expMesh}] (${headMoved}v)${extraMsg}, costuras ok, bbox/rad ok, 0 CLUT 0x0000`);
     }
   }
@@ -512,14 +604,14 @@ try {
   // =========================================================================
   // STAGE 6: ISO-9660 LBA ORDER, SIZES, XA ATTRIBUTES, UNMODIFIED FILES & VOICES.DAT
   // =========================================================================
-  console.log('\n[STAGE 6] ISO-9660 — 48/48 Arquivos Originais Redump + 49o VOICES.DAT (MODCODE + 28 Clips SPU)');
+  console.log('\n[STAGE 6] ISO-9660 — 48/48 Arquivos Originais Redump + 49o VOICES.DAT (MODCODE + 41 Clips SPU)');
   const pvdR = readSectorsUser(fdRed, 16, 1), pvdM = readSectorsUser(fdMod, 16, 1);
   const filesR = parseIsoDir(fdRed, pvdR.readUInt32LE(158), pvdR.readUInt32LE(166), '').sort((a, b) => a.lba - b.lba);
   const filesM = parseIsoDir(fdMod, pvdM.readUInt32LE(158), pvdM.readUInt32LE(166), '').sort((a, b) => a.lba - b.lba);
   if (filesR.length !== 48 || filesM.length !== 49) fail('ISO', `Contagem de arquivos: ${filesM.length} (esperado 49 = 48 Redump + VOICES.DAT)`);
   const modMap = new Map(filesM.map(f => [f.path, f]));
   const expectedModFiles = new Set([
-    'SLUS_010.66', 'CD.WAD', 'COMPILED.XA', 'INTRO.STR',
+    'SLUS_010.66', 'CD.HED', 'CD.WAD', 'COMPILED.XA', 'INTRO.STR',
     'X/OD.STR', 'X/BAILS02.STR', 'X/BURNQUIS.STR', 'X/CABALLER.STR', 'X/CAMPBELL.STR',
     'X/GLIFBERG.STR', 'X/HAWK.STR', 'X/KOSTON.STR', 'X/LASEK.STR', 'X/MS.STR',
     'X/MULLEN.STR', 'X/MUSKA.STR', 'X/BAILS01.STR', 'X/PC.STR', 'X/REYNOLDS.STR',
@@ -543,7 +635,7 @@ try {
   }
   if (lbaOk === 48) pass(`48/48 arquivos originais com LBA, tamanho e atributos CD-XA 100% identicos ao Redump (${unmodOk} arquivos intocados bit-a-bit)`);
 
-  // Validate 49th file VOICES.DAT (MODCODE Sector 0 + VOICETBL Sector 1 + 28 SPU-ADPCM payloads)
+  // Validate 49th file VOICES.DAT (MODCODE Sector 0 + VOICETBL/Sec1Code Sector 1 + 41 SPU-ADPCM payloads)
   const voicesFile = modMap.get('VOICES.DAT');
   let voicesSectors = 0;
   if (!voicesFile) {
@@ -555,26 +647,27 @@ try {
     if (!voicesBuf.equals(voicesDisk)) fail('VOICES', 'VOICES.DAT na ISO difere do arquivo no workspace!');
     const expModCode = assembleModCode();
     if (!voicesBuf.subarray(0, 2048).equals(expModCode)) fail('VOICES', 'Setor 0 (MODCODE) em VOICES.DAT difere do assembly esperado!');
-    const expBailHook = assembleBailHookCode();
-    if (!voicesBuf.subarray(2048 + 0x200, 4096).equals(expBailHook)) fail('VOICES', 'Setor 1 +0x200 (Hook_BailSfx) em VOICES.DAT difere do assembly esperado!');
+    const expSec1Code = assembleBailHookCode();
+    if (!voicesBuf.subarray(2048 + 0x400, 4096).equals(expSec1Code)) fail('VOICES', 'Setor 1 +0x400 (Hook_BailSfx + VoiceSelect) em VOICES.DAT difere do assembly esperado!');
     const magic = voicesBuf.readUInt32LE(2048);
     const lCnt = voicesBuf.readUInt32LE(2052);
     const bCnt = voicesBuf.readUInt32LE(2056);
     const spuBase = voicesBuf.readUInt32LE(2060);
-    if (magic !== 0x564F4943 || lCnt !== 14 || bCnt !== 14 || spuBase !== 0x58000) {
-      fail('VOICES', `VOICETBL invalido: magic=0x${magic.toString(16)}, lulao=${lCnt}, bolso=${bCnt}, spu=0x${spuBase.toString(16)}`);
+    const sCnt = voicesBuf.readUInt32LE(2048 + 0x3F0);
+    if (magic !== 0x564F4943 || lCnt !== 14 || bCnt !== 14 || sCnt !== 13 || spuBase !== 0x58000) {
+      fail('VOICES', `VOICETBL invalido: magic=0x${magic.toString(16)}, lulao=${lCnt}, bolso=${bCnt}, silvio=${sCnt}, spu=0x${spuBase.toString(16)}`);
     } else {
       let clipErr = 0, maxSpu = 0;
-      const totalClips = lCnt + bCnt;
+      const totalClips = lCnt + bCnt + sCnt;
       for (let i = 0; i < totalClips; i++) {
         const eb = 2048 + 16 + i * 16;
         const sOff = voicesBuf.readUInt32LE(eb);
-        const sCnt = voicesBuf.readUInt32LE(eb + 4);
+        const sCntSec = voicesBuf.readUInt32LE(eb + 4);
         const bSz = voicesBuf.readUInt32LE(eb + 8);
         const pitch = voicesBuf.readUInt32LE(eb + 12);
         if (bSz > maxSpu) maxSpu = bSz;
-        if (bSz === 0 || (bSz % 64) !== 0 || bSz > (0x7EFF0 - 0x58000) || pitch !== 0x0400 || (sOff + sCnt) > voicesSectors) {
-          fail('VOICES', `Clip #${i} invalido: sOff=${sOff} sCnt=${sCnt} bSz=${bSz} pitch=0x${pitch.toString(16)}`);
+        if (bSz === 0 || (bSz % 64) !== 0 || bSz > (0x7EFF0 - 0x58000) || pitch !== 0x0400 || (sOff + sCntSec) > voicesSectors) {
+          fail('VOICES', `Clip #${i} invalido: sOff=${sOff} sCnt=${sCntSec} bSz=${bSz} pitch=0x${pitch.toString(16)}`);
           clipErr++; continue;
         }
         const payload = voicesBuf.subarray(sOff * 2048, sOff * 2048 + bSz);
@@ -590,7 +683,7 @@ try {
         }
       }
       if (clipErr === 0) {
-        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): MODCODE + VOICETBL + ${totalClips}/28 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
+        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): MODCODE + VOICETBL + Hook_BailSfx + VoiceSelect + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
       }
     }
   }

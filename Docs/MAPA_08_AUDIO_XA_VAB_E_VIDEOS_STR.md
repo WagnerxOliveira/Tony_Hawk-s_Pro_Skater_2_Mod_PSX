@@ -95,7 +95,7 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 | 15 | `0x800C1ED0` | `0x0B26D0` | `\EDITOR.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
 | 16 | `0x800C1EF4` | `0x0B26F4` | `\X\BAILS02.STR;1` | Bails | 320×240 | **685** | `0x025800` | Sim | str (2336B) |
 | 17 | `0x800C1F18` | `0x0B2718` | `\X\HAWK.STR;1` | Tony Hawk | 320×240 | **634** | `0x025800` | Sim | str (2336B) |
-| 18 | `0x800C1F3C` | `0x0B273C` | `\X\BURNQUIS.STR;1` | Bob Burnquist | 320×240 | **598** | `0x025800` | Sim | str (2336B) |
+| 18 | `0x800C1F3C` | `0x0B273C` | `\X\BURNQUIS.STR;1` | Silvio Santos | 320×240 | **598** | `0x025800` | Sim | str (2336B) |
 | 19 | `0x800C1F60` | `0x0B2760` | `\X\CABALLER.STR;1` | Lulao | 320×240 | **606** | `0x025800` | Sim | str (2336B) |
 | 20 | `0x800C1F84` | `0x0B2784` | `\X\CAMPBELL.STR;1` | Bolsonaro | 320×240 | **644** | `0x025800` | Sim | str (2336B) |
 | 21 | `0x800C1FA8` | `0x0B27A8` | `\X\GLIFBERG.STR;1` | Wagner Oliver | 320×240 | **627** | `0x025800` | Sim | str (2336B) |
@@ -118,10 +118,10 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 ## 4. Banco de Vozes SPU-ADPCM (`VOICES.DAT`) & Vídeos Aleatórios de Boot
 
 - **49º Arquivo da ISO (`\VOICES.DAT;1`):** posicionado após `INTRO.STR` e antes do postgap de 150 setores, preservando **48/48 LBAs originais Redump**.
-- **Layout de `VOICES.DAT` (1.161.216 B / 567 setores):**
+- **Layout de `VOICES.DAT` (1.787.904 B / 873 setores):**
   - **Setor 0 (`0x0000..0x07FF`):** `MODCODE` MIPS R3000A carregado em `0x800E2800` no boot via `Mod_BootInit` + `FlushCache()`.
   - **Setor 1 (`0x0800..0x0FFF`):** `VOICETBL` carregado em `0x800E3000` (`magic = 0x564F4943`, 14 clips Lulao + 14 clips Bolsonaro).
-  - **Setores `2..566`:** 28 streams SPU-ADPCM mono `11025 Hz` (`pitch = 0x0400`, maior clip = `128320 B` / `159728 B` na SPU RAM `0x58000..0x7EFF0`).
+  - **Setores `2..872`:** 41 streams SPU-ADPCM mono `11025 Hz` (`pitch = 0x0400`, maior clip = `148928 B` / `159728 B` na SPU RAM `0x58000..0x7EFF0`).
 - **Vídeos Aleatórios no Boot (Duração Exata Original):** `BootRand_PlaySlot` substitui os 3 slots de inicialização (`ATVILOGO` = `208` frames / `13,87s`, `LOGO` = `266` frames / `17,73s`, `INTRO` = até `1486` frames / `99,07s`) por 3 vídeos customizados distintos entre os 20 disponíveis (`[2, 16..34]`), usando contador persistente no **Setor 60 (`0x3C`)** do Memory Card + timers de hardware (`0x1F801100/10/20`) + `VSync(-1)`. O campo `g_MovieTable[idx].num_frames` é ajustado temporariamente para a duração exata do slot de boot e restaurado imediatamente ao término, mantendo os vídeos finais de carreira com duração integral.
 - **Atenuação Automática da Música na Seleção de Skatistas (`-12 dB`):** `Hook_CdMix` (`0x80038950`) + `Hook_RunPlaySel` (`0x80082B80`) usam a flag privada `g_InPlaySel` (`0x800E27DC`, sem interferir em `23464($gp)`) para reduzir o volume da trilha `COMPILED.XA` para **25% (`vol >> 2`)** enquanto `playsel.bin` está ativo, destacando com máxima clareza as vozes SPU-ADPCM de **Lulao** e **Bolsonaro**, e restauram **100%** automaticamente ao sair.
 
@@ -155,3 +155,16 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 | 25 | **Bolsonaro** (idx 3) | `eu_tenho_nada_a_ver_com_isso.mp3` | 1.36s | 8576 B | 5 | +537 |
 | 26 | **Bolsonaro** (idx 3) | `explica.mp3` | 4.17s | 26240 B | 13 | +542 |
 | 27 | **Bolsonaro** (idx 3) | `fica_aqui.mp3` | 3.61s | 22720 B | 12 | +555 |
+| 28 | **Silvio Santos** (idx 1) | `abertura.mp3` | 15.67s | 98752 B | 49 | +567 |
+| 29 | **Silvio Santos** (idx 1) | `aiaiuiui.mp3` | 14.83s | 93440 B | 46 | +616 |
+| 30 | **Silvio Santos** (idx 1) | `cala_a_boca.mp3` | 1.82s | 11456 B | 6 | +662 |
+| 31 | **Silvio Santos** (idx 1) | `certa_a_resposta.mp3` | 1.22s | 7680 B | 4 | +668 |
+| 32 | **Silvio Santos** (idx 1) | `certa_resposta.mp3` | 1.87s | 11776 B | 6 | +672 |
+| 33 | **Silvio Santos** (idx 1) | `nao_consegue.mp3` | 1.27s | 8000 B | 4 | +678 |
+| 34 | **Silvio Santos** (idx 1) | `oi.mp3` | 1.12s | 7040 B | 4 | +682 |
+| 35 | **Silvio Santos** (idx 1) | `olha_so.mp3` | 14.23s | 89664 B | 44 | +686 |
+| 36 | **Silvio Santos** (idx 1) | `rap.mp3` | 5.79s | 36480 B | 18 | +730 |
+| 37 | **Silvio Santos** (idx 1) | `ritmo_de_dance.mp3` | 23.64s | 148928 B | 73 | +748 |
+| 38 | **Silvio Santos** (idx 1) | `ritmo_de_festa.mp3` | 6.55s | 41280 B | 21 | +821 |
+| 39 | **Silvio Santos** (idx 1) | `seu_tempo_acabou.mp3` | 2.16s | 13632 B | 7 | +842 |
+| 40 | **Silvio Santos** (idx 1) | `silvio.mp3` | 7.59s | 47808 B | 24 | +849 |

@@ -32,7 +32,7 @@
 | Idx | RAM | Offset `SLUS` | Nome Atual | Modelo A / B | Rosto (`.BMP`) | Offset Stats (`SLUS`) | Stats `[Air,Hng,Oll,Spd,Spn,Lnd,Swt,Rl,Lip,Man]` | Vídeo Final |
 | :-: | :---: | :---: | :--- | :--- | :--- | :---: | :--- | :--- |
 | 0 | `0x800B6834` | `0x0A7034` | **Tony Hawk** | `hawk2` / `hawk2b` | `s2face5.bmp` | `0x0A715C` | `[7,5,2,6,8,5,3,3,6,5]` | `X\HAWK.STR` |
-| 1 | `0x800B6988` | `0x0A7188` | **Bob Burnquist** | `burnq2` / `burnq2b` | `s2face1.bmp` | `0x0A72B0` | `[6,5,5,5,5,3,8,2,7,4]` | `X\BURNQUIS.STR` |
+| 1 | `0x800B6988` | `0x0A7188` | **Silvio Santos** | `burnq2` / `burnq2b` | `s2face1.bmp` | `0x0A72B0` | `[6,5,5,5,5,3,8,2,7,4]` | `X\BURNQUIS.STR` |
 | 2 | `0x800B6ADC` | `0x0A72DC` | **Lulao** | `cab` / `cab2b` | `s2face2.bmp` | `0x0A7404` | `[6,5,5,6,3,5,5,6,5,4]` | `X\CABALLER.STR` |
 | 3 | `0x800B6C30` | `0x0A7430` | **Bolsonaro** | `campb2` / `campb2b` | `s2face3.bmp` | `0x0A7558` | `[7,2,6,5,8,4,5,6,2,5]` | `X\CAMPBELL.STR` |
 | 4 | `0x800B6D84` | `0x0A7584` | **Wagner Oliver** | `glif2` / `glif2b` | `s2face4.bmp` | `0x0A76AC` | `[7,7,5,6,5,3,4,4,6,3]` | `X\GLIFBERG.STR` |
@@ -57,7 +57,7 @@
 ## 3. Decks, Biografias e Ponteiros de Especiais por Personagem
 
 - **[0] Tony Hawk** (Bio `0x800B9D80` | Specials `0x800B62E0`): `s2dBi01a.bmp` (Full Skull 99) • `s2dBi02a.bmp` (Falcon3) • `s2dBi03a.bmp` (Falcon 2) • `s2dBi04a.bmp` (Pterodactyl) • `s2dBi05a.bmp` (Birdman Head) • `s2dBi06a.bmp` (Falcon) • `s2dBi07a.bmp` (Hawk) • `s2dBi08a.bmp` (Birdman)
-- **[1] Bob Burnquist** (Bio `0x800B9DAC` | Specials `0x800B63CC`): `s2dFi01b.bmp` (Stamp) • `s2dFi02b.bmp` (Stencil Enforcer) • `s2dFi03b.bmp` (Shadow) • `s2dFi04b.bmp` (Cigar) • `s2dFi05b.bmp` (Can't Stop) • `s2dFi06b.bmp` (Maestro) • `s2dFi07b.bmp` (Can't Stop Bob) • `s2dFi08b.bmp` (Football)
+- **[1] Silvio Santos** (Bio `0x800B9DAC` | Specials `0x800B63CC`): `s2dFi01b.bmp` (Stamp) • `s2dFi02b.bmp` (Stencil Enforcer) • `s2dFi03b.bmp` (Shadow) • `s2dFi04b.bmp` (Cigar) • `s2dFi05b.bmp` (Can't Stop) • `s2dFi06b.bmp` (Maestro) • `s2dFi07b.bmp` (Can't Stop SS) • `s2dFi08b.bmp` (Football)
 - **[2] Lulao** (Bio `0x800B9DEC` | Specials `0x800B6680`): `s2dPo01c.bmp` (Original Dragon '80) • `s2dPo02c.bmp` (Chinese '86) • `s2dPo03c.bmp` (Bats '87) • `s2dPo04c.bmp` (Animal Chin '88) • `s2dPo05c.bmp` (Mask '89) • `s2dPo06c.bmp` (Guitar '90) • `s2dPo07c.bmp` (Gundam '95) • `s2dPo08c.bmp` (Brigade '00)
 - **[3] Bolsonaro** (Bio `0x800B9E30` | Specials `0x800B6594`): `s2dCi01d.bmp` (CityStars.com) • `s2dCi02d.bmp` (Dwella) • `s2dCi03d.bmp` (Splash) • `s2dCi04d.bmp` (Silhoette) • `s2dCi05d.bmp` (Needle to the Record) • `s2dCi06d.bmp` (Rapper) • `s2dCi07d.bmp` (Performance) • `s2dCi08d.bmp` (Biker)
 - **[4] Wagner Oliver** (Bio `0x800B9E74` | Specials `0x800B662C`): `s2dFl01e.bmp` (New Wave) • `s2dFl02e.bmp` (Smiley Face) • `s2dFl03e.bmp` (Multi) • `s2dFl04e.bmp` (Mother Earth) • `s2dFl07e.bmp` (Euro-Flair) • `s2dFl06e.bmp` (King of Copenhagen) • `s2dFl05e.bmp` (Dragon) • `s2dFl08e.bmp` (Red Elephant)

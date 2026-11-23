@@ -4,9 +4,15 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 
 ---
 
-## [v2.0] — Customização Completa de 6 Skatistas 3D, Motor MIPS de Vozes/Boot Aleatório & Enciclopédia v2
+## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório & Enciclopédia v2
 
-### ✨ Skatistas Personalizados (24 Modelos `.PSX` + 6 Retratos `s2face*.bmp`)
+### ✨ Skatistas Personalizados (28 Modelos `.PSX` + 7 Retratos `s2face*.bmp`)
+- **Silvio Santos (`Slot 1`, ex-Bob Burnquist — `burnq2*` — [`Scripts/mod_skater_silvio.js`](Scripts/mod_skater_silvio.js)):**
+  - **Renomeação em `SLUS_010.66`:** `0x0C44EC`/`0x0C8688` `"Silvio Santos"`, `0x0C44FC` `"Sil"`, `0x0A17D8` `"Brazil's Silvio Santos"`, `0x0C459C` `"Can't Stop SS"` (preservando `\X\BURNQUIS.STR;1` e nomes de arquivos `.psx`).
+  - **Microfone de Peito 3D Verdadeiramente Geométrico em `Chest Mesh[8]` (`burnq2.psx` & `burnq_l.psx`):** injetados cirurgicamente `+23` vértices `w=0`, `+41` normais (preservando o invariante estrito `nN === nV + nF` com remapeamento `normIdx += 23` nas faces originais) e `+18` polígonos texturizados `POLY_FT3/FT4` (`+1.160 B` — `61.404 B ≤ 61.440 B` em `burnq2.psx` e `53.092 B ≤ 53.248 B` em `burnq_l.psx`, zero deslocamento de offsets no `CD.WAD`!), formando globo metálico facetado + anel cromado equatorial + haste afilada inclinada sobre a gravata + presilha horizontal 3D com atlas metálico dedicado em `U=16..31` de `texIdx=6` (`32×32 16c`).
+  - **Escultura 3D do Rosto & Topete (`HEAD Mesh[15]`):** eliminação completa do chapéu pescador (*bucket hat*) no Style A (`0xF5CF6046`) e do capacete preto no Style B (`0x9504086E`), esculpindo crânio simétrico com topete castanho-escuro penteado para trás e rosto sorridente de `silvio.png` (travando `w=2`).
+  - **Roupas & Retrato:** Style A terno azul-marinho 2 botões, camisa branca em V, gravata, lenço branco de bolso (`flipX: true`), mangas compridas com punho branco e sapatos sociais; Style B camisa havaiana azul-royal florida com balão amarelo/palmeiras/hibiscos, antebraços limpos com relógio preto (sem cotoveleiras), bermuda xadrez e pernas limpas (sem joelheiras); retrato `s2face1.bmp` (`CD.WAD[369]` + `options.pre +0x246BC`, `magIdx=21`).
+  - **13 Vozes SPU-ADPCM na Seleção de Skatistas:** adicionadas a `VOICES.DAT` (`41` clipes totais, `873 setores`) com reorganização do Setor 1 (`VOICETBL` expandido até 62 slots, `Hook_BailSfx @ 0x800E3400` e `VoiceSelect_Lookup @ 0x800E3600`, zero redução da Heap `0x800E3800`).
 - **Bolsonaro (`Slot 3` — `campb2*`):** reconstrução simétrica do crânio com `bolsonaro_rosto.png`, cabelo curto 360°, retrato rindo (`s2face3.bmp`), roupas Style A (terno + faixa) / Style B (listrado `"171"`) e **transplante cirúrgico do pescoço anatômico fino do Tony Hawk (`hawk2.psx`)** em `Chest Mesh[8]` eliminando o colar largo de dreadlocks.
 - **Lulao (`Slot 2` — `cab*`):** Style A (terno + faixa presidencial), Style B (uniforme de presidiário), rosto 3D, retrato (`s2face2.bmp`) e **barriguinha 3D anatômica** esculpida em `Pelvis`/`Stomach`/`Chest`.
 - **Wagner Oliver (`Slot 4` — `glif2*`):** remoção completa da viseira 3D do Rune Glifberg (`HEAD Mesh[15]`), Style A (moletom bordô `"CIÊNCIA DA COMPUTAÇÃO"` + jeans comprido), Style B (uniforme policial `"POLICJA"` com suporte aos palIds distintos de Hi/Lo-LOD + calça cargo + coturnos) e retrato `s2face4.bmp`.

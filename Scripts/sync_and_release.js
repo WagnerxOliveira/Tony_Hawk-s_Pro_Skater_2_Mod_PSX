@@ -83,6 +83,7 @@ const scriptsToSync = [
   'build_iso.js',
   'create_patch.js',
   'replace_videos.js',
+  'mod_skater_silvio.js',
   'mod_skater_lulao.js',
   'mod_skater_bolsonaro.js',
   'mod_skater_wagner.js',

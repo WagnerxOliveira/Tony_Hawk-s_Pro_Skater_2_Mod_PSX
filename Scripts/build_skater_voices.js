@@ -5,8 +5,9 @@
  * THPS2 PS1 (SLUS-01066) Skater Select Voice Bank Builder
  *
  * Encodes all MP3 voice clips in:
- *   - audios_skatistas/lulao_audios/     (Lulao, skater idx 2)
- *   - audios_skatistas/bolsonaro_audios/ (Bolsonaro, skater idx 3)
+ *   - audios_skatistas/lulao_audios/     (Lulao,         skater idx 2)
+ *   - audios_skatistas/bolsonaro_audios/ (Bolsonaro,     skater idx 3)
+ *   - audios_skatistas/silvio_audios/    (Silvio Santos, skater idx 1)
  *
  * Pipeline per clip:
  *   1. ffmpeg: mono, 11025 Hz, highpass 80 Hz, EBU R128 loudness normalization (-13 LUFS, -1.0 dBTP)
@@ -15,8 +16,12 @@
  *      re-padded to 64 bytes so PS1 SPU Hardware Voice 23 always stops cleanly with zero pop/loop.
  *   4. Packs into root-level VOICES.DAT (2048-byte sector aligned):
  *      - Sector 0 (0x0000..0x07FF): Resident MODCODE (2048 B, loaded to RAM 0x800E2800 by SLUS_010.66)
- *      - Sector 1 (0x0800..0x0FFF): VOICETBL index (2048 B, loaded to RAM 0x800E3000 by SLUS_010.66)
- *      - Sectors 2..N:              28 SPU-ADPCM voice payloads (Lulao [0..13], Bolsonaro [14..27])
+ *      - Sector 1 (0x0800..0x0FFF): VOICETBL + Resident Sec1 Code (2048 B, loaded to RAM 0x800E3000):
+ *          * +0x000..+0x3EF: header (16 B) + up to 62 x 16 B clip descriptors
+ *          * +0x3F0: silvioCount | +0x3F4: g_SilvioClipIdx | +0x3F8: g_LulaoClipIdx | +0x3FC: g_BolsoClipIdx
+ *          * +0x400..+0x5FF: Hook_BailSfx (RAM 0x800E3400, 9 rotating bail screams)
+ *          * +0x600..+0x7FF: VoiceSelect_Lookup / VoiceSelect_SeedAll (RAM 0x800E3600)
+ *      - Sectors 2..N:              41 SPU-ADPCM voice payloads (Lulao [0..13], Bolsonaro [14..27], Silvio [28..40])
  */
 
 const fs = require('fs');
@@ -27,6 +32,7 @@ const rootDir = path.resolve(__dirname, '..');
 const audiosRoot = path.join(rootDir, 'audios_skatistas');
 const lulaoDir = path.join(audiosRoot, 'lulao_audios');
 const bolsoDir = path.join(audiosRoot, 'bolsonaro_audios');
+const silvioDir = path.join(audiosRoot, 'silvio_audios');
 const cacheDir = path.join(rootDir, 'build', '_voice_cache');
 const voicesDatPath = path.join(rootDir, 'VOICES.DAT');
 const manifestPath = path.join(rootDir, 'build', 'voices_manifest.json');
@@ -129,23 +135,26 @@ function encodeClipToSpu(mp3Path, cacheKey, force = false) {
 }
 
 function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null) {
-  if (!fs.existsSync(lulaoDir) || !fs.existsSync(bolsoDir)) {
+  if (!fs.existsSync(lulaoDir) || !fs.existsSync(bolsoDir) || !fs.existsSync(silvioDir)) {
     throw new Error(`Pastas de audio nao encontradas em ${audiosRoot}`);
   }
 
   const lulaoFiles = fs.readdirSync(lulaoDir).filter(f => /\.(mp3|wav|ogg|m4a)$/i.test(f)).sort();
   const bolsoFiles = fs.readdirSync(bolsoDir).filter(f => /\.(mp3|wav|ogg|m4a)$/i.test(f)).sort();
+  const silvioFiles = fs.readdirSync(silvioDir).filter(f => /\.(mp3|wav|ogg|m4a)$/i.test(f)).sort();
 
-  if (lulaoFiles.length === 0 || bolsoFiles.length === 0) {
-    throw new Error(`Clips insuficientes: lulao=${lulaoFiles.length}, bolsonaro=${bolsoFiles.length}`);
+  if (lulaoFiles.length === 0 || bolsoFiles.length === 0 || silvioFiles.length === 0) {
+    throw new Error(`Clips insuficientes: lulao=${lulaoFiles.length}, bolsonaro=${bolsoFiles.length}, silvio=${silvioFiles.length}`);
   }
-  if (lulaoFiles.length + bolsoFiles.length > 30) {
-    throw new Error(`Total de vozes excede limite de 30 entradas (0x10..0x1F0) para preservar Hook_BailSfx @ +0x200.`);
+  const totalClipCount = lulaoFiles.length + bolsoFiles.length + silvioFiles.length;
+  if (totalClipCount > 62) {
+    throw new Error(`Total de vozes (${totalClipCount}) excede limite de 62 entradas (0x010..0x3EF) para preservar Hook_BailSfx @ +0x400.`);
   }
 
   console.log(`=== Codificando Banco de Vozes PS1 SPU-ADPCM (${SPU_SAMPLE_RATE} Hz Mono) ===`);
-  console.log(`  Lulao:     ${lulaoFiles.length} clips`);
-  console.log(`  Bolsonaro: ${bolsoFiles.length} clips`);
+  console.log(`  Lulao (Slot 2):         ${lulaoFiles.length} clips`);
+  console.log(`  Bolsonaro (Slot 3):     ${bolsoFiles.length} clips`);
+  console.log(`  Silvio Santos (Slot 1): ${silvioFiles.length} clips`);
 
   // Preserve existing Sector 0 (MODCODE) if caller didn't pass one and VOICES.DAT already exists
   let sec0 = Buffer.alloc(2048, 0);
@@ -159,11 +168,12 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
 
   const allEntries = [];
   const payloads = [];
-  let curSector = 2; // Sector 0 = MODCODE, Sector 1 = VOICETBL
+  let curSector = 2; // Sector 0 = MODCODE, Sector 1 = VOICETBL + Sec1Code
 
   const groups = [
-    { skater: 'Lulao', skaterIdx: 2, dir: lulaoDir, files: lulaoFiles, prefix: 'lulao' },
-    { skater: 'Bolsonaro', skaterIdx: 3, dir: bolsoDir, files: bolsoFiles, prefix: 'bolso' },
+    { skater: 'Lulao',         skaterIdx: 2, dir: lulaoDir,  files: lulaoFiles,  prefix: 'lulao' },
+    { skater: 'Bolsonaro',     skaterIdx: 3, dir: bolsoDir,  files: bolsoFiles,  prefix: 'bolso' },
+    { skater: 'Silvio Santos', skaterIdx: 1, dir: silvioDir, files: silvioFiles, prefix: 'silvio' },
   ];
 
   let maxClipBytes = 0;
@@ -193,40 +203,46 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
       payloads.push(padded);
       curSector += secCount;
       console.log(
-        `  [${grp.skater.padEnd(9)} #${String(i).padStart(2, '0')}] ${fn.padEnd(42)} ` +
+        `  [${grp.skater.padEnd(13)} #${String(i).padStart(2, '0')}] ${fn.padEnd(38)} ` +
         `${durSec.toFixed(2).padStart(5)}s | ${String(spu.length).padStart(6)} B (${String(secCount).padStart(2)} sec) @ +${allEntries[allEntries.length - 1].sectorOffset}`
       );
     }
   }
 
-  // Build Sector 1: VOICETBL (2048 B, loaded to RAM 0x800E3000)
-  // +0x00: uint32 magic = 0x564F4943 ("VOIC" LE)
-  // +0x04: uint32 lulaoCount
-  // +0x08: uint32 bolsoCount
-  // +0x0C: uint32 spuBaseAddr (0x58000)
-  // +0x10 + i*16: { uint32 sectorOffset, uint32 sectorCount, uint32 byteSize, uint32 spuPitch }
+  // Build Sector 1: VOICETBL + Sec1Code (2048 B, loaded to RAM 0x800E3000..0x800E37FF)
+  // +0x000: uint32 magic = 0x564F4943 ("VOIC" LE)
+  // +0x004: uint32 lulaoCount (Slot 2)
+  // +0x008: uint32 bolsoCount (Slot 3)
+  // +0x00C: uint32 spuBaseAddr (0x58000)
+  // +0x010 + i*16: { uint32 sectorOffset, uint32 sectorCount, uint32 byteSize, uint32 spuPitch } (up to 62 entries)
+  // +0x3F0: uint32 silvioCount (Slot 1)
+  // +0x3F4: uint32 g_SilvioClipIdx (runtime state)
+  // +0x3F8: uint32 g_LulaoClipIdx  (runtime state)
+  // +0x3FC: uint32 g_BolsoClipIdx  (runtime state)
+  // +0x400..+0x7FF (1024 B): Hook_BailSfx (+0x400..+0x5FF) + VoiceSelect_Lookup/SeedAll (+0x600..+0x7FF)
   const sec1 = Buffer.alloc(2048, 0);
-  sec1.writeUInt32LE(0x564F4943, 0x00);
-  sec1.writeUInt32LE(lulaoFiles.length, 0x04);
-  sec1.writeUInt32LE(bolsoFiles.length, 0x08);
-  sec1.writeUInt32LE(0x00058000, 0x0C);
+  sec1.writeUInt32LE(0x564F4943, 0x000);
+  sec1.writeUInt32LE(lulaoFiles.length, 0x004);
+  sec1.writeUInt32LE(bolsoFiles.length, 0x008);
+  sec1.writeUInt32LE(0x00058000, 0x00C);
+  sec1.writeUInt32LE(silvioFiles.length, 0x3F0);
 
   for (let i = 0; i < allEntries.length; i++) {
     const e = allEntries[i];
-    const base = 0x10 + i * 16;
+    const base = 0x010 + i * 16;
     sec1.writeUInt32LE(e.sectorOffset, base + 0);
     sec1.writeUInt32LE(e.sectorCount, base + 4);
     sec1.writeUInt32LE(e.byteSize, base + 8);
     sec1.writeUInt32LE(e.spuPitch, base + 12);
   }
 
-  // Embed resident Bail Round-Robin MIPS hook in Sector 1 upper region (+0x200..+0x7FF -> RAM 0x800E3200..0x800E37FF)
+  // Embed resident Sec1 MIPS code in Sector 1 upper half (+0x400..+0x7FF -> RAM 0x800E3400..0x800E37FF)
   if (sec1ExtraCode) {
-    if (sec1ExtraCode.length > 1536) throw new Error(`sec1ExtraCode excede 1536 B (${sec1ExtraCode.length} B)`);
-    sec1ExtraCode.copy(sec1, 0x200);
+    if (sec1ExtraCode.length > 1024) throw new Error(`sec1ExtraCode excede 1024 B (${sec1ExtraCode.length} B)`);
+    sec1ExtraCode.copy(sec1, 0x400);
   } else if (fs.existsSync(voicesDatPath)) {
     const prev = fs.readFileSync(voicesDatPath);
-    if (prev.length >= 4096) prev.copy(sec1, 0x200, 2048 + 0x200, 4096);
+    if (prev.length >= 4096) prev.copy(sec1, 0x400, 2048 + 0x400, 4096);
   }
 
   const finalBuf = Buffer.concat([sec0, sec1, ...payloads]);
@@ -242,6 +258,8 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     maxClipBytes,
     lulaoCount: lulaoFiles.length,
     bolsoCount: bolsoFiles.length,
+    silvioCount: silvioFiles.length,
+    totalClips: allEntries.length,
     entries: allEntries,
   };
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });

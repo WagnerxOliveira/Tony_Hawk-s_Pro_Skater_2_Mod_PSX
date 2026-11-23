@@ -10,7 +10,7 @@
 | Categoria | Quantidade | Resolvidos por Nome | Tamanho Total | Descrição |
 | :--- | :-: | :-: | :---: | :--- |
 | **`BMP`** | 1040 | 793 (76%) | 10.32 MB | Texturas 2D, roupas de skatista, rostos, decks, telas de loading e UI (BMP 4-bit/8-bit indexado) |
-| **`PSX`** | 227 | 146 (64%) | 27.33 MB | Modelos 3D, geometria de fases, skyboxes e texturas VRAM embutidas (magic `04 00 02 00`) |
+| **`PSX`** | 227 | 146 (64%) | 27.34 MB | Modelos 3D, geometria de fases, skyboxes e texturas VRAM embutidas (magic `04 00 02 00`) |
 | **`PSH`** | 74 | 74 (100%) | 0.12 MB | Headers C em texto plano (`#ifndef ..._PSH`) com hierarquia de ossos/esqueletos |
 | **`DATA`** | 53 | 25 (47%) | 0.56 MB | Fontes (`.fnt`), `tricks.bin`, tabelas de animação e dados binários |
 | **`PRK`** | 50 | 50 (100%) | 0.21 MB | 50 parques pré-fabricados do Park Editor (`park0.prk`..`park49.prk`, 2.560 B cada) |

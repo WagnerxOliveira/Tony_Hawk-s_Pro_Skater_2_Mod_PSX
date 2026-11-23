@@ -1,6 +1,6 @@
-# 🎨 MAPA 11 — Os 6 Skatistas Personalizados, Mapeamento Real de Retratos e Pipeline de Arte 3D
+# 🎨 MAPA 11 — Os 7 Skatistas Personalizados, Mapeamento Real de Retratos e Pipeline de Arte 3D
 
-> **Catálogo Cirúrgico do Mod (v2.0):** Documentação completa dos **6 skatistas personalizados** (**24 modelos 3D `.PSX`** em Style A & B + **6 retratos `s2face*.bmp`** + renomeações em `SLUS_010.66`), tabela definitiva de mapeamento real de retratos e guia de uso de [`Scripts/psx_skater_lib.js`](../Scripts/psx_skater_lib.js).
+> **Catálogo Cirúrgico do Mod (v2.0):** Documentação completa dos **7 skatistas personalizados** (**28 modelos 3D `.PSX`** em Style A & B + **7 retratos `s2face*.bmp`** + renomeações em `SLUS_010.66`), tabela definitiva de mapeamento real de retratos e guia de uso de [`Scripts/psx_skater_lib.js`](../Scripts/psx_skater_lib.js).
 
 ---
 
@@ -13,7 +13,7 @@ Na tabela mestre de skatistas em `SLUS_010.66` (`0x0C4398..0x0C5220`), a Neverso
 | Slot | Nome no Mod (`SLUS`) | Base 3D (`.PSX` × 4) | Retrato Real (`SLUS`) | `CD.WAD idx` | Offset `options.pre` | `magIdx` (`#FF00FF`) | Status no Mod |
 | :---: | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
 | `0` | Tony Hawk | `hawk2*` | `s2face5.bmp` (`0x0C44BC`) | `373` | `+0x286DC` | `22` | Original intacto |
-| `1` | Bob Burnquist | `burnq2*` | `s2face1.bmp` (`0x0C45C8`) | `369` | `+0x246BC` | `21` | Original intacto |
+| **`1`** | **Silvio Santos** | `burnq2`, `burnq_L`, `burnq2b`, `burnq2bL` | **`s2face1.bmp`** (`0x0C45C8`) | **`369`** | **`+0x246BC`** | **`21`** | ✅ **Customizado** (`silvio.png` + **Mic 3D**) |
 | **`2`** | **Lulao** | `cab`, `cab_L`, `cab2b`, `cab2b_L` | **`s2face2.bmp`** (`0x0C46E0`) | **`370`** | **`+0x256C4`** | **`5`** | ✅ **Customizado** (`lulao.png`) |
 | **`3`** | **Bolsonaro** | `campb2`, `campb2_L`, `campb2b`, `campb2bL` | **`s2face3.bmp`** (`0x0C47F4`) | **`371`** | **`+0x266CC`** | **`39`** | ✅ **Customizado** (`bolsonaro.png` + `bolsonaro_rosto.png`) |
 | **`4`** | **Wagner Oliver** | `glif2`, `glif_L`, `glif2b`, `glif2b_L` | **`s2face4.bmp`** (`0x0C4910`) | **`372`** | **`+0x276D4`** | **`26`** | ✅ **Customizado** (`wagner.png`) |
@@ -30,7 +30,17 @@ Na tabela mestre de skatistas em `SLUS_010.66` (`0x0C4398..0x0C5220`), a Neverso
 
 ---
 
-## 2. Ficha Técnica Detalhada dos 6 Skatistas Personalizados (24 Modelos `.PSX`)
+## 2. Ficha Técnica Detalhada dos 7 Skatistas Personalizados (28 Modelos `.PSX`)
+
+### Slot 1 — **Silvio Santos** *(ex-Bob Burnquist)* ([`Scripts/mod_skater_silvio.js`](../Scripts/mod_skater_silvio.js))
+- **Modelos (`CD.WAD`):** `burnq2.psx` (`387`, `60.244 → 61.404 B`, mesmos `30` setores), `burnq_L.psx` (`1010`, `51.932 → 53.092 B`, mesmos `26` setores), `burnq2b.psx` (`431`, `58.016 B` exatos), `burnq2bL.psx` (`1012`, `50.840 B` exatos).
+- **Renomeação `SLUS_010.66` (preservando `\X\BURNQUIS.STR;1`):** `0x0C44EC` `"Silvio Santos"`, `0x0C44FC` `"Sil"`, `0x0C8688` `"Silvio Santos"`, `0x0A17D8` `"Brazil's Silvio Santos"`, `0x0C459C` `"Can't Stop SS"`.
+- **Microfone de Peito 3D Geométrico Real em `Chest Mesh[8]` (Style A Hi & Lo-LOD):**
+  - Injeção cirúrgica de **`+23` vértices `w=0`**, **`+41` normais** (mantendo estritamente `nN === nV + nF` com remapeamento `normIdx += 23` nas faces originais) e **`+18` primitivas `POLY_FT3`/`POLY_FT4` de 36 B** (`+1.160 B` exatos, deslocando `ptrMeta`, `meshOffs[9..18]` e `texOffs[0..10]` sem alterar nenhum offset do `CD.WAD`!).
+  - Inclui globo metálico facetado (4 tris superiores + 3 quads cinta equatorial cromada + 3 quads funil inferior), haste cilíndrica afilada acompanhando a inclinação de `~25,7°` do peito (zero vão lateral!) + base fechada e presilha horizontal cromada 3D; texturizado via atlas metálico dedicado em `U=16..31` de `texIdx=6` (`32×32 16c`, com UVs da copa do cabelo de `Mesh[15]` remapeadas para `U=0..14`).
+- **Escultura 3D da Cabeça (`HEAD Mesh[15]`):** remoção completa do chapéu pescador (*bucket hat*, `0xF5CF6046`) no Style A e do capacete preto (`0x9504086E`) no Style B, esculpindo o topete castanho-escuro penteado para trás e rosto sorridente de `silvio.png` (travando `w=2`).
+- **Roupas & Retrato:** **Style A** — terno azul-marinho 2 botões, camisa branca em V, gravata, lenço branco de bolso (`flipX: true`), mangas compridas com punho branco e sapatos sociais; **Style B** — camisa havaiana azul-royal florida com balão amarelo/palmeiras/hibiscos, antebraços pele clara com relógio preto (sem cotoveleiras), bermuda xadrez e pernas limpas (sem joelheiras); retrato `s2face1.bmp` (`magIdx = 21`) com fundo de estúdio suavizado via flood-fill.
+- **Vozes:** **13 clipes rotativos SPU-ADPCM** em `VOICES.DAT` ([MAPA 12](MAPA_12_ENGINE_MOD_MIPS_VOICES_E_BOOT_ALEATORIO.md)).
 
 ### Slot 2 — **Lulao** ([`Scripts/mod_skater_lulao.js`](../Scripts/mod_skater_lulao.js))
 - **Modelos (`CD.WAD`):** `cab.psx` (`389`), `cab_L.psx` (`986`), `cab2b.psx` (`433`), `cab2b_L.psx` (`988`).
