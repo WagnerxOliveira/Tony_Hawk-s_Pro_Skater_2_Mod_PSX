@@ -26,6 +26,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { spawnSync } = require('child_process');
+const { renderPs1SkaterPreview, recomputeMeshBounds } = require('./psx_skater_lib');
 
 const rootDir = path.resolve(__dirname, '..');
 const ffmpegExe = path.join(rootDir, 'tools', 'bin', 'ffmpeg', 'ffmpeg-9.1-essentials_build', 'bin', 'ffmpeg.exe');
@@ -1365,9 +1366,45 @@ for (const spec of modelSpecs) {
     }
   }
   const sculpt = sculptHeadGeometryToBolsonaro(psxBuf, info, headMeshIdx);
+  // FASE 1: Transplante cirurgico do pescoco fino do Tony Hawk (hawk2.psx Chest Mesh[8]) para Chest Mesh[8] do Bolsonaro!
+  // Elimina 100% do "capuz de cobra" (405u largura / +199u atras) herdado dos dreadlocks de Kareem Campbell.
+  const chestMeshIdx = info.meshHashes.indexOf(0x8d486d4f);
+  if (chestMeshIdx < 0) throw new Error(`CHEST hash 0x8d486d4f nao encontrado em ${spec.name}!`);
+  const cMo = info.meshOffs[chestMeshIdx];
+  const cNVerts = psxBuf.readUInt16LE(cMo + 2);
+  const cVOff = cMo + 28;
+  const hawkNeckMap = (cNVerts === 37) ? {
+    // High-LOD campb2.psx / campb2b.psx (8 w=1 neck collar verts -> EXCLUSIVE to HEAD Mesh[15]!)
+    16: [ -42, -498, -119], // front-left  (EXACT Tony Hawk Chest.v[14])
+    29: [  43, -498, -119], // front-right (EXACT Tony Hawk Chest.v[29])
+    22: [-108, -550,  -19], // side-left   (Tony Hawk Chest.v[20])
+    26: [ 112, -550,  -19], // side-right  (Tony Hawk Chest.v[26])
+    34: [ -84, -565,   36], // back-left   (replaces -197,-495,+71 cobra flare!)
+    33: [  88, -565,   36], // back-right  (replaces +208,-500,+70 cobra flare!)
+    35: [ -32, -580,   64], // nape-left   (replaces -76,-408,+199 back cape!)
+    13: [  36, -580,   64], // nape-right  (replaces +80,-408,+199 back cape!)
+  } : {
+    // Low-LOD campb2_L.psx / campb2bL.psx (6 w=1 neck collar verts -> EXCLUSIVE to HEAD Mesh[15]!)
+    14: [   1, -498, -119], // front-center
+    19: [-108, -550,  -19], // side-left
+    22: [ 112, -550,  -19], // side-right
+    26: [ -84, -565,   36], // back-left
+    25: [  88, -565,   36], // back-right
+    11: [   2, -580,   64], // nape-center (EXACT Tony Hawk Chest.v[25])
+  };
+  let neckMoved = 0;
+  for (const [viStr, pt] of Object.entries(hawkNeckMap)) {
+    const vi = Number(viStr), vo = cVOff + vi * 8;
+    if (psxBuf.readUInt16LE(vo + 6) !== 1) throw new Error(`Chest.v[${vi}] em ${spec.name} nao e w=1!`);
+    psxBuf.writeInt16LE(pt[0], vo);
+    psxBuf.writeInt16LE(pt[1], vo + 2);
+    psxBuf.writeInt16LE(pt[2], vo + 4);
+    neckMoved++;
+  }
+  recomputeMeshBounds(psxBuf, cMo, 16);
   if (spec.name === 'campb2.psx') headSculpt = sculpt;
   modifiedModels.set(spec.name, psxBuf);
-  console.log(`  [OK] ${spec.name.padEnd(13)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${headMeshIdx}] (${sculpt.newVerts.length} verts, cranio simetrizado + bolsonaro_rosto.png!)`);
+  console.log(`  [OK] ${spec.name.padEnd(13)} | ${psxBuf.length} B (tamanho exato!) | ${replacedTex} texturas BGR555 + HEAD Mesh[${headMeshIdx}] (${sculpt.newVerts.length}v) + PESCOCO TONY HAWK Chest Mesh[${chestMeshIdx}] (${neckMoved}v)!`);
 }
 
 fs.mkdirSync(previewDir, { recursive: true });
@@ -1382,6 +1419,13 @@ writePng(path.join(previewDir, 'preview_styleB_sleeves_64x64.png'), 64, 64, prev
 writePng(path.join(previewDir, 'preview_styleB_pants_64x64.png'), 64, 64, prevB[0x792c8a53]);
 renderHeadComparisonPng(headSculpt, path.join(previewDir, 'preview_head_3d_before_after.png'));
 renderHeadTextured5ViewsPng(headSculpt, origHeadRgba, prevA[0x59e2e72c], path.join(previewDir, 'preview_head_3d_textured_5views.png'));
+renderPs1SkaterPreview(
+  modifiedModels.get('campb2.psx'),
+  [8, 15],
+  [{ yaw: 0 }, { yaw: 35 }, { yaw: -35 }, { yaw: -90 }, { yaw: 180 }],
+  160, 210, 0.22, -40,
+  path.join(previewDir, 'preview_neck_fixed_5views.png')
+);
 console.log(`\nPreviews visuais salvos em: ${previewDir}`);
 
 if (previewOnly) {

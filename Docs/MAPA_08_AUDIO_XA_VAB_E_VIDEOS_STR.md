@@ -103,7 +103,7 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 | 23 | `0x800C1FF0` | `0x0B27F0` | `\X\LASEK.STR;1` | Bucky Lasek | 320×240 | **652** | `0x025800` | Sim | str (2336B) |
 | 24 | `0x800C2014` | `0x0B2814` | `\X\MULLEN.STR;1` | Francis Paulo | 320×240 | **645** | `0x025800` | Sim | str (2336B) |
 | 25 | `0x800C2038` | `0x0B2838` | `\X\MUSKA.STR;1` | Joao Paulo | 320×240 | **623** | `0x025800` | Sim | str (2336B) |
-| 26 | `0x800C205C` | `0x0B285C` | `\X\REYNOLDS.STR;1` | Andrew Reynolds | 320×240 | **623** | `0x025800` | Sim | str (2336B) |
+| 26 | `0x800C205C` | `0x0B285C` | `\X\REYNOLDS.STR;1` | Valter Pacheco | 320×240 | **623** | `0x025800` | Sim | str (2336B) |
 | 27 | `0x800C2080` | `0x0B2880` | `\X\ROWLEY.STR;1` | Geoff Rowley | 320×240 | **611** | `0x025800` | Sim | str (2336B) |
 | 28 | `0x800C20A4` | `0x0B28A4` | `\X\STEAMER.STR;1` | Elissa Steamer | 320×240 | **514** | `0x025800` | Sim | str (2336B) |
 | 29 | `0x800C20C8` | `0x0B28C8` | `\X\THOMAS.STR;1` | Jamie Thomas | 320×240 | **622** | `0x025800` | Sim | str (2336B) |

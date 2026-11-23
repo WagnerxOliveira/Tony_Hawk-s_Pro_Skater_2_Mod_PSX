@@ -207,6 +207,10 @@ try {
   chkStr(0x0C4724, 'Bolso');
   chkStr(0x0C86A8, 'Bolsonaro');
   chkStr(0x0C8730, 'Joao Paulo');
+  chkStr(0x0C4DB4, 'Valter Pacheco');
+  chkStr(0x0C4DC4, 'Valter');
+  chkStr(0x0C873C, 'Valter Pacheco');
+  chkStr(0x0A2034, "Valter's only been");
   if (strErr === 0) pass(`${checkedStrs.size} strings modificadas validadas (0 overflows, 0 erros printf, 0 bytes fora do .FNT)`);
 
   // =========================================================================
@@ -222,7 +226,16 @@ try {
     pass('CD.HED 100% identico ao Redump original');
   }
 
-  const allowedWadIdxs = new Set([45, 61, 370, 371, 389, 391, 433, 435, 986, 988, 1030, 1032]);
+  const allowedWadIdxs = new Set([
+    45, 61,                                         // options.pre, playsel.bin
+    370, 371, 372, 375, 377, 378,                   // 6 custom portraits: s2face2,3,4,7,9,10
+    389, 986, 433, 988,                             // Lulao (4 .PSX)
+    391, 1030, 435, 1032,                           // Bolsonaro (4 .PSX)
+    393, 994, 437, 996,                             // Wagner Oliver (4 .PSX)
+    399, 998, 443, 1000,                            // Francis Paulo (4 .PSX)
+    403, 1002, 447, 1004,                           // Natan Oliver (4 .PSX)
+    405, 1018, 449, 1020,                           // Valter Pacheco (4 .PSX)
+  ]);
   let wadChecked = 0, wadUnexpected = 0;
   for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
     const h = hedDisk.readUInt32LE(idx * 12);
@@ -257,53 +270,73 @@ try {
     }
     if (psErr === 0) pass('playsel.bin (idx=61): 2/2 hooks Skater Select (+0x3388 Scroll, +0x100C Confirm) validos, 31.632 B restantes intactos');
   }
-  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: Lulao, Bolsonaro e playsel.bin)`);
+  if (wadUnexpected === 0) pass(`Todas as ${wadChecked} entradas do CD.WAD verificadas (${wadChecked - allowedWadIdxs.size} intactas incluindo skhan_l.psx + ${allowedWadIdxs.size} mods: 6 skatistas customizados + playsel.bin)`);
 
   // =========================================================================
-  // STAGE 4: s2face2.bmp, s2face3.bmp & options.pre INTEGRITY
+  // STAGE 4: ALL 6 PORTRAITS (s2face2,3,4,7,9,10) & options.pre INTEGRITY
   // =========================================================================
-  console.log('\n[STAGE 4] options.pre, s2face2.bmp (Lulao) & s2face3.bmp (Bolsonaro) — Retratos');
-  const face2Orig = getWadEntry(fdRed, 455, hedDisk, 370);
-  const face2Mod = getWadEntry(fdMod, 455, hedDisk, 370);
-  const face3Orig = getWadEntry(fdRed, 455, hedDisk, 371);
-  const face3Mod = getWadEntry(fdMod, 455, hedDisk, 371);
+  console.log('\n[STAGE 4] options.pre & 6 Retratos Customizados (Lulao, Bolsonaro, Wagner, Francis, Valter, Natan)');
   const optOrig = getWadEntry(fdRed, 455, hedDisk, 45);
   const optMod = getWadEntry(fdMod, 455, hedDisk, 45);
-  for (const [nm, o, m, magIdx, preOff] of [
-    ['s2face2.bmp', face2Orig, face2Mod, 5, 0x256C4],
-    ['s2face3.bmp', face3Orig, face3Mod, 39, 0x266CC],
-  ]) {
+  const portraitSpecs = [
+    { nm: 's2face2.bmp',  idx: 370, magIdx: 5,  preOff: 0x256C4 },
+    { nm: 's2face3.bmp',  idx: 371, magIdx: 39, preOff: 0x266CC },
+    { nm: 's2face4.bmp',  idx: 372, magIdx: 26, preOff: 0x276D4 },
+    { nm: 's2face7.bmp',  idx: 375, magIdx: 0,  preOff: 0x2A6EC },
+    { nm: 's2face9.bmp',  idx: 377, magIdx: 0,  preOff: 0x2C6FC },
+    { nm: 's2face10.bmp', idx: 378, magIdx: 18, preOff: 0x2D708 },
+  ];
+  for (const ps of portraitSpecs) {
+    const o = getWadEntry(fdRed, 455, hedDisk, ps.idx);
+    const m = getWadEntry(fdMod, 455, hedDisk, ps.idx);
     if (m.length !== 4088 || !o.subarray(0, 54).equals(m.subarray(0, 54))) {
-      fail('PORTRAIT', `Header/tamanho de ${nm} invalido`);
+      fail('PORTRAIT', `Header/tamanho de ${ps.nm} invalido`);
     }
-    if (m[54 + magIdx * 4] !== 255 || m[54 + magIdx * 4 + 1] !== 0 || m[54 + magIdx * 4 + 2] !== 255) {
-      fail('PORTRAIT', `Indice ${magIdx} de ${nm} nao e magenta #FF00FF!`);
+    if (m[54 + ps.magIdx * 4] !== 255 || m[54 + ps.magIdx * 4 + 1] !== 0 || m[54 + ps.magIdx * 4 + 2] !== 255) {
+      fail('PORTRAIT', `Indice ${ps.magIdx} de ${ps.nm} nao e magenta #FF00FF!`);
     }
-    if (optMod.indexOf(m) !== preOff) {
-      fail('PORTRAIT', `${nm} nao encontrado no offset 0x${preOff.toString(16)} de options.pre!`);
+    if (optMod.indexOf(m) !== ps.preOff) {
+      fail('PORTRAIT', `${ps.nm} nao encontrado no offset 0x${ps.preOff.toString(16)} de options.pre!`);
     }
   }
   let optOutsideDiff = 0;
   for (let i = 0; i < optOrig.length; i++) {
-    if ((i >= 0x256C4 && i < 0x256C4 + 4088) || (i >= 0x266CC && i < 0x266CC + 4088)) continue;
+    const inAny = portraitSpecs.some(ps => i >= ps.preOff && i < ps.preOff + 4088);
+    if (inAny) continue;
     if (optOrig[i] !== optMod[i]) optOutsideDiff++;
   }
-  if (optOutsideDiff > 0) fail('PORTRAIT', `options.pre tem ${optOutsideDiff} bytes alterados fora de s2face2/s2face3!`);
-  else pass('s2face2.bmp (idx=5, +0x256C4), s2face3.bmp (idx=39, +0x266CC) e options.pre 100% integros');
+  if (optOutsideDiff > 0) fail('PORTRAIT', `options.pre tem ${optOutsideDiff} bytes alterados fora dos 6 retratos!`);
+  else pass('6/6 retratos (s2face2,3,4,7,9,10) com header 4088 B, chaves magenta #FF00FF e options.pre 100% integros');
 
   // =========================================================================
-  // STAGE 5: ALL 8 SKATER .PSX MODELS (LULAO + BOLSONARO) & HANGAR skhan_l.psx
+  // STAGE 5: ALL 24 SKATER .PSX MODELS (6 SKATERS x 4 LOD/STYLES) & HANGAR skhan_l.psx
   // =========================================================================
-  console.log('\n[STAGE 5] Modelos 3D .PSX (4 Lulao rosto+barriga + 4 Bolsonaro) & Fase 1 (skhan_l.psx original)');
+  console.log('\n[STAGE 5] Modelos 3D .PSX (24 modelos: Lulao, Bolsonaro+Pescoco, Wagner, Francis, Natan, Valter) & Fase 1 Original');
   const psxChecks = [
-    { idx: 389, name: 'cab.psx',     headHash: 0x0f88a1f8, expMesh: 12, bellyMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[13,'w0only']]) },
-    { idx: 986, name: 'cab_L.psx',   headHash: 0x0f88a1f8, expMesh: 15, bellyMeshes: new Map([[3,'w1ok'],[10,'w1ok'],[16,'w0only']]) },
-    { idx: 433, name: 'cab2b.psx',   headHash: 0x9504086e, expMesh: 15, bellyMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[8,'w0only']]) },
-    { idx: 988, name: 'cab2b_L.psx', headHash: 0x9504086e, expMesh: 15, bellyMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[8,'w0only']]) },
-    { idx: 391, name: 'campb2.psx',  headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
-    { idx: 1030, name: 'campb2_L.psx', headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
-    { idx: 435, name: 'campb2b.psx', headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
-    { idx: 1032, name: 'campb2bL.psx', headHash: 0x7806eefa, expMesh: 15, bellyMeshes: new Map() },
+    { idx: 389,  name: 'cab.psx',      headHash: 0x0f88a1f8, expMesh: 12, extraLabel: 'Barriguinha', extraMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[13,'w0only']]) },
+    { idx: 986,  name: 'cab_L.psx',    headHash: 0x0f88a1f8, expMesh: 15, extraLabel: 'Barriguinha', extraMeshes: new Map([[3,'w1ok'],[10,'w1ok'],[16,'w0only']]) },
+    { idx: 433,  name: 'cab2b.psx',    headHash: 0x9504086e, expMesh: 15, extraLabel: 'Barriguinha', extraMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[8,'w0only']]) },
+    { idx: 988,  name: 'cab2b_L.psx',  headHash: 0x9504086e, expMesh: 15, extraLabel: 'Barriguinha', extraMeshes: new Map([[0,'w1ok'],[7,'w1ok'],[8,'w0only']]) },
+    { idx: 391,  name: 'campb2.psx',   headHash: 0x7806eefa, expMesh: 15, extraLabel: 'PescocoHawk', extraMeshes: new Map([[8,'w1ok']]) },
+    { idx: 1030, name: 'campb2_L.psx', headHash: 0x7806eefa, expMesh: 15, extraLabel: 'PescocoHawk', extraMeshes: new Map([[8,'w1ok']]) },
+    { idx: 435,  name: 'campb2b.psx',  headHash: 0x7806eefa, expMesh: 15, extraLabel: 'PescocoHawk', extraMeshes: new Map([[8,'w1ok']]) },
+    { idx: 1032, name: 'campb2bL.psx', headHash: 0x7806eefa, expMesh: 15, extraLabel: 'PescocoHawk', extraMeshes: new Map([[8,'w1ok']]) },
+    { idx: 393,  name: 'glif2.psx',    headHash: 0xe15f10ff, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 994,  name: 'glif_L.psx',   headHash: 0xe15f10ff, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 437,  name: 'glif2b.psx',   headHash: 0xe15f10ff, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 996,  name: 'glif2b_L.psx', headHash: 0xe15f10ff, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 399,  name: 'mullen.psx',   headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 998,  name: 'mullen_L.psx', headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 443,  name: 'mullen2b.psx', headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 1000, name: 'mulln2bL.psx', headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 403,  name: 'rowley2.psx',  headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 1002, name: 'rowley_L.psx', headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 447,  name: 'rowley2b.psx', headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 1004, name: 'rowly2bL.psx', headHash: 0xba25cbf5, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 405,  name: 'rynld2.psx',   headHash: 0x1ab6ae9d, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 1018, name: 'rynld_L.psx',  headHash: 0x1ab6ae9d, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 449,  name: 'rynld2b.psx',  headHash: 0x1ab6ae9d, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
+    { idx: 1020, name: 'rynld2bL.psx', headHash: 0x1ab6ae9d, expMesh: 15, extraLabel: '', extraMeshes: new Map() },
   ];
   for (const pc of psxChecks) {
     const orig = getWadEntry(fdRed, 455, hedDisk, pc.idx);
@@ -339,13 +372,13 @@ try {
     }
     if (zeroClut > 0) fail('PSX', `${pc.name}: ${zeroClut} cores 0x0000 (transparentes) indevidas na CLUT!`);
 
-    // Verify ONLY HEAD (and Lulao's Pelvis/Stomach/Chest belly meshes) changed, stitch invariants respected, bbox/rad safe!
-    let otherMeshDiff = 0, wDiff = 0, normFaceDiff = 0, headMoved = 0, bellyMoved = 0;
+    // Verify ONLY HEAD (and documented extra meshes: Lulao belly / Bolsonaro Tony Hawk neck) changed, stitch invariants respected, bbox/rad safe!
+    let otherMeshDiff = 0, wDiff = 0, normFaceDiff = 0, headMoved = 0, extraMoved = 0;
     for (let m = 0; m < nMesh; m++) {
       const mo = meshOffs[m], mEnd = (m + 1 < nMesh) ? meshOffs[m + 1] : ptrMeta;
       const isHead = (m === pc.expMesh);
-      const bellyMode = pc.bellyMeshes.get(m);
-      if (!isHead && !bellyMode) {
+      const extraMode = pc.extraMeshes.get(m);
+      if (!isHead && !extraMode) {
         if (!orig.subarray(mo, mEnd).equals(cur.subarray(mo, mEnd))) {
           fail('PSX', `${pc.name}: Mesh[${m}] foi modificada indevidamente!`);
           otherMeshDiff++;
@@ -360,11 +393,11 @@ try {
           const cx = cur.readInt16LE(vo), cy = cur.readInt16LE(vo + 2), cz = cur.readInt16LE(vo + 4), cw = cur.readUInt16LE(vo + 6);
           if (ow !== cw) wDiff++;
           const moved = (ox !== cx || oy !== cy || oz !== cz);
-          // HEAD & Chest(w0only): NEVER touch w != 0! Pelvis/Stomach(w1ok): NEVER touch w === 2!
+          // HEAD & w0only: NEVER touch w != 0! w1ok (Lulao belly / Bolsonaro neck): NEVER touch w === 2!
           if (moved) {
-            if ((isHead || bellyMode === 'w0only') && ow !== 0) wDiff++;
-            if (bellyMode === 'w1ok' && ow === 2) wDiff++;
-            if (isHead) headMoved++; else bellyMoved++;
+            if ((isHead || extraMode === 'w0only') && ow !== 0) wDiff++;
+            if (extraMode === 'w1ok' && ow === 2) wDiff++;
+            if (isHead) headMoved++; else extraMoved++;
           }
           if (cw !== 2) {
             if (cx < xmin) xmin = cx; if (cx > xmax) xmax = cx;
@@ -383,12 +416,12 @@ try {
       }
     }
     if (headMoved === 0) fail('PSX', `${pc.name}: HEAD Mesh[${pc.expMesh}] nao teve nenhum vertice esculpido!`);
-    if (pc.bellyMeshes.size > 0 && bellyMoved === 0) fail('PSX', `${pc.name}: barriguinha 3D nao teve nenhum vertice esculpido!`);
+    if (pc.extraMeshes.size > 0 && extraMoved === 0) fail('PSX', `${pc.name}: ${pc.extraLabel} 3D nao teve nenhum vertice esculpido!`);
     if (wDiff > 0) fail('PSX', `${pc.name}: ${wDiff} stitch vertices foram violados!`);
     if (normFaceDiff > 0) fail('PSX', `${pc.name}: ${normFaceDiff} bytes em normais/faces alterados!`);
-    if (!otherMeshDiff && !wDiff && !normFaceDiff && !zeroClut && headMoved > 0 && (pc.bellyMeshes.size === 0 || bellyMoved > 0)) {
-      const bellyMsg = bellyMoved > 0 ? ` + Barriguinha (${bellyMoved}v)` : '';
-      pass(`${pc.name}: HEAD Mesh[${pc.expMesh}] (${headMoved}v)${bellyMsg}, costuras seguras, bbox/rad ok, 0 CLUT 0x0000`);
+    if (!otherMeshDiff && !wDiff && !normFaceDiff && !zeroClut && headMoved > 0 && (pc.extraMeshes.size === 0 || extraMoved > 0)) {
+      const extraMsg = extraMoved > 0 ? ` + ${pc.extraLabel} (${extraMoved}v)` : '';
+      pass(`${pc.name.padEnd(12)}: HEAD M[${pc.expMesh}] (${headMoved}v)${extraMsg}, costuras ok, bbox/rad ok, 0 CLUT 0x0000`);
     }
   }
 
