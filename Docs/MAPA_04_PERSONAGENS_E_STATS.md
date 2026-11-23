@@ -72,3 +72,18 @@
 - **[17] Gordao      ** (Bio `0x800BA0C0` | Specials `0x800B66C4`): `s2dDi01t.bmp` (Breakfast of Champions) • `s2dDi02t.bmp` (Sweetheart) • `s2dDi03t.bmp` (The Other Night Stick) • `s2dDi04t.bmp` (Dick's Wieners) • `s2dDi05t.bmp` (Search Warrant) • `s2dDi06t.bmp` (D.O.A.) • `s2dDi07t.bmp` (Code Red) • `s2dDi08t.bmp` (Chester)
 - **[18] Private Carrera** (Bio `0x800BA0F4` | Specials `0x800B6708`): `s2dpv01v.bmp` (Stiff Competition) • `s2dpv02v.bmp` (JoyStick) • `s2dpv03v.bmp` (I Balled) • `s2dpv04v.bmp` (Hard At Work) • `s2dpv05v.bmp` (On top of it) • `s2dpv06v.bmp` (Brass) • `s2dpv07v.bmp` (Slippery when Wet) • `s2dpv08v.bmp` (2 on 1)
 - **[19] Spider-Man** (Bio `0x800BA130` | Specials `0x800B674C`): `s2dSP01s.bmp` (38 Years of Spidey) • `s2dSP02s.bmp` (Black Cat) • `s2dSP03s.bmp` (Rhino's Rampage) • `s2dSP04s.bmp` (Web Head) • `s2dSP05s.bmp` (Symbiotes) • `s2dSP06s.bmp` (Mary Jane) • `s2dSP07s.bmp` (Enter Venom) • `s2dSP08s.bmp` (Spidey Sense Tingling)
+
+---
+
+## 4. ⚠️ Mapeamento Real de Retratos (`Slot ≠ s2faceN.bmp`) e Skatistas Personalizados
+
+> **Atenção Crítica:** a Neversoft numerou os arquivos `s2face*.bmp` em ordem alfabética de sobrenome original (movendo Tony Hawk `s2face5.bmp` para o Slot 0 e invertendo Muska `s2face8` / Mullen `s2face9`). **Sempre consulte a coluna `Rosto (.BMP)` da tabela acima** antes de editar qualquer retrato!
+
+- **6 Skatistas Personalizados no Mod (24 modelos `.PSX` + 6 retratos em `CD.WAD` e `options.pre`):**
+  - `Slot 2` **Lulao** (`cab*` → `s2face2.bmp`, `options.pre +0x256C4`, `magIdx=5`)
+  - `Slot 3` **Bolsonaro** (`campb2*` → `s2face3.bmp`, `options.pre +0x266CC`, `magIdx=39`)
+  - `Slot 4` **Wagner Oliver** (`glif2*` → `s2face4.bmp`, `options.pre +0x276D4`, `magIdx=26`)
+  - `Slot 7` **Francis Paulo** (`mullen*` → `s2face9.bmp`, `options.pre +0x2C6FC`, `magIdx=0`)
+  - `Slot 9` **Valter Pacheco** (`rynld2*` → `s2face10.bmp`, `options.pre +0x2D708`, `magIdx=18`)
+  - `Slot 10` **Natan Oliver** (`rowley2*` → `s2face11.bmp`, `options.pre +0x2E714`, `magIdx=7`)
+- Veja a documentação completa de geometria 3D, skinning `w=0/1/2`, roupas Style A/B e pipeline de arte em **[MAPA 10](MAPA_10_MODELOS_3D_PSX_SKINNING_E_TEXTURAS.md)** e **[MAPA 11](MAPA_11_SKATISTAS_CUSTOMIZADOS_E_PIPELINE_ARTE.md)**.

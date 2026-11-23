@@ -166,6 +166,8 @@ Formato interno de um `.PRE`: `uint32 file_count`, seguido por `file_count` bloc
 | 1053 | `s2bgd12.bmp` | `0xA1F7B1A0` | `0x01866800` | 123960 B |
 | 1119 | `s2bgd11.bmp` | `0xDD1528DF` | `0x02269800` | 123960 B |
 
+> **Formato dos Retratos `s2face0..18.bmp`:** todos possuem exatamente `4.088 B` (`62×47` 8-bit indexado, janela interna `46×36` dentro da moldura metálica, transparência magenta `#FF00FF` no índice `magIdx` específico de cada arquivo) e **devem ser atualizados em dobro**: entrada solta em `CD.WAD` **+** cópia embutida dentro de `options.pre` (`idx=45`). Veja detalhes completos no [MAPA 10](MAPA_10_MODELOS_3D_PSX_SKINNING_E_TEXTURAS.md) e [MAPA 11](MAPA_11_SKATISTAS_CUSTOMIZADOS_E_PIPELINE_ARTE.md).
+
 > **Para listar ou extrair TODOS os 1.531 arquivos (incluindo todas as 1.040 texturas `.BMP` e 227 modelos `.PSX`):**
 > ```powershell
 > node Scripts/thps2_wad.js list

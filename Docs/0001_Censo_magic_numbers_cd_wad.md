@@ -11,7 +11,13 @@ Após o desempacotamento físico bem-sucedido dos 1.531 arquivos contidos no con
 A extração estatística e a leitura dos cabeçalhos foram executadas de forma automatizada pelo script de auditoria do repositório.
 
 * **Nome do Script:** `thps2_magic_hunter.py`
-* **Localização no Repositório:** `[Scripts/thps2_magic_hunter.py](../../Scripts/thps2_magic_hunter.py)`
+* **Localização no Repositório:** [Scripts/thps2_magic_hunter.py](../Scripts/thps2_magic_hunter.py)
+
+> **📌 Nota de Atualização (Engenharia Reversa Completa):** Este documento preserva o censo heurístico inicial dos 4 primeiros bytes do `CD.WAD`. Todas as assinaturas listadas abaixo já foram **100% identificadas e confirmadas** nos binários reais (ver [MAPA 06](MAPA_06_TEXTURAS_FONTES_E_WAD.md) e [MAPA 09](MAPA_09_OVERLAYS_E_DEMO_BMX.md)):
+> - `#ifn` (74 arquivos) = **Headers de esqueleto `.PSH`** em texto C (`#ifndef ..._PSH`), e *não* scripts `.QB` (o formato `.QB` só surgiu no THPS3).
+> - `pBAV` (17 arquivos) = **Bancos de efeitos sonoros `VABp`** da Sony PSX (`.VH` + `.VB`), e *não* `VAGp`.
+> - `25 4E 00 00` (50 arquivos) = **50 parques pré-fabricados `.PRK`** do Park Editor (`park0.prk`..`park49.prk`, `2.560 B` cada).
+> - `00 00 02 3C` (15 arquivos) e `01 00 00 00` (15 arquivos) = **15 Overlays MIPS relocáveis `.BIN`** (`lui $v0, 0`) e suas **15 tabelas de relocação `.REL`**.
 
 ### 🧠 Princípio de Operação do Scanner
 O script executa um loop iterativo pelo diretório `WAD_Desempacotado`. Para cada arquivo, o algoritmo abre um fluxo de leitura limitado (`Stream I/O`), captura apenas o vetor inicial de 4 bytes (`f.read(4)`) e o converte simultaneamente para uma string Hexadecimal e uma representação de caracteres legíveis (ASCII). Os resultados são agrupados e ordenados por frequência usando a classe `collections.Counter`.
@@ -20,13 +26,14 @@ O script executa um loop iterativo pelo diretório `WAD_Desempacotado`. Para cad
 
 ## 🔬 Análise de Domínio das Assinaturas Encontradas
 
-A análise dos dados coletados revelou que a engine do jogo distribui seus recursos em quatro grandes ecossistemas tecnológicos:
+A análise dos dados coletados (confirmada pela engenharia reversa final) revelou que a engine do jogo distribui seus recursos em cinco grandes ecossistemas tecnológicos:
 
-1. **O Ecossistema Gráfico "BM" (`42 4D ...`):** Representa mais de **70% dos arquivos** do jogo. Em computação, `0x42 0x4D` corresponde aos caracteres ASCII **"BM"** (Bitmap). Isso comprova que a Neversoft estruturou suas texturas de cenários, interfaces e skins de skatistas em variações customizadas de arquivos de imagem Bitmap, gerenciando resoluções e paletas de cores diretamente nos sub-bytes do cabeçalho.
-2. **O Ecossistema Lógico `#ifn` (`23 69 66 6E`):** Corresponde ao caractere ASCII **"#ifn"** (início da diretiva de pré-processador `#ifndef` em C/C++). São os scripts lógicos compilados da engine (arquivos `.QB`), responsáveis por ditar as regras das fases, física, gatilhos de pontuação e comportamento da inteligência artificial.
-3. **O Ecossistema de Eventos `_TRG` (`5F 54 52 47`):** Traduzido diretamente como **"_TRG"** (Triggers / Gatilhos). Estes arquivos mapeiam as caixas de colisão invisíveis do mapa que disparam eventos de cenário (como quebrar o vidro no mapa *Hangar* ou abrir a passagem secreta).
-4. **O Ecossistema de Áudio `pBAV` (`70 42 41 56`):** Lidos em arquitetura Little Endian, os bytes revelam a assinatura nativa **"VAGp"** da Sony PlayStation. São os arquivos comprimidos de efeitos sonoros (*SFX*) interativos de ambiente e menus.
-5. **O Ecossistema Geométrico (`04 00 02 00`):** Vetores numéricos puros que servem como ponteiros estruturais para montagem de malhas 3D (*Meshes*), vértices e coordenadas de colisão dos skatistas e pistas.
+1. **O Ecossistema Gráfico `"BM"` (`42 4D ...`):** Representa cerca de **70% dos arquivos** do jogo (`1.040` arquivos `.BMP`). Em computação, `0x42 0x4D` corresponde aos caracteres ASCII **"BM"** (Bitmap 4-bit/8-bit indexado com transparência magenta `#FF00FF` para retratos, decks, fontes e UI).
+2. **O Ecossistema Esqueletal `#ifn` (`23 69 66 6E`):** Corresponde ao início da diretiva C `#ifndef` nos **74 arquivos `.PSH`** (*PlayStation Header*), que definem em texto plano a hierarquia pai/filho dos ossos (nodes) dos skatistas e objetos animados ([ver `0017_SK2ANIM_PSH.md`](0017_SK2ANIM_PSH.md)).
+3. **O Ecossistema de Eventos `_TRG` (`5F 54 52 47`):** Traduzido diretamente como **"_TRG"** (*Triggers / Gatilhos*, 25 arquivos `_TRG v2.0`). Mapeiam spawns, coletáveis (`S-K-A-T-E`, fita secreta, dinheiro), rails grindáveis e gatilhos de gaps ([MAPA 03](MAPA_03_FASES_E_OBJETOS_TRG.md)).
+4. **O Ecossistema de Áudio `pBAV` (`70 42 41 56`):** Lidos em arquitetura Little-Endian, os bytes revelam a assinatura nativa **`VABp`** da Sony PlayStation — os **17 bancos de efeitos sonoros `.VAB`** (header `.VH` + samples ADPCM `.VB`, [MAPA 08](MAPA_08_AUDIO_XA_VAB_E_VIDEOS_STR.md)).
+5. **O Ecossistema Geométrico `.PSX` (`04 00 02 00`):** Os **227 modelos e cenários 3D `.PSX`** contendo malhas, vértices `(x, y, z, w)`, faces UV, paletas BGR555 (4-bit/8-bit) e texturas VRAM embutidas ([MAPA 10](MAPA_10_MODELOS_3D_PSX_SKINNING_E_TEXTURAS.md)).
+6. **Overlays MIPS & Parques:** `00 00 02 3C` (`15` overlays `.BIN` começando com `lui $v0, 0`), `01 00 00 00` (`15` tabelas `.REL`) e `25 4E 00 00` (`50` parques `.PRK` do Park Editor).
 
 ---
 
@@ -41,21 +48,21 @@ A análise dos dados coletados revelou que a engine do jogo distribui seus recur
 | **02** | `42 4D 38 0C` | `BM8.` | 174 arquivos | Textura Gráfica (Bitmap de 8-bits com Paleta Tipo C) |
 | **03** | `42 4D 38 14` | `BM8.` | 165 arquivos | Textura Gráfica (Bitmap de 8-bits com Paleta Tipo V) |
 | **04** | `42 4D 38 44` | `BM8D` | 108 arquivos | Textura Gráfica (Bitmap de 8-bits Tipo D / Cenário) |
-| **05** | `23 69 66 6E` | `#ifn` | 74 arquivos | Script de Lógica de Jogo (Neversoft Engine `.QB`) |
-| **06** | `42 4D 76 04` | `BMv.` | 61 arquivos | Textura Gráfica VRAM Mapeada (Tipo 04) |
-| **07** | `42 4D 76 01` | `BMv.` | 60 arquivos | Textura Gráfica VRAM Mapeada (Tipo 01) |
-| **08** | `42 4D 76 09` | `BMv.` | 58 arquivos | Textura Gráfica VRAM Mapeada (Tipo 09) |
-| **09** | `42 4D 76 10` | `BMv.` | 57 arquivos | Textura Gráfica VRAM Mapeada (Tipo 10) |
-| **10** | `25 4E 00 00` | `%N..` | 50 arquivos | Dados de Animação / Tabela de Nodes |
-| **11** | `42 4D 34 44` | `BM4D` | 47 arquivos | Textura Gráfica (Bitmap de 4-bits Tipo D / UI-Fontes) |
-| **12** | `42 4D 38 08` | `BM8.` | 37 arquivos | Textura Gráfica (Bitmap de 8-bits Tipo 08) |
-| **13** | `42 4D 38 06` | `BM8.` | 37 arquivos | Textura Gráfica (Bitmap de 8-bits Tipo 06) |
-| **14** | `42 4D 38 E4` | `BM8.` | 32 arquivos | Textura Gráfica (Bitmap de 8-bits Tipo E4) |
-| **15** | `5F 54 52 47` | `_TRG` | 25 arquivos | Gatilhos de Nível / Trigger Mappings |
-| **16** | `42 4D F8 0F` | `BM..` | 19 arquivos | Textura de Interface / Sprite Interno |
-| **17** | `70 42 41 56` | `pBAV` | 17 arquivos | Áudio Comprimido do PS1 (Cabeçalho Invertido `VAGp`) |
-| **18** | `00 00 02 3C` | `...<` | 15 arquivos | Dados Estruturais de Execução |
-| **19** | `01 00 00 00` | `....` | 15 arquivos | Cabeçalho Binário Genérico |
+| **05** | `23 69 66 6E` | `#ifn` | 74 arquivos | Header de Esqueleto 3D em texto C (`.PSH` — `#ifndef`) |
+| **06** | `42 4D 76 04` | `BMv.` | 61 arquivos | Textura Gráfica Bitmap (`.BMP`, 1.142 B) |
+| **07** | `42 4D 76 01` | `BMv.` | 60 arquivos | Textura Gráfica Bitmap (`.BMP`, 374 B) |
+| **08** | `42 4D 76 09` | `BMv.` | 58 arquivos | Textura Gráfica Bitmap (`.BMP`, 2.422 B) |
+| **09** | `42 4D 76 10` | `BMv.` | 57 arquivos | Textura Gráfica Bitmap (`.BMP`, 4.214 B) |
+| **10** | `25 4E 00 00` | `%N..` | 50 arquivos | Parques Pré-Fabricados do Park Editor (`park0..49.prk`) |
+| **11** | `42 4D 34 44` | `BM4D` | 47 arquivos | Textura Gráfica Bitmap (`.BMP`, 17.460 B) |
+| **12** | `42 4D 38 08` | `BM8.` | 37 arquivos | Textura Gráfica Bitmap (`.BMP`, 2.104 B) |
+| **13** | `42 4D 38 06` | `BM8.` | 37 arquivos | Textura Gráfica Bitmap (`.BMP`, 1.592 B) |
+| **14** | `42 4D 38 E4` | `BM8.` | 32 arquivos | Textura Gráfica Bitmap (`.BMP`, 58.424 B) |
+| **15** | `5F 54 52 47` | `_TRG` | 25 arquivos | Gatilhos de Nível / Trigger Mappings (`_TRG v2.0`) |
+| **16** | `42 4D F8 0F` | `BM..` | 19 arquivos | Retratos de Skatistas `s2face0..18.bmp` (`62×47`, 4.088 B) |
+| **17** | `70 42 41 56` | `pBAV` | 17 arquivos | Bancos de Efeitos Sonoros PS1 (`.VAB` — cabeçalho `VABp`) |
+| **18** | `00 00 02 3C` | `...<` | 15 arquivos | Overlays MIPS Relocáveis `.BIN` (`lui $v0, 0x0000`) |
+| **19** | `01 00 00 00` | `....` | 15 arquivos | Tabelas de Relocação `.REL` dos Overlays MIPS |
 | **20** | `42 4D 48 2F` | `BMH/` | 12 arquivos | Textura de Skater / Elemento de Modelo |
 | **21** | `FE 00 00 3C` | `...<` | 10 arquivos | Dados de Instrução MIPS do PS1 |
 | **22** | `3B 00 00 00` | `;...` | 10 arquivos | Arquivo de Texto de Configuração Oculto |

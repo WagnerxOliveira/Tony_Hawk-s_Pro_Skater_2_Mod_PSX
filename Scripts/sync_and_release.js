@@ -108,10 +108,21 @@ for (const f of scriptsToSync) {
   }
 }
 fs.copyFileSync(path.join(repoDir, 'README.md'), path.join(rootDir, 'README.md'));
+if (fs.existsSync(path.join(repoDir, 'CHANGELOG.md'))) {
+  fs.copyFileSync(path.join(repoDir, 'CHANGELOG.md'), path.join(rootDir, 'CHANGELOG.md'));
+}
+// Mirror static technical maps (MAPA_10..13) from repo/Docs/ into local docs/
+const localDocsDir = path.join(rootDir, 'docs');
+fs.mkdirSync(localDocsDir, { recursive: true });
+for (const f of fs.readdirSync(path.join(repoDir, 'Docs'))) {
+  if (/^MAPA_\d+.*\.md$/i.test(f)) {
+    fs.copyFileSync(path.join(repoDir, 'Docs', f), path.join(localDocsDir, f));
+  }
+}
 
 // 5. Git commit & push on main
 console.log('\n=== 5. Git commit & push para GitHub (origin/main) ===');
-run('git', ['-C', repoDir, 'add', 'README.md', 'Docs', 'Scripts']);
+run('git', ['-C', repoDir, 'add', 'README.md', 'CHANGELOG.md', 'Docs', 'Scripts']);
 const statusRes = spawnSync('git', ['-C', repoDir, 'status', '--porcelain'], { encoding: 'utf8' });
 if (statusRes.stdout.trim().length > 0) {
   run('git', ['-C', repoDir, 'commit', '-m', commitMsg]);
@@ -280,6 +291,9 @@ fs.rmSync(toolkitPkgDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(toolkitPkgDir, 'Docs'), { recursive: true });
 fs.mkdirSync(path.join(toolkitPkgDir, 'Scripts'), { recursive: true });
 fs.copyFileSync(path.join(repoDir, 'README.md'), path.join(toolkitPkgDir, 'README.md'));
+if (fs.existsSync(path.join(repoDir, 'CHANGELOG.md'))) {
+  fs.copyFileSync(path.join(repoDir, 'CHANGELOG.md'), path.join(toolkitPkgDir, 'CHANGELOG.md'));
+}
 for (const f of fs.readdirSync(path.join(repoDir, 'Docs'))) {
   if (f.endsWith('.md')) fs.copyFileSync(path.join(repoDir, 'Docs', f), path.join(toolkitPkgDir, 'Docs', f));
 }
@@ -324,7 +338,7 @@ const notes = [
   `| Resultado \`THPS2_MOD.bin\` (Verificado Round-Trip: ${manifest.patch.roundTripVerified ? '✅ SIM' : '⚠️'}) | \`${manifest.patchedBin.sizeBytes}\` B (\`${manifest.patchedBin.sectors}\` setores) | SHA-256 \`${manifest.patchedBin.sha256}\` |`,
   '',
   '### 📚 Para Desenvolvedores / Modders (`THPS2_PSX_Modding_Toolkit_and_Docs.zip`)',
-  '- Inclui toda a enciclopédia técnica (`Docs/MAPA_01..09_*.md`) e a suíte completa de scripts Node.js + Ghidra (`Scripts/`).',
+  '- Inclui toda a enciclopédia técnica (`Docs/MAPA_01..13_*.md` + guias + `CHANGELOG.md`) e a suíte completa de scripts Node.js + Ghidra (`Scripts/`).',
   '',
   `> *Última atualização automática: \`${manifest.generatedAt}\` — Distribuição estritamente legal via patch delta (\`.xdelta\`), sem hospedar imagens comerciais completas.*`
 ].join('\n');

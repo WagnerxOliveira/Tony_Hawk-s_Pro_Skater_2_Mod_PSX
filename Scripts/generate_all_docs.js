@@ -18,7 +18,6 @@ fs.mkdirSync(repoDocsDir, { recursive: true });
 fs.mkdirSync(localDocsDir, { recursive: true });
 
 const exe = fs.readFileSync(path.join(rootDir, 'SLUS_010.66'));
-const exeBak = fs.readFileSync(path.join(rootDir, 'SLUS_010.66.bak'));
 const hed = fs.readFileSync(path.join(rootDir, 'CD.HED'));
 const wad = fs.readFileSync(path.join(rootDir, 'CD.WAD'));
 const baseRam = exe.readUInt32LE(0x18);
@@ -528,7 +527,21 @@ struct TRGHeader {
     }
   }
 
-  md += `\n---\n\n## 3. Decks, Biografias e Ponteiros de Especiais por Personagem\n\n` + decksSection.join('\n') + '\n';
+  md += `\n---\n\n## 3. Decks, Biografias e Ponteiros de Especiais por Personagem\n\n` + decksSection.join('\n') + `\n
+---
+
+## 4. ⚠️ Mapeamento Real de Retratos (\`Slot ≠ s2faceN.bmp\`) e Skatistas Personalizados
+
+> **Atenção Crítica:** a Neversoft numerou os arquivos \`s2face*.bmp\` em ordem alfabética de sobrenome original (movendo Tony Hawk \`s2face5.bmp\` para o Slot 0 e invertendo Muska \`s2face8\` / Mullen \`s2face9\`). **Sempre consulte a coluna \`Rosto (.BMP)\` da tabela acima** antes de editar qualquer retrato!
+
+- **6 Skatistas Personalizados no Mod (24 modelos \`.PSX\` + 6 retratos em \`CD.WAD\` e \`options.pre\`):**
+  - \`Slot 2\` **Lulao** (\`cab*\` → \`s2face2.bmp\`, \`options.pre +0x256C4\`, \`magIdx=5\`)
+  - \`Slot 3\` **Bolsonaro** (\`campb2*\` → \`s2face3.bmp\`, \`options.pre +0x266CC\`, \`magIdx=39\`)
+  - \`Slot 4\` **Wagner Oliver** (\`glif2*\` → \`s2face4.bmp\`, \`options.pre +0x276D4\`, \`magIdx=26\`)
+  - \`Slot 7\` **Francis Paulo** (\`mullen*\` → \`s2face9.bmp\`, \`options.pre +0x2C6FC\`, \`magIdx=0\`)
+  - \`Slot 9\` **Valter Pacheco** (\`rynld2*\` → \`s2face10.bmp\`, \`options.pre +0x2D708\`, \`magIdx=18\`)
+  - \`Slot 10\` **Natan Oliver** (\`rowley2*\` → \`s2face11.bmp\`, \`options.pre +0x2E714\`, \`magIdx=7\`)
+- Veja a documentação completa de geometria 3D, skinning \`w=0/1/2\`, roupas Style A/B e pipeline de arte em **[MAPA 10](MAPA_10_MODELOS_3D_PSX_SKINNING_E_TEXTURAS.md)** e **[MAPA 11](MAPA_11_SKATISTAS_CUSTOMIZADOS_E_PIPELINE_ARTE.md)**.\n`;
   writeDoc('MAPA_04_PERSONAGENS_E_STATS.md', md);
 }
 
@@ -675,6 +688,7 @@ Dentro de \`tricks.bin\`, as definições de manobra seguem o padrão de bytecod
   md += `| Idx | Arquivo | Hash | Offset \`CD.WAD\` | Tamanho |\n| :-: | :--- | :---: | :---: | :---: |\n`;
   for (const b of uiBmps) md += `| ${b.idx} | \`${b.name}\` | \`${b.hash}\` | \`${hex(b.offset)}\` | ${b.size} B |\n`;
 
+  md += `\n> **Formato dos Retratos \`s2face0..18.bmp\`:** todos possuem exatamente \`4.088 B\` (\`62×47\` 8-bit indexado, janela interna \`46×36\` dentro da moldura metálica, transparência magenta \`#FF00FF\` no índice \`magIdx\` específico de cada arquivo) e **devem ser atualizados em dobro**: entrada solta em \`CD.WAD\` **+** cópia embutida dentro de \`options.pre\` (\`idx=45\`). Veja detalhes completos no [MAPA 10](MAPA_10_MODELOS_3D_PSX_SKINNING_E_TEXTURAS.md) e [MAPA 11](MAPA_11_SKATISTAS_CUSTOMIZADOS_E_PIPELINE_ARTE.md).\n`;
   md += `\n> **Para listar ou extrair TODOS os 1.531 arquivos (incluindo todas as 1.040 texturas \`.BMP\` e 227 modelos \`.PSX\`):**\n> \`\`\`powershell\n> node Scripts/thps2_wad.js list\n> node Scripts/thps2_wad.js unpack work_wad --pre\n> \`\`\`\n`;
 
   writeDoc('MAPA_06_TEXTURAS_FONTES_E_WAD.md', md);
@@ -905,6 +919,12 @@ Para economizar os 2 MB de RAM do PS1, o THPS2 carrega a lógica de cada tela de
     const relTxt = rel ? `\`${rel.name}\` (idx ${rel.idx}, ${rel.size} B)` : '—';
     md += `| ${i + 1} | \`${o.name}\` | ${o.idx} | \`${o.hash}\` | \`${hex(o.offset)}\` | ${o.size} B | ${relTxt} | ${ovlDesc[o.name] || ''} |\n`;
   });
+
+  md += `\n### Hooks Cirúrgicos do Mod em \`playsel.bin\` (\`CD.HED idx=61\`)\n\n`;
+  md += `O overlay \`playsel.bin\` (31.640 B) recebe **exatamente 2 hooks MIPS de 4 bytes** (mantendo os 31.632 B restantes 100% intocados, auditados no Estágio 3 de \`audit_game.js\`):\n`;
+  md += `- **\`playsel.bin +0x3388\`:** \`jal 0x800E2744\` (\`Tramp_PlaySelScroll\`) — dispara o próximo clipe SPU-ADPCM na Voz 23 ao navegar Left/Right por **Lulao (idx 2)** ou **Bolsonaro (idx 3)**.\n`;
+  md += `- **\`playsel.bin +0x100C\`:** \`jal 0x800E2754\` (\`Tramp_PlaySelConfirm\`) — toca o chime + clipe SPU-ADPCM ao confirmar com **X**.\n`;
+  md += `- O ciclo de entrada/saída de \`playsel.bin\` é envolvido por \`Hook_RunPlaySel\` (\`0x80082B80\`) via flag privada \`g_InPlaySel\` (\`0x800E27DC\`) para atenuar a música de fundo em \`-12 dB\` (25%) sem interferir em \`23464($gp)\`. Ver arquitetura completa no [MAPA 12](MAPA_12_ENGINE_MOD_MIPS_VOICES_E_BOOT_ALEATORIO.md).\n`;
 
   // Parse BMX directory
   const bmxHed = fs.readFileSync(path.join(rootDir, 'BMX', 'BMXCD.HED'));

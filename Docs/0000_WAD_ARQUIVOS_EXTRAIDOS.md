@@ -20,8 +20,9 @@ Este documento formaliza o resultado da extração completa do arquivo principal
 
 A extração em massa e cirúrgica de todos os blocos de dados foi realizada com sucesso através de um script automatizado desenvolvido sob medida em Python.
 
-* **Nome do Script:** `thps2_wad_extractor.py`
-* **Localização no Repositório:** `[Scripts/thps2_wad_extractor.py](../../Scripts/thps2_wad_extractor.py)`
+* **Nome do Script (Fase Inicial):** `thps2_wad_extractor.py`
+* **Localização no Repositório:** [Scripts/thps2_wad_extractor.py](../Scripts/thps2_wad_extractor.py)
+* **Ferramenta Atual em Produção (Node.js):** [Scripts/thps2_wad.js](../Scripts/thps2_wad.js) *(resolve **1.161+ nomes reais**, desempacota/reempacota todos os **14 pacotes `.PRE`** e valida **SHA-256 bit-a-bit**!)*
 
 ### 🧠 Lógica e Funcionamento do Algoritmo
 
@@ -40,5 +41,7 @@ O script opera realizando uma leitura e fatiamento de fluxo de bytes em baixo n�
 
 Os 1.531 arquivos extraídos e armazenados na pasta `WAD_Desempacotado` constituem a totalidade dos recursos essenciais do jogo. Embora estejam todos temporariamente com a extensão genérica `.dat`, sua natureza oculta divide-se em:
 
-* **Texturas e Elementos Visuais:** Formatos nativos de imagem do PS1 (como `.TIM`), contendo artes dos menus, fontes de texto mapeadas, logos de marcas de skate e as texturas dos cenários (como as paredes do *Hangar* ou da *School II*).
-* **Modelos Geométricos 3D:** Estruturas de malhas (*meshes*) de colisão dos mapas, modelos tridimensionais dos skatistas profissionais
+* **Texturas e Elementos Visuais:** **1.040 arquivos `.BMP` indexados** (4-bit/8-bit com chave magenta `#FF00FF` para retratos `s2face*.bmp`, decks, menus e telas de loading) + texturas VRAM BGR555 (4-bit/8-bit) embutidas diretamente dentro dos arquivos `.PSX` (o THPS2 **não** usa arquivos `.TIM` soltos).
+* **Modelos Geométricos 3D e Esqueletos:** **227 modelos/fases `.PSX`** (`04 00 02 00`), **74 headers de esqueleto `.PSH`** (`#ifndef`), **25 arquivos `.TRG`** (`_TRG v2.0`), **17 bancos `.VAB`** (`pBAV`), **50 parques `.PRK`**, **14 pacotes `.PRE`** e **15 overlays MIPS `.BIN`/`.REL`**.
+
+> **Evolução Completa:** consulte [02_Entender_Relacao_CD.HED_x_CD.WAD.md](02_Entender_Relacao_CD.HED_x_CD.WAD.md), [MAPA 06](MAPA_06_TEXTURAS_FONTES_E_WAD.md) e [MAPA 10](MAPA_10_MODELOS_3D_PSX_SKINNING_E_TEXTURAS.md).

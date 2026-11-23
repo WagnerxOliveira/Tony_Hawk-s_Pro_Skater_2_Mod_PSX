@@ -2,13 +2,13 @@
 
 > **Documento de Engenharia:** Análise didática da estrutura de animação 3D, hierarquia de ossos (Nodes) e manipulação hexadecimal no ecossistema do *Tony Hawk's Pro Skater 2* (PSX).
 
-Durante o processo de decodificação dos scripts lógicos (`.qb`), identificamos os arquivos com o sufixo `_PSH` (*PlayStation Header*). Este documento utiliza o arquivo **`0017_9AC27C8D.qb`** (referente ao skatista Bob Burnquist) como objeto de estudo para mapear como o jogo constrói o esqueleto dos personagens na memória RAM do console.
+Durante o processo de decodificação dos arquivos de esqueleto (`.psh`), identificamos os 74 headers com o sufixo `_PSH` (*PlayStation Header*, magic `#ifndef`). Este documento utiliza o arquivo **`burnq2.psh`** (`CD.HED idx=16`, hash `0x9AC27C8D`, referente ao skatista Bob Burnquist) como objeto de estudo para mapear como o jogo constrói o esqueleto dos personagens na memória RAM do console.
 
 ---
 
 ## 🧬 O Paradigma da Animação 3D (Nodes e Hierarquia)
 
-Na *Neversoft Engine*, um skatista não é um bloco sólido de polígonos. Ele é construído como uma "marionete" digital, composta por várias partes independentes chamadas de **Nós (Nodes)**. 
+Na *Neversoft Engine*, um skatista não é um bloco sólido de polígonos. Ele é construído como uma "marionete" digital, composta por várias partes independentes chamadas de **Nós (Nodes)** — cada nó corresponde diretamente a uma malha (`Mesh[0..15]`) dentro do arquivo `.PSX` correspondente!
 
 Para que a animação funcione perfeitamente (cinemática), esses nós obedecem a um sistema de **Pai e Filho (`parent`)**:
 * Se o **Pai** (Coxa) se move, o **Filho** (Canela) se move junto.
@@ -16,11 +16,16 @@ Para que a animação funcione perfeitamente (cinemática), esses nós obedecem 
 
 ---
 
-## 🗺️ A Ponte: TXT vs. Hexadecimal (HxD)
+## 🗺️ A Ponte: `.PSH` em Texto C vs. Malhas `.PSX` e Skinning por Costura (`w=0/1/2`)
 
-O arquivo `.txt` gerado pelos nossos scripts extratores funciona como um mapa para o arquivo binário bruto visualizado no programa **HxD**. A *engine* foi programada utilizando definições de linguagem C/C++, e os desenvolvedores deixaram o texto em formato ASCII puro no meio do código de máquina.
+Os arquivos `.PSH` foram mantidos pela Neversoft em texto ASCII puro (`#ifndef ..._PSH`, `#define`, `// parent:`). Quando o motor carrega o modelo 3D (ex.: `burnq2.psx`, `cab.psx`, `campb2.psx`), ele vincula cada osso do `.PSH` à sua respectiva malha e **costura as articulações em tempo real** usando o quarto campo (`uint16 w`) de cada vértice no `.PSX`:
+- **`w = 0`:** vértice livre pertencente apenas à própria malha (ex.: rosto, cabelo, barriga);
+- **`w = 1`:** vértice **produtor de costura** em uma malha-pai (ex.: anel do pescoço em `Chest Mesh[8]` ou cintura em `Pelvis`/`Stomach`);
+- **`w = 2`:** vértice **consumidor de costura** na malha-filha (o campo `v.y` armazena o índice global do vértice `w=1` do pai que ele deve acompanhar sem rasgar a articulação!).
 
-Ao abrir o arquivo `.qb` no HxD, a coluna da direita (Texto Decodificado) revela o seguinte padrão de arquitetura:
+> **Aprofundamento Completo:** veja [MAPA 10 — Modelos 3D `.PSX`, Skinning e Texturas](MAPA_10_MODELOS_3D_PSX_SKINNING_E_TEXTURAS.md) para a especificação binária completa do formato `.PSX` e das regras de escultura 3D usadas nos 6 skatistas personalizados!
+
+Ao abrir o arquivo `.PSH` no HxD, a coluna da direita (Texto Decodificado) revela o seguinte padrão de arquitetura:
 
 1. **A Definição (`#define`):** O jogo declara a existência de um osso. 
    * *Exemplo:* `define SK2ANIMPART_BURNQ_RIGHT_THIGH` (Cria a coxa direita).

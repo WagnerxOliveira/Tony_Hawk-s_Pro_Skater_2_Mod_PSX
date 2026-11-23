@@ -2,7 +2,7 @@
 
 Para iniciar qualquer modificação (modding) no **Tony Hawk's Pro Skater 2** do PlayStation 1, o primeiro passo é extrair os ficheiros internos do jogo. Nós faremos isso a partir da imagem do CD original, utilizando o programa **CDMage**. 
 
-O CDMage é a ferramenta ideal para esta tarefa porque ele entende perfeitamente a estrutura de setores dos CDs de PS1, granting que nenhum ficheiro (como o executável ou os blocos de dados) seja corrompido durante a extração.
+O CDMage é a ferramenta ideal para esta tarefa porque ele entende perfeitamente a estrutura de setores dos CDs de PS1, garantindo que nenhum ficheiro (como o executável ou os blocos de dados) seja corrompido durante a extração.
 
 Abaixo, confira o passo a passo detalhado:
 
@@ -89,3 +89,7 @@ Pronto! Agora pode fechar o CDMage e abrir o explorador de ficheiros. Todos os f
 <div align="center">
   <img src="https://drive.google.com/uc?export=view&id=1AyyY-Q_QYofqEemwNl4PWQHRVE1kwjuQ" alt="Arquivos extraídos na pasta de destino" width="800">
 </div>
+
+---
+
+> **💡 Alternativa Automatizada por Linha de Comando (Pipeline Atual):** para extração e recompilação reprodutível em 1 comando (preservando os 16 setores de licença NTSC-U e todos os 48 LBAs exatos Redump + subcabeçalhos Mode 2 Form 2 de `COMPILED.XA` e `*.STR`), este projeto utiliza **`dumpsxiso`** / **`mkpsxiso v2.30`** via [`Scripts/build_iso.js`](../Scripts/build_iso.js). Veja também [01_Sobre_arquivos_extraidos.md](01_Sobre_arquivos_extraidos.md) e [MAPA 13](MAPA_13_AUDITORIA_FORENSE_BUILD_PATCH_E_EMULACAO.md).

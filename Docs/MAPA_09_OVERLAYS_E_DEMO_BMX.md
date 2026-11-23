@@ -25,6 +25,13 @@ Para economizar os 2 MB de RAM do PS1, o THPS2 carrega a lógica de cada tela de
 | 14 | `playsel.bin` | 61 | `0xD09507D4` | `0x004E7000` | 31640 B | `playsel.rel` (idx 62, 2064 B) | Tela de Seleção de Skatista (Roster) |
 | 15 | `creedit.bin` | 67 | `0x461B7213` | `0x00503000` | 52672 B | `creedit.rel` (idx 68, 3240 B) | Create-a-Skater (Editor de Personagem) |
 
+### Hooks Cirúrgicos do Mod em `playsel.bin` (`CD.HED idx=61`)
+
+O overlay `playsel.bin` (31.640 B) recebe **exatamente 2 hooks MIPS de 4 bytes** (mantendo os 31.632 B restantes 100% intocados, auditados no Estágio 3 de `audit_game.js`):
+- **`playsel.bin +0x3388`:** `jal 0x800E2744` (`Tramp_PlaySelScroll`) — dispara o próximo clipe SPU-ADPCM na Voz 23 ao navegar Left/Right por **Lulao (idx 2)** ou **Bolsonaro (idx 3)**.
+- **`playsel.bin +0x100C`:** `jal 0x800E2754` (`Tramp_PlaySelConfirm`) — toca o chime + clipe SPU-ADPCM ao confirmar com **X**.
+- O ciclo de entrada/saída de `playsel.bin` é envolvido por `Hook_RunPlaySel` (`0x80082B80`) via flag privada `g_InPlaySel` (`0x800E27DC`) para atenuar a música de fundo em `-12 dB` (25%) sem interferir em `23464($gp)`. Ver arquitetura completa no [MAPA 12](MAPA_12_ENGINE_MOD_MIPS_VOICES_E_BOOT_ALEATORIO.md).
+
 ---
 
 ## 2. Demo Jogável Embutida — Pasta `BMX\` (*Mat Hoffman's Pro BMX*)
