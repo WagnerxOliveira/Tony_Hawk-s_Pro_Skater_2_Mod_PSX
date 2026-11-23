@@ -21,7 +21,11 @@
  *          * +0x3F0: silvioCount | +0x3F4: g_SilvioClipIdx | +0x3F8: g_LulaoClipIdx | +0x3FC: g_BolsoClipIdx
  *          * +0x400..+0x5FF: Hook_BailSfx (RAM 0x800E3400, 9 rotating bail screams)
  *          * +0x600..+0x7FF: VoiceSelect_Lookup / VoiceSelect_SeedAll (RAM 0x800E3600)
- *      - Sectors 2..N:              41 SPU-ADPCM voice payloads (Lulao [0..13], Bolsonaro [14..27], Silvio [28..40])
+ *      - Sector 2 (0x1000..0x17FF): Resident LULAO_CODE (2048 B, RAM 0x800E3800..0x800E3FFF)
+ *          * Career Goal/Cash Swapper + Cash Pickup / End-of-Run Hooks + 2 KB SPU Voice 23 Ping-Pong Streamer
+ *      - Sectors 3..4 (0x1800..0x27FF): Resident LULAO_STRDATA (4096 B, RAM 0x800E4000..0x800E4FFF)
+ *          * Lulao Career Goal/Medal/Cash Pointer Table & Satirical PT-BR Strings
+ *      - Sectors 5..N:              41 SPU-ADPCM voice payloads (Lulao [0..13], Bolsonaro [14..27], Silvio [28..40])
  */
 
 const fs = require('fs');
@@ -134,7 +138,7 @@ function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   return spu;
 }
 
-function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null) {
+function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null, extraResidentSectors = null) {
   if (!fs.existsSync(lulaoDir) || !fs.existsSync(bolsoDir) || !fs.existsSync(silvioDir)) {
     throw new Error(`Pastas de audio nao encontradas em ${audiosRoot}`);
   }
@@ -166,9 +170,25 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     if (prev.length >= 2048) prev.copy(sec0, 0, 0, 2048);
   }
 
+  // Resident Sectors 2..5 (8192 B = LULAO_CODE @ 0x800E3800 [4096 B] + LULAO_STRDATA @ 0x800E4800 [4096 B])
+  const RESIDENT_EXTRA_SECTORS = 4;
+  const RESIDENT_EXTRA_BYTES = RESIDENT_EXTRA_SECTORS * 2048;
+  let secExtra = Buffer.alloc(RESIDENT_EXTRA_BYTES, 0);
+  if (extraResidentSectors) {
+    if (extraResidentSectors.length !== RESIDENT_EXTRA_BYTES) {
+      throw new Error(`extraResidentSectors tamanho invalido: ${extraResidentSectors.length} != ${RESIDENT_EXTRA_BYTES}`);
+    }
+    extraResidentSectors.copy(secExtra, 0);
+  } else if (fs.existsSync(voicesDatPath)) {
+    const prev = fs.readFileSync(voicesDatPath);
+    if (prev.length >= (2 + RESIDENT_EXTRA_SECTORS) * 2048) {
+      prev.copy(secExtra, 0, 4096, 4096 + RESIDENT_EXTRA_BYTES);
+    }
+  }
+
   const allEntries = [];
   const payloads = [];
-  let curSector = 2; // Sector 0 = MODCODE, Sector 1 = VOICETBL + Sec1Code
+  let curSector = 2 + RESIDENT_EXTRA_SECTORS; // Sector 0=MODCODE, 1=VOICETBL+Sec1Code, 2=LULAO_CODE, 3..4=LULAO_STRDATA
 
   const groups = [
     { skater: 'Lulao',         skaterIdx: 2, dir: lulaoDir,  files: lulaoFiles,  prefix: 'lulao' },
@@ -245,12 +265,13 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     if (prev.length >= 4096) prev.copy(sec1, 0x400, 2048 + 0x400, 4096);
   }
 
-  const finalBuf = Buffer.concat([sec0, sec1, ...payloads]);
+  const finalBuf = Buffer.concat([sec0, sec1, secExtra, ...payloads]);
   fs.writeFileSync(voicesDatPath, finalBuf);
 
   const manifest = {
     voicesDatBytes: finalBuf.length,
     voicesDatSectors: finalBuf.length / 2048,
+    residentSectors: 2 + RESIDENT_EXTRA_SECTORS,
     sampleRateHz: SPU_SAMPLE_RATE,
     spuPitchHex: '0x0400',
     spuSlotStartHex: '0x58000',

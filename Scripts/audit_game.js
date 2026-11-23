@@ -105,7 +105,7 @@ try {
   else pass('Header PS-X EXE +0x4C NTSC-U 100% valido');
 
   // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
-  const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode, assembleBailHookCode } = require('./patch_random_videos_and_voices');
+  const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode, assembleBailHookCode, assembleLulaoEngine, buildLulaoStrData } = require('./patch_random_videos_and_voices');
   const {
     VAB_TARGETS,
     BAIL_SFX_IDS,
@@ -123,17 +123,36 @@ try {
     buildPatchedS2BioFnt,
   } = require('./mod_skater_bios');
   const expectedSlusHooks = new Map([
-    [0x80038950, jalWord(ADDR.Hook_CdMix)],            // Hook XA_UpdateVolume CdMix -> 25% (-12 dB) in Skater Select
+    [0x80030DA0, jalWord(ADDR.Entry_EndRunPause)],     // Hook Pause -> End Run (Lulao random funny voice)
+    [0x8003C2E8, jalWord(ADDR.Entry_EndRunPause)],     // Hook Time-Up Natural End Run (Lulao random funny voice)
+    [0x800813CC, jalWord(ADDR.Entry_EndRunPause)],     // Hook Script/Cheat End Run (Lulao random funny voice)
+    [0x800368D4, jalWord(ADDR.Entry_CollectCash)],     // Hook Cash Pickup $250 (Lulao voice)
+    [0x80036914, jalWord(ADDR.Entry_CollectCash)],     // Hook Cash Pickup $50  (Lulao voice)
+    [0x80036954, jalWord(ADDR.Entry_CollectCash)],     // Hook Cash Pickup $100 (Lulao voice)
+    [0x80038950, jalWord(ADDR.Hook_CdMix)],            // Hook XA_UpdateVolume CdMix -> 25% (-12 dB) ducking
+    [0x8003C968, jalWord(ADDR.Entry_EndRunNormal)],    // Hook EndRun Normal (State 7: Time is up -> Lulao voice)
+    [0x8003C9F0, jalWord(ADDR.Entry_EndRunComp)],      // Hook EndRun Comp (State 5/8/9 -> Lulao voice)
+    [0x8003CB48, jalWord(ADDR.Entry_FrameTick)],       // Hook 60Hz FrameTick (XA_Update + 2KB SPU Ping-Pong Streamer)
     [0x8003CFB0, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 0 (Activision -> random custom video, 208f cap)
     [0x8003CFE8, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 1 (Neversoft  -> random custom video, 266f cap)
     [0x8003D024, jalWord(ADDR.Tramp_BootMovie)],       // Boot Slot 2 (Intro      -> random custom video, 1486f cap)
+    [0x8003D71C, jalWord(ADDR.Entry_GameplayStart)],   // Hook GameplayStart/Retry (reset stream & sync Lulao goals)
+    [0x8003D828, jalWord(ADDR.Entry_GameplayExit)],    // Hook GameplayExit Cleanup (stop Voice 23 & Mem_Free)
     [0x800527B8, jalWord(ADDR.Tramp_BailSfx)],         // Hook SFX_Play -> 9 rotating bail screams (round-robin + 50f cooldown)
     [0x80053690, 0x28620017],                          // Reserve SPU Voice 23 for skater voices (slti v0,v1,23)
     ...FONT_PATCH_WORDS.map(p => [p.ram, p.patched]),  // Font_CharToGlyph @ 0x8005B9B4: 5 words for native PT-BR accents (ã,ê,í,ó)
-    [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..1 + FlushCache
-    [0x80082B80, jalWord(ADDR.Tramp_RunPlaySel)],      // Hook Overlay_Run playsel -> instant music ducking on enter/restore on exit
-    [0x800A2950, 0x24843800],                          // InitHeap start -> 0x800E3800
-    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800E3800
+    [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..5 + FlushCache
+    [0x80082B80, jalWord(ADDR.Tramp_RunPlaySel)],      // Hook Overlay_Run playsel -> instant music ducking + sync Lulao goals on exit
+    [0x80082C38, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync (skateshp/career)
+    [0x80082D2C, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync (levelsel)
+    [0x80082DB0, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
+    [0x80082E1C, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
+    [0x80082E98, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
+    [0x80082EF0, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
+    [0x80082F70, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
+    [0x80082FD4, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
+    [0x800A2950, 0x24845800],                          // InitHeap start -> 0x800E5800
+    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800E5800
   ]);
   const isTextPool = (off) => (off >= 0x059BC0 && off < 0x05BC00) || (off >= 0x0A0000 && off < 0x0D2E74);
   const isModTail = (ram) => ram >= 0x800E2680 && ram < 0x800E2800;
@@ -649,6 +668,10 @@ try {
     if (!voicesBuf.subarray(0, 2048).equals(expModCode)) fail('VOICES', 'Setor 0 (MODCODE) em VOICES.DAT difere do assembly esperado!');
     const expSec1Code = assembleBailHookCode();
     if (!voicesBuf.subarray(2048 + 0x400, 4096).equals(expSec1Code)) fail('VOICES', 'Setor 1 +0x400 (Hook_BailSfx + VoiceSelect) em VOICES.DAT difere do assembly esperado!');
+    const expLulaoCode = assembleLulaoEngine();
+    if (!voicesBuf.subarray(4096, 8192).equals(expLulaoCode)) fail('VOICES', 'Setores 2..3 (LULAO_CODE) em VOICES.DAT diferem do assembly esperado!');
+    const { buf: expLulaoStrData } = buildLulaoStrData();
+    if (!voicesBuf.subarray(8192, 12288).equals(expLulaoStrData)) fail('VOICES', 'Setores 4..5 (LULAO_STRDATA) em VOICES.DAT diferem dos dados esperados!');
     const magic = voicesBuf.readUInt32LE(2048);
     const lCnt = voicesBuf.readUInt32LE(2052);
     const bCnt = voicesBuf.readUInt32LE(2056);
@@ -683,7 +706,7 @@ try {
         }
       }
       if (clipErr === 0) {
-        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): MODCODE + VOICETBL + Hook_BailSfx + VoiceSelect + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
+        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): 6 setores residentes (MODCODE + VOICETBL + BailSfx + VoiceSelect + LULAO_CODE + LULAO_STRDATA) + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
       }
     }
   }

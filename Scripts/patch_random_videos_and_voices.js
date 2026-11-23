@@ -50,6 +50,13 @@ const SYM = {
   Movies_Init:            0x8007A6B4,
   PlayFullScreenMovie:    0x8007A804,
   Overlay_Run:            0x80023418,
+  Career_CollectCash:     0x80024F1C,
+  Panel_EndRunPause:      0x8002FD68,
+  Panel_EndRunComp:       0x800301DC,
+  Panel_EndRunNormal:     0x80030408,
+  XA_Update:              0x80038E14,
+  Gameplay_MainLoop:      0x8003CD84,
+  Level_Unload:           0x80063054,
   GetSelectedSkaterIdx:   0x8008A3A8,
   SFX_Play:               0x800526B4,
   SFX_FindGlobal:         0x80053A04,
@@ -77,14 +84,15 @@ const SYM = {
   NewCardAck:             0x800A8EF4,
   _card_read:             0x800AF1F0,
   _card_write:            0x800A9CF4,
+  g_LevelTable:           0x800B8444, // 11 levels, stride 0x174, goals @ +0x90 (stride 24), short @ +0x88
   g_MovieTable:           0x800C1CB4, // stride 36 bytes, +14 = uint16 num_frames
   g_Career:               0x800C2958,
 };
 
-// Fixed Mod RAM Addresses (reserved below heap 0x800E3800)
+// Fixed Mod RAM Addresses (reserved below heap 0x800E5800 = 6 resident sectors from VOICES.DAT!)
 const ADDR = {
   HeapStartPtr:        0x800E2674,
-  NewHeapStart:        0x800E3800,
+  NewHeapStart:        0x800E5800,
   Mod_BootInit:        0x800E2680,
   Tramp_BootMovie:     0x800E2734,
   Tramp_PlaySelScroll: 0x800E2744,
@@ -95,7 +103,7 @@ const ADDR = {
   g_VoicesBaseLba:     0x800E27C4,
   g_ModLoaded:         0x800E27C8,
   Str_VoicesPath:      0x800E27CC, // "\VOICES.DAT;1\0" (14 B -> padded 16 B to 0x800E27DC)
-  g_InPlaySel:         0x800E27DC, // Dedicated 4-byte flag (1 while inside playsel.bin; NEVER touches 23464($gp)!)
+  g_InPlaySel:         0x800E27DC, // Bitmask: bit0 = InPlaySel, bit1 = LulaoGameplayVoiceDuck (0 = 100% XA vol)
   Tramp_BailSfx:       0x800E27E0, // 4-word (16 B) trampoline -> Hook_BailSfx @ 0x800E3400
   g_BailScreamIdx:     0x800E27F0, // Dedicated 4-byte strict round-robin index (0..8)
   g_LastBailFrame:     0x800E27F4, // Dedicated 4-byte VSync(-1) frame timestamp for anti-overlap cooldown
@@ -112,7 +120,23 @@ const ADDR = {
   Hook_BailSfx:        0x800E3400, // Sector 1 +0x400..+0x5FF (512 B: 9 rotating bail screams)
   VoiceSelect_Lookup:  0x800E3600, // Sector 1 +0x600..+0x67F (128 B: multi-skater voice dispatcher: Slots 1, 2, 3)
   VoiceSelect_SeedAll: 0x800E3680, // Sector 1 +0x680..+0x7FF (384 B: PRNG seeder for Slots 1, 2, 3)
-  SpuVoiceBuf:         0x00058000, // Upper SPU RAM (0x58000..0x7EFF0 = 159,728 B free)
+  // Sector 2 of VOICES.DAT (2048 B): Lulao Career Swapper + Cash/EndRun Hooks + 2 KB SPU Ping-Pong Streamer
+  LulaoCodeBase:       0x800E3800,
+  Entry_LulaoSync:     0x800E3800,
+  Entry_OverlaySync:   0x800E3808,
+  Entry_CollectCash:   0x800E3810,
+  Entry_EndRunNormal:  0x800E3818,
+  Entry_EndRunComp:    0x800E3820,
+  Entry_EndRunPause:   0x800E3828,
+  Entry_FrameTick:     0x800E3830,
+  Entry_GameplayStart: 0x800E3838,
+  Entry_GameplayExit:  0x800E3840,
+  // Sectors 4..5 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup & Strings
+  LulaoStrDataBase:    0x800E4800,
+  LulaoOrigBackup:     0x800E4B00, // 96 x 4 B = 384 B (0x800E4B00..0x800E4C7F)
+  SpuVoiceBuf:         0x00058000, // Menu Skater Select SPU slot (0x58000..0x7EFF0 = 159,728 B free above shell.vab)
+  SpuStreamHalfA:      0x0007F400, // Gameplay Ping-Pong Half A (1024 B, ABOVE bullring.vab 0x7F360!)
+  SpuStreamHalfB:      0x0007F800, // Gameplay Ping-Pong Half B (1024 B, 0x7F800..0x7FBFF)
 };
 
 // ============================================================================
@@ -335,8 +359,8 @@ function assembleSlusTailCompact() {
   a.jal(SYM.CdControl);
   a.move(R.a2, R.zero);
 
-  // CdRead(2 sectors, 0x800E2800, 0x80)
-  a.addiu(R.a0, R.zero, 2);
+  // CdRead(6 sectors, 0x800E2800, 0x80) -> loads MODCODE (Sec0), VOICETBL+Sec1 (Sec1), LULAO_CODE (Sec2..3), LULAO_STRDATA (Sec4..5)
+  a.addiu(R.a0, R.zero, 6);
   a.addiu(R.a1, R.s0, ADDR.ModCodeBase & 0xffff);
   a.jal(SYM.CdRead);
   a.addiu(R.a2, R.zero, 0x80);
@@ -1235,9 +1259,11 @@ function assembleModCode() {
   a.move(R.s2, R.a2);
   a.move(R.s3, R.a3);
 
-  // Set private flag g_InPlaySel = 1 (NEVER touches THPS2's 23464($gp)!) -> lowers music to 25% (-12 dB)!
+  // Set bit 0 of g_InPlaySel (0x800E27DC) -> lowers music to 25% (-12 dB)!
   a.lui(R.t0, 0x800E);
-  a.addiu(R.t1, R.zero, 1);
+  a.lw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
+  a.nop();
+  a.ori(R.t1, R.t1, 1);
   a.jal(SYM.XA_UpdateVolume);
   a.sw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
 
@@ -1248,11 +1274,16 @@ function assembleModCode() {
   a.move(R.a3, R.s3);
   a.move(R.s0, R.v0);
 
-  // Leaving Skater Select -> clear g_InPlaySel = 0 (leaving 23464($gp) 100% untouched!), stop Voice 23 & restore 100% music!
+  // Leaving Skater Select -> clear bit 0 of g_InPlaySel, stop Voice 23, restore music & sync Lulao Career strings!
   a.lui(R.t0, 0x800E);
+  a.lw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
+  a.nop();
+  a.andi(R.t1, R.t1, 0xFFFE);
   a.jal('SkaterVoice_Stop');
-  a.sw(R.zero, ADDR.g_InPlaySel & 0xffff, R.t0);
+  a.sw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
   a.jal(SYM.XA_UpdateVolume);
+  a.nop();
+  a.jal(ADDR.Entry_LulaoSync);
   a.nop();
 
   a.move(R.v0, R.s0);
@@ -1288,6 +1319,1024 @@ function assembleModCode() {
 }
 
 // ============================================================================
+// 2B. Build Lulao Career Mode Goal/Medal/Cash String Table (Sectors 3..4 -> 0x800E4000..0x800E4FFF, 4096 B)
+//     Dynamically swapped whenever Skater == Lulao (Slot 2), 100% restored for all other skaters!
+// ============================================================================
+function buildLulaoStrData() {
+  const lvlBase = (lvl) => SYM.g_LevelTable + lvl * 0x174;
+  const goalNamePtr = (lvl, g) => lvlBase(lvl) + 0x90 + g * 24;
+  const goalShortPtr = (lvl, g) => lvlBase(lvl) + 0x88 + g * 24;
+
+  // All Career levels (Phases 1..8: The Hangar -> The Bullring) + Cash Pickup & Podium strings
+  // Strictly clean printable ASCII (0x20..0x7E) for 100% glyph compatibility in s2goal/s2font1/ingame1.fnt!
+  const mappings = [
+    // ---- Fase 1: The Hangar (Level 0) ----
+    [goalNamePtr(0, 0),  'Picanha Basica - 10,000'],
+    [goalNamePtr(0, 1),  'Cervejinha Pro - 25,000'],
+    [goalNamePtr(0, 2),  'Taxa da Shopee - 75,000'],
+    [goalNamePtr(0, 3),  'Soletre S-K-A-T-E Comp.'],
+    [goalNamePtr(0, 4),  '5 Barris de Cachaca 51'],
+    [goalShortPtr(0, 4), 'CACHACA 51'],
+    [goalNamePtr(0, 5),  '5 Asas do Aviao da Janja'],
+    [goalShortPtr(0, 5), 'AVIAO JANJA'],
+    [goalNamePtr(0, 6),  'Saudar a Mandioca no Cano'],
+    [goalShortPtr(0, 6), 'MANDIOCA'],
+    [goalNamePtr(0, 7),  '3 Voos Pobre no Aviao'],
+    [goalShortPtr(0, 7), 'VOO DO POBRE'],
+    [goalNamePtr(0, 8),  'Achar a Fita do Triplex'],
+    [goalNamePtr(0, 9),  '100% Rachei o Cofre!'],
+
+    // ---- Fase 2: School II (Level 1) ----
+    [goalNamePtr(1, 0),  'Nunca Li Livro - 15,000'],
+    [goalNamePtr(1, 1),  'Zero Portugues - 40,000'],
+    [goalNamePtr(1, 2),  'PhD em Enrolar - 100,000'],
+    [goalNamePtr(1, 3),  'S-K-A-T-E sem Diplominha'],
+    [goalNamePtr(1, 4),  '5 Sinos do Sindicato'],
+    [goalShortPtr(1, 4), 'SINDICATO'],
+    [goalNamePtr(1, 5),  '5 Passes pro Sitio VIP'],
+    [goalShortPtr(1, 5), 'PASSES SITIO'],
+    [goalNamePtr(1, 6),  'Kickflip no Teto de Gasto'],
+    [goalShortPtr(1, 6), 'TETO GASTO'],
+    [goalNamePtr(1, 7),  '3 Corrimoes do Mensalao'],
+    [goalShortPtr(1, 7), 'MENSALAO'],
+    [goalNamePtr(1, 8),  'Fita do Sigilo 100 Anos'],
+    [goalNamePtr(1, 9),  '100% Bolsa Shape!'],
+
+    // ---- Fase 3: Marseille (Level 2 - Competicao 1) ----
+    [goalNamePtr(2, 0),  'Bronze da Abobora'],
+    [goalNamePtr(2, 1),  'Prata da Cervejinha'],
+    [goalNamePtr(2, 2),  'Ouro do Pai dos Pobres'],
+
+    // ---- Fase 4: NY City (Level 3) ----
+    [goalNamePtr(3, 0),  'Dolar a 6 Conto - 20,000'],
+    [goalNamePtr(3, 1),  'Viagem na ONU - 50,000'],
+    [goalNamePtr(3, 2),  'Rombo Bilionario 150,000'],
+    [goalNamePtr(3, 3),  'S-K-A-T-E em Nova Iorque'],
+    [goalNamePtr(3, 4),  'Pular Hidrantes de Pinga'],
+    [goalShortPtr(3, 4), 'PINGA'],
+    [goalNamePtr(3, 5),  '5 Fichas da Obra do Metro'],
+    [goalShortPtr(3, 5), 'OBRA METRO'],
+    [goalNamePtr(3, 6),  '50-50 na Obra Superfatur.'],
+    [goalShortPtr(3, 6), '50-50 OBRA'],
+    [goalNamePtr(3, 7),  'Grind Trilho da Propina'],
+    [goalNamePtr(3, 8),  'Fita da Cueca Recheada'],
+    [goalNamePtr(3, 9),  '100% Taxei Nova York!'],
+
+    // ---- Fase 5: Venice Beach (Level 4) ----
+    [goalNamePtr(4, 0),  'Praia do Guaruja - 40,000'],
+    [goalNamePtr(4, 1),  'Pedalinho Sitio - 100,000'],
+    [goalNamePtr(4, 2),  'Calango do Mar - 200,000'],
+    [goalNamePtr(4, 3),  'S-K-A-T-E da Cervejinha'],
+    [goalNamePtr(4, 4),  'Pular 5 Companheiros'],
+    [goalShortPtr(4, 4), 'COMPANHEIROS'],
+    [goalNamePtr(4, 5),  '5 Latas de Pitu na Praia'],
+    [goalShortPtr(4, 5), 'LATAS PITU'],
+    [goalNamePtr(4, 6),  'Tailslide no Triplex'],
+    [goalShortPtr(4, 6), 'TRIPLEX'],
+    [goalNamePtr(4, 7),  '4 Transfers pra Cuba'],
+    [goalShortPtr(4, 7), 'CUBA'],
+    [goalNamePtr(4, 8),  'Fita do Ze Gotinha Sumido'],
+    [goalNamePtr(4, 9),  '100% Virou Abobora!'],
+
+    // ---- Fase 6: SkateStreet (Level 5 - Competicao 2) ----
+    [goalNamePtr(5, 0),  'Bronze da Taxa'],
+    [goalNamePtr(5, 1),  'Prata do Triplex'],
+    [goalNamePtr(5, 2),  'Ouro da Picanha'],
+
+    // ---- Fase 7: Philadelphia (Level 6) ----
+    [goalNamePtr(6, 0),  'Imposto no Shape - 50,000'],
+    [goalNamePtr(6, 1),  'Saco Vazio Nao - 125,000'],
+    [goalNamePtr(6, 2),  'Entrou o Grosso - 250,000'],
+    [goalNamePtr(6, 3),  'S-K-A-T-E do Petrolao'],
+    [goalNamePtr(6, 4),  'Secar a Fonte do BNDES'],
+    [goalShortPtr(6, 4), 'BNDES'],
+    [goalNamePtr(6, 5),  '5 Sinos do Imposto Sind.'],
+    [goalShortPtr(6, 5), 'IMPOSTO'],
+    [goalNamePtr(6, 6),  'Blunt no Toldo da PF'],
+    [goalShortPtr(6, 6), 'TOLDO PF'],
+    [goalNamePtr(6, 7),  '4 Lips Sem Sabe de Nada'],
+    [goalShortPtr(6, 7), 'NADA SEI'],
+    [goalNamePtr(6, 8),  'Fita do Celular da Cerva'],
+    [goalNamePtr(6, 9),  '100% Sem Saber de Nada!'],
+
+    // ---- Fase 8: The Bullring (Level 7 - Competicao Final) ----
+    [goalNamePtr(7, 0),  'Bronze do Calango'],
+    [goalNamePtr(7, 1),  'Prata da Cachaca'],
+    [goalNamePtr(7, 2),  'Ouro: Zerei o Brasil!'],
+
+    // ---- g_StringTable: Coleta de Dinheiro & Podio do Lulao ----
+    [0x800C0310, 'Roubei mais 50!'],               // $50 Cash Icon pickup
+    [0x800C0314, 'Roubei mais 100!'],              // $100 Cash Icon pickup
+    [0x800C030C, 'Roubei mais 250!'],              // $250 Cash Icon pickup
+    [0x800C01D4, 'Zerei o BNDES da Fase!'],        // Cash Icons Cleared
+    [0x800C080C, 'Roubei'],                        // HUD Cash label ("%s $%d" -> "Roubei $50")
+    [0x800C0538, 'Picanha de Ouro no Bolso!'],     // 3 medals
+    [0x800C054C, 'Faltou picanha, companheiro'],   // Try for gold
+    [0x800C0558, '1o - Pai dos Pobres!'],          // 1st place
+    [0x800C055C, '2o - So pra Cervejinha'],        // 2nd place
+    [0x800C0560, '3o - Comeu Abobora!'],           // 3rd place
+  ];
+
+  if (mappings.length > 94) throw new Error(`Lulao mappings (${mappings.length}) excede 94 slots!`);
+  for (const [ptr, text] of mappings) {
+    if (!/^[\x20-\x7e]+$/.test(text)) throw new Error(`String nao-ASCII em 0x${ptr.toString(16)}: ${text}`);
+    if (ptr < 0x800C0000 && text.length > 26) throw new Error(`Objetivo muito longo (${text.length} > 26): ${text}`);
+  }
+
+  // Layout inside Sectors 3..4 (4096 B @ RAM 0x800E4000..0x800E4FFF):
+  //   +0x000..+0x2FF (768 B): up to 95 x 8B pairs { uint32 targetPtr, uint32 lulaoStrPtr } + {0,0}
+  //   +0x300..+0x47F (384 B): runtime backup array g_OrigBackup[96] (zeroed in file, filled on first sync)
+  //   +0x480..+0xFFF (2944 B): NUL-terminated ASCII strings (deduplicated)
+  const buf = Buffer.alloc(4096, 0);
+  const strPool = new Map();
+  let strOff = 0x480;
+
+  for (let i = 0; i < mappings.length; i++) {
+    const [targetPtr, text] = mappings[i];
+    let ramAddr = strPool.get(text);
+    if (ramAddr === undefined) {
+      const b = Buffer.from(text + '\0', 'ascii');
+      if (strOff + b.length > buf.length) throw new Error(`LULAO_STRDATA overflow em "${text}"!`);
+      b.copy(buf, strOff);
+      ramAddr = (ADDR.LulaoStrDataBase + strOff) >>> 0;
+      strPool.set(text, ramAddr);
+      strOff += b.length;
+    }
+    buf.writeUInt32LE(targetPtr >>> 0, i * 8);
+    buf.writeUInt32LE(ramAddr >>> 0, i * 8 + 4);
+  }
+  // Terminator {0, 0} already zeroed!
+
+  console.log(`  [DATA] LULAO_STRDATA: 0x${ADDR.LulaoStrDataBase.toString(16)}..0x${(ADDR.LulaoStrDataBase + strOff).toString(16)} (${mappings.length} ponteiros, ${strOff - 0x480} B strings / 2944 B, livre: ${4096 - strOff} B)`);
+  return { buf, mappings };
+}
+
+// ============================================================================
+// 2C. Assemble Resident Lulao Career & Gameplay Voice Engine (Sector 2 -> 0x800E3800..0x800E3FFF, 2048 B)
+//     - Lulao_SyncStrings: dynamically swaps all 88 Career/Cash/Podium pointers for Lulao (Slot 2)
+//     - Hook_CollectCash: triggers rotating/random Lulao voice on every $50/$100/$250 pickup
+//     - Hook_EndRun_*: triggers funny random Lulao voice once at End of Run (Time Up / Pause End Run / Comp)
+//     - 2 KB SPU Voice 23 Hardware Ping-Pong Streamer (0x7F400..0x7FBFF — ABOVE bullring.vab 0x7F360!)
+//       with zero-drift REPEAT_ADDR sync (0xFE82 Half A / 0xFF00 Half B / 0xFE80 CPU loopback)
+// ============================================================================
+function assembleLulaoEngine() {
+  const a = new MipsAsm(ADDR.LulaoCodeBase);
+
+  // Fixed Entry Jump Table @ 0x800E3800
+  a.j('Lulao_SyncStrings');   a.nop(); // 0x800E3800
+  a.j('Hook_OverlaySyncRun'); a.nop(); // 0x800E3808
+  a.j('Hook_CollectCash');    a.nop(); // 0x800E3810
+  a.j('Hook_EndRun_Normal');  a.nop(); // 0x800E3818
+  a.j('Hook_EndRun_Comp');    a.nop(); // 0x800E3820
+  a.j('Hook_EndRun_Pause');   a.nop(); // 0x800E3828
+  a.j('Hook_FrameTick');      a.nop(); // 0x800E3830
+  a.j('Hook_GameplayStart');  a.nop(); // 0x800E3838
+  a.j('Hook_GameplayExit');   a.nop(); // 0x800E3840
+
+  // --------------------------------------------------------------------------
+  // 1. Lulao_SyncStrings() — Backs up original pointers once, then sets Lulao
+  //    strings if selected skater == 2, or restores originals for all others!
+  // --------------------------------------------------------------------------
+  a.label('Lulao_SyncStrings');
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 28, R.sp);
+  a.sw(R.s0, 24, R.sp);
+  a.sw(R.s1, 20, R.sp);
+
+  // First time only: save original pointers from g_LevelTable & g_StringTable into LulaoOrigBackup
+  a.lwSym(R.t0, 'g_OrigSaved');
+  a.nop();
+  a.bne(R.t0, R.zero, 'ls_do_apply');
+  a.nop();
+
+  a.la(R.s0, ADDR.LulaoStrDataBase);
+  a.la(R.s1, ADDR.LulaoOrigBackup);
+  a.label('ls_save_lp');
+  a.lw(R.t0, 0, R.s0);
+  a.nop();
+  a.beq(R.t0, R.zero, 'ls_save_done');
+  a.nop();
+  a.lw(R.t1, 0, R.t0);
+  a.addiu(R.s0, R.s0, 8);
+  a.sw(R.t1, 0, R.s1);
+  a.j('ls_save_lp');
+  a.addiu(R.s1, R.s1, 4);
+
+  a.label('ls_save_done');
+  a.addiu(R.t0, R.zero, 1);
+  a.swSym(R.t0, R.t1, 'g_OrigSaved');
+
+  a.label('ls_do_apply');
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t2, R.zero, 2);              // Slot 2 = Lulao
+  a.la(R.s0, ADDR.LulaoStrDataBase);
+  a.la(R.s1, ADDR.LulaoOrigBackup);
+  a.beq(R.v0, R.t2, 'ls_lulao_lp');
+  a.nop();
+
+  // Restore originals for all non-Lulao skaters
+  a.label('ls_orig_lp');
+  a.lw(R.t0, 0, R.s0);
+  a.lw(R.t1, 0, R.s1);
+  a.beq(R.t0, R.zero, 'ls_done');
+  a.addiu(R.s0, R.s0, 8);
+  a.sw(R.t1, 0, R.t0);
+  a.j('ls_orig_lp');
+  a.addiu(R.s1, R.s1, 4);
+
+  // Apply Lulao satirical Career goals, cash pickup & podium strings
+  a.label('ls_lulao_lp');
+  a.lw(R.t0, 0, R.s0);
+  a.lw(R.t1, 4, R.s0);
+  a.beq(R.t0, R.zero, 'ls_done');
+  a.addiu(R.s0, R.s0, 8);
+  a.sw(R.t1, 0, R.t0);
+  a.j('ls_lulao_lp');
+  a.nop();
+
+  a.label('ls_done');
+  a.lw(R.s1, 20, R.sp);
+  a.lw(R.s0, 24, R.sp);
+  a.lw(R.ra, 28, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 32);
+
+  // --------------------------------------------------------------------------
+  // 2. Hook_OverlaySyncRun(a0..a3) — Syncs Lulao Career strings before opening
+  //    skateshp/levelsel/career menus (covers direct MC load without playsel!)
+  // --------------------------------------------------------------------------
+  a.label('Hook_OverlaySyncRun');
+  a.addiu(R.sp, R.sp, -40);
+  a.sw(R.ra, 36, R.sp);
+  a.sw(R.a0, 16, R.sp);
+  a.sw(R.a1, 20, R.sp);
+  a.sw(R.a2, 24, R.sp);
+  a.sw(R.a3, 28, R.sp);
+  a.jal('Lulao_SyncStrings');
+  a.nop();
+  a.lw(R.a0, 16, R.sp);
+  a.lw(R.a1, 20, R.sp);
+  a.lw(R.a2, 24, R.sp);
+  a.lw(R.a3, 28, R.sp);
+  a.lw(R.ra, 36, R.sp);
+  a.nop();
+  a.j(SYM.Overlay_Run);
+  a.addiu(R.sp, R.sp, 40);
+
+  // --------------------------------------------------------------------------
+  // 3. Hook_CollectCash(nodeId, amount) — Called on EVERY $50/$100/$250 pickup!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CollectCash');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal(SYM.Career_CollectCash);
+  a.nop();
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t0, R.zero, 2);              // Slot 2 = Lulao
+  a.bne(R.v0, R.t0, 'hcc_ret');
+  a.nop();
+  a.jal('LulaoStream_Start');
+  a.move(R.a0, R.zero);                  // mode 0 = Cash Pickup (snappy clips <= 30 sectors)
+  a.label('hcc_ret');
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 4. End-of-Run Hooks (Time Up, Competition Heat/End, Pause -> End Run)
+  //    Protected by g_EndRunSpoken so Lulao speaks ONCE per finished run!
+  // --------------------------------------------------------------------------
+  a.label('Lulao_OnEndRun');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.lwSym(R.t0, 'g_EndRunSpoken');
+  a.nop();
+  a.bne(R.t0, R.zero, 'oer_ret');
+  a.nop();
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t0, R.zero, 2);
+  a.bne(R.v0, R.t0, 'oer_ret');
+  a.nop();
+  a.addiu(R.t0, R.zero, 1);
+  a.swSym(R.t0, R.t1, 'g_EndRunSpoken');
+  a.jal('LulaoStream_Start');
+  a.addiu(R.a0, R.zero, 1);              // mode 1 = End of Run (all 14 funny Lulao clips!)
+  a.label('oer_ret');
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('Hook_EndRun_Normal');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.jal(SYM.Panel_EndRunNormal);
+  a.nop();
+  a.move(R.s0, R.v0);
+  a.jal('Lulao_OnEndRun');
+  a.nop();
+  a.move(R.v0, R.s0);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('Hook_EndRun_Comp');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.jal(SYM.Panel_EndRunComp);
+  a.nop();
+  a.move(R.s0, R.v0);
+  a.jal('Lulao_OnEndRun');
+  a.nop();
+  a.move(R.v0, R.s0);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('Hook_EndRun_Pause');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.jal(SYM.Panel_EndRunPause);
+  a.nop();
+  a.move(R.s0, R.v0);
+  a.jal('Lulao_OnEndRun');
+  a.nop();
+  a.move(R.v0, R.s0);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 5. Hook_FrameTick (60 Hz @ 0x8003CB48) + Gameplay Start/Exit Lifecycle
+  // --------------------------------------------------------------------------
+  a.label('Hook_FrameTick');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal(SYM.XA_Update);
+  a.nop();
+  a.jal('LulaoStream_Tick');
+  a.nop();
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('Hook_GameplayStart');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal('LulaoStream_Stop');
+  a.nop();
+  a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
+  a.jal('Lulao_SyncStrings');
+  a.nop();
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.j(SYM.Gameplay_MainLoop);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('Hook_GameplayExit');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal('LulaoStream_Stop');
+  a.nop();
+  a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.j(SYM.Level_Unload);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 6. LulaoStream_Stop() — Silences SPU Voice 23, restores SPU Reverb Master,
+  //    frees RAM buffer, restores XA background music volume to 100%!
+  // --------------------------------------------------------------------------
+  a.label('LulaoStream_Stop');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+
+  a.move(R.a0, R.zero);
+  a.jal(SYM.SpuSetKey);
+  a.lui(R.a1, 0x0080);                   // Voice 23 OFF
+
+  a.swSym(R.zero, R.t0, 'g_StreamActive');
+
+  // Restore SPUCNT bit 7 (Reverb Master Enable @ 0x1F801DAA) if we paused reverb for the stream
+  a.lwSym(R.t0, 'g_SavedRevBit');
+  a.nop();
+  a.beq(R.t0, R.zero, 'lss_rev_ok');
+  a.nop();
+  a.swSym(R.zero, R.t1, 'g_SavedRevBit');
+  // Clear 0x7F400..0x7FBFF if we still have g_StreamBuf (zero 2048 B cleanly so reverb has 0 pop!)
+  a.lwSym(R.t2, 'g_StreamBuf');
+  a.nop();
+  a.beq(R.t2, R.zero, 'lss_rev_en');
+  a.nop();
+  a.move(R.t3, R.t2);
+  a.addiu(R.t4, R.t2, 2048);
+  a.label('lss_z_lp');
+  a.sw(R.zero, 0, R.t3);
+  a.addiu(R.t3, R.t3, 4);
+  a.bne(R.t3, R.t4, 'lss_z_lp');
+  a.nop();
+  a.li(R.a0, ADDR.SpuStreamHalfA);
+  a.jal(SYM.SpuSetTransferStartAddr);
+  a.nop();
+  a.lwSym(R.a0, 'g_StreamBuf');
+  a.jal(SYM.SpuWrite);
+  a.addiu(R.a1, R.zero, 2048);
+  a.jal(SYM.SpuIsTransferCompleted);
+  a.addiu(R.a0, R.zero, 1);
+
+  a.label('lss_rev_en');
+  a.lui(R.t0, 0x1F80);
+  a.lhu(R.t1, 0x1DAA, R.t0);
+  a.nop();
+  a.ori(R.t1, R.t1, 0x0080);             // Re-enable SPU Reverb Master Enable!
+  a.sh(R.t1, 0x1DAA, R.t0);
+
+  a.label('lss_rev_ok');
+  a.lwSym(R.a0, 'g_StreamBuf');
+  a.nop();
+  a.beq(R.a0, R.zero, 'lss_no_free');
+  a.nop();
+  a.swSym(R.zero, R.t0, 'g_StreamBuf');
+  a.jal(SYM.Mem_Free);
+  a.nop();
+
+  a.label('lss_no_free');
+  // Clear bit 1 of g_InPlaySel (0x800E27DC) & restore XA volume if it was ducked!
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
+  a.nop();
+  a.andi(R.t2, R.t1, 2);
+  a.beq(R.t2, R.zero, 'lss_done');
+  a.andi(R.t1, R.t1, 0xFFFD);            // delay slot: clear bit 1
+  a.sw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
+  a.jal(SYM.XA_UpdateVolume);
+  a.nop();
+
+  a.label('lss_done');
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 7. LulaoStream_LoadHalf(int halfIdx) [0 = Half A 0x7F400, 1 = Half B 0x7F800]
+  //    Half A: block 0 (+0) flag=0x04 (fixed hardware loop start=0xFE80), block 63 flag=0x00 (flows to B)
+  //    Half B: blocks 0..62 flag=0x00, block 63 (+1008) flag=0x03 (END|REPEAT -> seamlessly wraps to 0x7F400!)
+  //    Last chunk: remaining bytes zeroed, final real block flag |= 0x01 (clean silent stop, V23_ENVX -> 0!)
+  // --------------------------------------------------------------------------
+  a.label('LulaoStream_LoadHalf');
+  a.addiu(R.sp, R.sp, -48);
+  a.sw(R.ra, 44, R.sp);
+  a.sw(R.s0, 40, R.sp);
+  a.sw(R.s1, 36, R.sp);
+  a.sw(R.s2, 32, R.sp);
+  a.sw(R.s3, 28, R.sp);
+
+  a.move(R.s0, R.a0);                    // s0 = halfIdx (0 or 1)
+  a.li(R.s3, ADDR.SpuStreamHalfA);
+  a.beq(R.s0, R.zero, 'lh_addr_ok');
+  a.nop();
+  a.li(R.s3, ADDR.SpuStreamHalfB);
+  a.label('lh_addr_ok');
+
+  a.lwSym(R.s1, 'g_StreamCurPos');
+  a.lwSym(R.t0, 'g_StreamTotalBytes');
+  a.lwSym(R.s2, 'g_StreamBuf');
+  a.nop();
+  a.subu(R.t1, R.t0, R.s1);              // t1 = rem = total - curPos
+  a.blez(R.t1, 'lh_empty_eof');
+  a.addu(R.s2, R.s2, R.s1);              // delay slot: s2 = src = buf + curPos
+
+  a.sltiu(R.t2, R.t1, 1025);             // rem <= 1024 ?
+  a.bne(R.t2, R.zero, 'lh_last_chunk');
+  a.nop();
+
+  // ---- Full 1024-byte chunk (64 ADPCM blocks) ----
+  a.move(R.t3, R.s2);
+  a.addiu(R.t4, R.s2, 1024);
+  a.label('lh_clr_full');
+  a.sb(R.zero, 1, R.t3);
+  a.addiu(R.t3, R.t3, 16);
+  a.bne(R.t3, R.t4, 'lh_clr_full');
+  a.nop();
+
+  a.bne(R.s0, R.zero, 'lh_full_b');
+  a.nop();
+  // Half A: block 0 (+0) = 0x04 (fixed hardware loop start = 0x7F400). Block 63 stays 0x00.
+  a.addiu(R.t2, R.zero, 0x04);
+  a.sb(R.t2, 1, R.s2);
+  a.j('lh_dma_full');
+  a.nop();
+
+  a.label('lh_full_b');
+  // Half B: blocks 0..62 = 0x00, block 63 (+1008) = 0x03 (END|REPEAT -> loops to 0x7F400!).
+  a.addiu(R.t2, R.zero, 0x03);
+  a.sb(R.t2, 1009, R.s2);
+
+  a.label('lh_dma_full');
+  a.jal(SYM.SpuSetTransferStartAddr);
+  a.move(R.a0, R.s3);
+  a.move(R.a0, R.s2);
+  a.jal(SYM.SpuWrite);
+  a.addiu(R.a1, R.zero, 1024);
+  a.jal(SYM.SpuIsTransferCompleted);
+  a.addiu(R.a0, R.zero, 1);
+
+  a.addiu(R.s1, R.s1, 1024);
+  a.swSym(R.s1, R.t0, 'g_StreamCurPos');
+  a.j('lh_ret');
+  a.nop();
+
+  // ---- Final partial/exact chunk (0 < rem <= 1024) ----
+  a.label('lh_last_chunk');
+  a.move(R.t3, R.s2);
+  a.addu(R.t4, R.s2, R.t1);
+  a.label('lh_clr_last');
+  a.sb(R.zero, 1, R.t3);
+  a.addiu(R.t3, R.t3, 16);
+  a.sltu(R.t2, R.t3, R.t4);
+  a.bne(R.t2, R.zero, 'lh_clr_last');
+  a.nop();
+
+  // Zero trailing bytes [rem .. 1023] cleanly (safe: Mem_Alloc size is multiple of 2048!)
+  a.addiu(R.t5, R.s2, 1024);
+  a.label('lh_zero_tail');
+  a.sltu(R.t2, R.t4, R.t5);
+  a.beq(R.t2, R.zero, 'lh_mark_last');
+  a.nop();
+  a.sw(R.zero, 0, R.t4);
+  a.j('lh_zero_tail');
+  a.addiu(R.t4, R.t4, 4);
+
+  a.label('lh_mark_last');
+  // Mark last real block with flag=0x01 (END without REPEAT -> clean silent stop, V23_ENVX -> 0!)
+  a.addu(R.t3, R.s2, R.t1);
+  a.addiu(R.t3, R.t3, -16);
+  a.addiu(R.t2, R.zero, 0x01);
+  a.sb(R.t2, 1, R.t3);
+
+  a.jal(SYM.SpuSetTransferStartAddr);
+  a.move(R.a0, R.s3);
+  a.move(R.a0, R.s2);
+  a.jal(SYM.SpuWrite);
+  a.addiu(R.a1, R.zero, 1024);
+  a.jal(SYM.SpuIsTransferCompleted);
+  a.addiu(R.a0, R.zero, 1);
+
+  a.lwSym(R.t0, 'g_StreamTotalBytes');
+  a.nop();
+  a.swSym(R.t0, R.t1, 'g_StreamCurPos');
+  a.addiu(R.t0, R.zero, 2);              // g_StreamActive = 2 (EOF loaded!)
+  a.swSym(R.t0, R.t1, 'g_StreamActive');
+  a.swSym(R.zero, R.t1, 'g_StreamEofFrames');
+  a.j('lh_ret');
+  a.nop();
+
+  // ---- Exact multiple-of-1024 EOF: emit 16-byte silent stop block (flags=0x01) ----
+  a.label('lh_empty_eof');
+  a.sw(R.zero, 16, R.sp);
+  a.sw(R.zero, 20, R.sp);
+  a.sw(R.zero, 24, R.sp);
+  a.sw(R.zero, 28, R.sp);
+  a.addiu(R.t2, R.zero, 0x01);           // Silent End Stop
+  a.sb(R.t2, 17, R.sp);
+  a.jal(SYM.SpuSetTransferStartAddr);
+  a.move(R.a0, R.s3);
+  a.addiu(R.a0, R.sp, 16);
+  a.jal(SYM.SpuWrite);
+  a.addiu(R.a1, R.zero, 16);
+  a.jal(SYM.SpuIsTransferCompleted);
+  a.addiu(R.a0, R.zero, 1);
+  a.addiu(R.t0, R.zero, 2);
+  a.swSym(R.t0, R.t1, 'g_StreamActive');
+  a.swSym(R.zero, R.t1, 'g_StreamEofFrames');
+
+  a.label('lh_ret');
+  a.lw(R.s3, 28, R.sp);
+  a.lw(R.s2, 32, R.sp);
+  a.lw(R.s1, 36, R.sp);
+  a.lw(R.s0, 40, R.sp);
+  a.lw(R.ra, 44, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 48);
+
+  // --------------------------------------------------------------------------
+  // 8. LulaoStream_Start(int mode) [0 = Cash Pickup (<=30 sec), 1 = End Run (all 14 clips)]
+  // --------------------------------------------------------------------------
+  a.label('LulaoStream_Start');
+  a.addiu(R.sp, R.sp, -64);
+  a.sw(R.ra, 56, R.sp);
+  a.sw(R.s0, 52, R.sp);
+  a.sw(R.s1, 48, R.sp);
+  a.sw(R.s2, 44, R.sp);
+  a.sw(R.s3, 40, R.sp);
+  a.sw(R.s4, 36, R.sp);
+  a.sw(R.s5, 32, R.sp);
+  a.sw(R.s6, 28, R.sp);
+
+  a.move(R.s0, R.a0);                    // s0 = mode (0=cash, 1=endrun)
+  a.jal('LulaoStream_Stop');
+  a.nop();
+
+  // Check lulaoCount @ VOICETBL+4
+  a.lui(R.t0, 0x800E);
+  a.lw(R.s4, (ADDR.VoiceTblBase + 4) & 0xffff, R.t0); // s4 = lulaoCount (14)
+  a.nop();
+  a.beq(R.s4, R.zero, 'lst_done');
+  a.nop();
+
+  // Gather real PS1 hardware entropy (VSync(-1) + Root Counters 0/1/2) + XorShift32!
+  a.jal(SYM.VSync);
+  a.addiu(R.a0, R.zero, -1);
+  a.lwSym(R.t4, 'g_PrngState');
+  a.lui(R.t0, 0x1F80);
+  a.lhu(R.t1, 0x1100, R.t0);
+  a.lhu(R.t2, 0x1110, R.t0);
+  a.lhu(R.t3, 0x1120, R.t0);
+  a.xor(R.t4, R.t4, R.v0);
+  a.sll(R.t2, R.t2, 11);
+  a.sll(R.t3, R.t3, 21);
+  a.xor(R.t4, R.t4, R.t1);
+  a.xor(R.t4, R.t4, R.t2);
+  a.xor(R.t4, R.t4, R.t3);
+  a.bne(R.t4, R.zero, 'lst_xs');
+  a.nop();
+  a.li(R.t4, 0x9E3779B9);
+
+  a.label('lst_xs');
+  a.sll(R.t0, R.t4, 13); a.xor(R.t4, R.t4, R.t0);
+  a.srl(R.t0, R.t4, 17); a.xor(R.t4, R.t4, R.t0);
+  a.sll(R.t0, R.t4, 5);  a.xor(R.t4, R.t4, R.t0);
+  a.swSym(R.t4, R.t0, 'g_PrngState');
+
+  // Pick clip index (0..lulaoCount-1), never repeating g_LastClipIdx, and for Cash Pickup prefer <= 30 sectors
+  a.divu(R.t4, R.s4);
+  a.mfhi(R.s1);                          // s1 = candidate clipIdx
+  a.lwSym(R.t5, 'g_LastClipIdx');
+  a.addiu(R.t6, R.zero, 14);             // max scan steps
+
+  a.label('lst_pick_lp');
+  a.beq(R.s1, R.t5, 'lst_pick_next');    // avoid immediate repeat!
+  a.nop();
+  a.bne(R.s0, R.zero, 'lst_picked');     // mode 1 (End Run): accept ANY of the 14 clips!
+  a.nop();
+  // mode 0 (Cash Pickup): check sectorCount <= 30 (~60 KB / <= 8.2s)
+  a.sll(R.t0, R.s1, 4);
+  a.la(R.t1, ADDR.VoiceTblBase + 0x10);
+  a.addu(R.t1, R.t1, R.t0);
+  a.lw(R.t2, 4, R.t1);                   // sectorCount
+  a.nop();
+  a.sltiu(R.t3, R.t2, 31);
+  a.bne(R.t3, R.zero, 'lst_picked');
+  a.nop();
+
+  a.label('lst_pick_next');
+  a.addiu(R.s1, R.s1, 1);
+  a.bne(R.s1, R.s4, 'lst_pick_wrap');
+  a.nop();
+  a.move(R.s1, R.zero);
+  a.label('lst_pick_wrap');
+  a.addiu(R.t6, R.t6, -1);
+  a.bgtz(R.t6, 'lst_pick_lp');
+  a.nop();
+
+  a.label('lst_picked');
+  a.swSym(R.s1, R.t0, 'g_LastClipIdx');
+
+  // Load descriptor entry: s1 = &VOICETBL[clipIdx]
+  a.label('lst_try_alloc');
+  a.sll(R.t0, R.s1, 4);
+  a.la(R.t1, ADDR.VoiceTblBase + 0x10);
+  a.addu(R.t7, R.t1, R.t0);              // t7 = &entry
+  a.lw(R.s2, 0, R.t7);                   // s2 = sectorOffset
+  a.lw(R.s3, 4, R.t7);                   // s3 = sectorCount
+  a.lw(R.s4, 8, R.t7);                   // s4 = byteSize
+  a.nop();
+  a.beq(R.s3, R.zero, 'lst_done');
+  a.sll(R.a0, R.s3, 11);                 // delay slot: alloc bytes = sectorCount * 2048
+
+  a.move(R.a1, R.zero);
+  a.addiu(R.a2, R.zero, 1);
+  a.jal(SYM.Mem_Alloc);
+  a.move(R.a3, R.zero);
+  a.bne(R.v0, R.zero, 'lst_alloc_ok');
+  a.move(R.s6, R.v0);
+
+  // OOM fallback: if large clip failed Mem_Alloc in heavy level, fallback once to clip #11 (10 KB)!
+  a.addiu(R.t0, R.zero, 11);
+  a.beq(R.s1, R.t0, 'lst_done');
+  a.move(R.s1, R.t0);
+  a.j('lst_try_alloc');
+  a.nop();
+
+  a.label('lst_alloc_ok');
+  a.jal(SYM.CDWAD_WaitIdle);
+  a.nop();
+
+  // Pause COMPILED.XA cleanly if active
+  a.move(R.s5, R.zero);
+  a.lw(R.t0, 14704, R.gp);
+  a.lw(R.t1, 14712, R.gp);
+  a.nop();
+  a.beq(R.t0, R.zero, 'lst_cd_read');
+  a.nop();
+  a.bne(R.t1, R.zero, 'lst_cd_read');
+  a.nop();
+  a.addiu(R.s5, R.zero, 1);
+  a.jal(SYM.XA_Pause);
+  a.addiu(R.a0, R.zero, 1);
+
+  a.label('lst_cd_read');
+  a.lwSym(R.t0, ADDR.g_VoicesBaseLba);
+  a.nop();
+  a.addu(R.a0, R.t0, R.s2);
+  a.jal(SYM.CdIntToPos);
+  a.addiu(R.a1, R.sp, 16);
+
+  a.addiu(R.a0, R.zero, 2);
+  a.addiu(R.a1, R.sp, 16);
+  a.jal(SYM.CdControl);
+  a.move(R.a2, R.zero);
+
+  a.move(R.a0, R.s3);
+  a.move(R.a1, R.s6);
+  a.jal(SYM.CdRead);
+  a.addiu(R.a2, R.zero, 0x80);
+
+  a.label('lst_cd_wait');
+  a.addiu(R.a0, R.zero, 1);
+  a.jal(SYM.CdReadSync);
+  a.move(R.a1, R.zero);
+  a.blez(R.v0, 'lst_cd_done');
+  a.move(R.a0, R.zero);
+  a.jal(SYM.VSync);
+  a.nop();
+  a.j('lst_cd_wait');
+  a.nop();
+
+  a.label('lst_cd_done');
+  // Set bit 1 of g_InPlaySel (0x800E27DC) BEFORE XA_UpdateVolume so music ducks -12 dB while Lulao speaks!
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
+  a.nop();
+  a.ori(R.t1, R.t1, 2);
+  a.sw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
+
+  a.beq(R.s5, R.zero, 'lst_vol_duck');
+  a.nop();
+  a.jal(SYM.XA_SetMode);
+  a.nop();
+  a.jal(SYM.XA_Pause);
+  a.move(R.a0, R.zero);
+
+  a.label('lst_vol_duck');
+  a.jal(SYM.XA_UpdateVolume);
+  a.nop();
+
+  // Pause SPU Reverb Master Enable (SPUCNT bit 7 @ 0x1F801DAA) while streaming inside 0x7F400..0x7FBFF
+  // so indoor level Reverb Work Areas (e.g., The Hangar) NEVER overwrite our 2 KB ADPCM ring buffer!
+  a.lui(R.t0, 0x1F80);
+  a.lhu(R.t1, 0x1DAA, R.t0);
+  a.nop();
+  a.andi(R.t2, R.t1, 0x0080);
+  a.beq(R.t2, R.zero, 'lst_rev_paused');
+  a.nop();
+  a.swSym(R.t2, R.t3, 'g_SavedRevBit');
+  a.andi(R.t1, R.t1, 0xFF7F);
+  a.sh(R.t1, 0x1DAA, R.t0);
+
+  a.label('lst_rev_paused');
+  // Initialize stream state & prime Half A (0x7F400) + Half B (0x7F800)
+  a.swSym(R.s6, R.t0, 'g_StreamBuf');
+  a.swSym(R.zero, R.t0, 'g_StreamCurPos');
+  a.swSym(R.s4, R.t0, 'g_StreamTotalBytes');
+  a.addiu(R.t1, R.zero, 1);
+  a.swSym(R.t1, R.t0, 'g_StreamActive');
+  a.swSym(R.zero, R.t0, 'g_StreamNextHalf');
+  a.swSym(R.zero, R.t0, 'g_StreamEofFrames');
+  a.swSym(R.zero, R.t0, 'g_StreamSampleAcc');
+
+  a.jal('LulaoStream_LoadHalf');
+  a.move(R.a0, R.zero);                  // Load Half A
+
+  a.lwSym(R.t0, 'g_StreamActive');
+  a.nop();
+  a.addiu(R.t1, R.zero, 1);
+  a.bne(R.t0, R.t1, 'lst_start_spu');    // Already EOF inside Half A
+  a.nop();
+  a.jal('LulaoStream_LoadHalf');
+  a.addiu(R.a0, R.zero, 1);              // Load Half B
+
+  // Program PS1 SPU Hardware Voice 23 @ 0x1F801D70 to play from 0x7F400 (Half A) @ 11025 Hz!
+  a.label('lst_start_spu');
+  a.lui(R.t0, 0x1F80);
+  a.lhu(R.t1, 0x1D92, R.t0);
+  a.lhu(R.t2, 0x1D96, R.t0);
+  a.lhu(R.t3, 0x1D9A, R.t0);
+  a.andi(R.t1, R.t1, 0xFF7F);
+  a.andi(R.t2, R.t2, 0xFF7F);
+  a.andi(R.t3, R.t3, 0xFF7F);
+  a.sh(R.t1, 0x1D92, R.t0);
+  a.sh(R.t2, 0x1D96, R.t0);
+  a.sh(R.t3, 0x1D9A, R.t0);
+
+  a.addiu(R.t1, R.zero, 0x3FFF);
+  a.sh(R.t1, 0x1D70, R.t0);              // VOL_L = 0x3FFF
+  a.sh(R.t1, 0x1D72, R.t0);              // VOL_R = 0x3FFF
+  a.addiu(R.t1, R.zero, 0x0400);         // PITCH = 0x0400 (11025 Hz)
+  a.sh(R.t1, 0x1D74, R.t0);
+  a.ori(R.t1, R.zero, (ADDR.SpuStreamHalfA >>> 3) & 0xffff); // 0xFE80
+  a.sh(R.t1, 0x1D76, R.t0);              // START_ADDR = 0xFE80
+  a.sh(R.t1, 0x1D7E, R.t0);              // REPEAT_ADDR = 0xFE80 (fixed ring base!)
+  a.addiu(R.t1, R.zero, 0x00FF);
+  a.sh(R.t1, 0x1D78, R.t0);              // ADSR1
+  a.addiu(R.t1, R.zero, 0x1FC0);
+  a.sh(R.t1, 0x1D7A, R.t0);              // ADSR2 (zero decay sustain)
+
+  a.addiu(R.a0, R.zero, 1);
+  a.jal(SYM.SpuSetKey);
+  a.lui(R.a1, 0x0080);                   // Voice 23 ON!
+
+  // Snapshot VSync(-1) reference right when Voice 23 keys ON!
+  a.jal(SYM.VSync);
+  a.addiu(R.a0, R.zero, -1);
+  a.swSym(R.v0, R.t0, 'g_StreamLastVSync');
+
+  a.label('lst_done');
+  a.lw(R.s6, 28, R.sp);
+  a.lw(R.s5, 32, R.sp);
+  a.lw(R.s4, 36, R.sp);
+  a.lw(R.s3, 40, R.sp);
+  a.lw(R.s2, 44, R.sp);
+  a.lw(R.s1, 48, R.sp);
+  a.lw(R.s0, 52, R.sp);
+  a.lw(R.ra, 56, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 64);
+
+  // --------------------------------------------------------------------------
+  // 9. LulaoStream_Tick() — Crystal-locked PS1 VBlank 2 KB Ping-Pong Feeder!
+  //    Never writes 0x1F801D7E during playback (100% immune to SPU ignore_loop_address!).
+  //    Ring: 2048 B = 3584 samples @ 11025 Hz (358400 centi-samples).
+  //    Each NTSC VBlank advances ~184.12 samples (18412 centi-samples):
+  //      - Reloads Half A (0x7F400) when acc >= 224000 (40 ms into Half B, 122 ms before wrap!)
+  //      - Reloads Half B (0x7F800) when acc < 179200 && acc >= 44800 (40 ms into Half A!)
+  //      - On EOF (active==2), stops cleanly once V23_ENVX==0 or 26 VBlanks elapsed!
+  // --------------------------------------------------------------------------
+  a.label('LulaoStream_Tick');
+  a.lwSym(R.t0, 'g_StreamActive');
+  a.nop();
+  a.bne(R.t0, R.zero, 'ltk_run');
+  a.nop();
+  a.jr(R.ra);                            // Fast path: 5 cycles when idle!
+  a.nop();
+
+  a.label('ltk_run');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.move(R.s0, R.t0);                    // s0 = g_StreamActive (1 or 2)
+
+  // dt = VSync(-1) - g_StreamLastVSync
+  a.jal(SYM.VSync);
+  a.addiu(R.a0, R.zero, -1);
+  a.lwSym(R.t1, 'g_StreamLastVSync');
+  a.nop();
+  a.subu(R.t2, R.v0, R.t1);              // t2 = dt (VBlanks elapsed since last tick)
+  a.swSym(R.v0, R.t3, 'g_StreamLastVSync');
+  a.blez(R.t2, 'ltk_ret');
+  a.nop();
+
+  a.addiu(R.t4, R.zero, 2);
+  a.beq(R.s0, R.t4, 'ltk_eof');
+  a.nop();
+
+  // Active streaming (s0 == 1): acc += dt * 18412; while (acc >= 358400) acc -= 358400;
+  a.li(R.t3, 18412);
+  a.multu(R.t2, R.t3);
+  a.mflo(R.t4);
+  a.lwSym(R.t5, 'g_StreamSampleAcc');
+  a.nop();
+  a.addu(R.t5, R.t5, R.t4);
+  a.li(R.t6, 358400);
+  a.label('ltk_wrap');
+  a.sltu(R.t7, R.t5, R.t6);
+  a.bne(R.t7, R.zero, 'ltk_wrap_done');
+  a.nop();
+  a.subu(R.t5, R.t5, R.t6);
+  a.j('ltk_wrap');
+  a.nop();
+
+  a.label('ltk_wrap_done');
+  a.swSym(R.t5, R.t0, 'g_StreamSampleAcc');
+
+  a.lwSym(R.t0, 'g_StreamNextHalf');
+  a.nop();
+  a.bne(R.t0, R.zero, 'ltk_chk_b');
+  a.nop();
+
+  // nextHalf == 0: reload Half A once SPU is safely inside Half B (acc >= 224000)
+  a.li(R.t1, 224000);
+  a.sltu(R.t2, R.t5, R.t1);
+  a.bne(R.t2, R.zero, 'ltk_ret');
+  a.nop();
+  a.jal('LulaoStream_LoadHalf');
+  a.move(R.a0, R.zero);                  // Reload Half A (0x7F400)
+  a.addiu(R.t0, R.zero, 1);
+  a.swSym(R.t0, R.t1, 'g_StreamNextHalf');
+  a.j('ltk_ret');
+  a.nop();
+
+  // nextHalf == 1: reload Half B once SPU wrapped safely into Half A (44800 <= acc < 179200)
+  a.label('ltk_chk_b');
+  a.li(R.t1, 179200);
+  a.sltu(R.t2, R.t5, R.t1);
+  a.beq(R.t2, R.zero, 'ltk_ret');        // still in Half B!
+  a.li(R.t1, 44800);
+  a.sltu(R.t2, R.t5, R.t1);
+  a.bne(R.t2, R.zero, 'ltk_ret');        // wait 40ms safety margin inside Half A!
+  a.nop();
+  a.jal('LulaoStream_LoadHalf');
+  a.addiu(R.a0, R.zero, 1);              // Reload Half B (0x7F800)
+  a.swSym(R.zero, R.t1, 'g_StreamNextHalf');
+  a.j('ltk_ret');
+  a.nop();
+
+  // EOF queued (s0 == 2): wait cleanly for final ADPCM block (V23_ENVX == 0) or safety timeout
+  a.label('ltk_eof');
+  a.lwSym(R.t5, 'g_StreamEofFrames');
+  a.lui(R.t1, 0x1F80);
+  a.addu(R.t5, R.t5, R.t2);              // += dt VBlanks
+  a.swSym(R.t5, R.t6, 'g_StreamEofFrames');
+  a.lhu(R.t3, 0x1D7C, R.t1);             // t3 = V23_ENVX
+  a.sltiu(R.t6, R.t5, 3);
+  a.bne(R.t6, R.zero, 'ltk_ret');
+  a.nop();
+  a.beq(R.t3, R.zero, 'ltk_do_stop');    // V23_ENVX == 0 -> Voice 23 finished final block!
+  a.nop();
+  a.sltiu(R.t6, R.t5, 26);               // safety timeout: 26 VBlanks (433 ms > 2 halves = 325 ms)
+  a.bne(R.t6, R.zero, 'ltk_ret');
+  a.nop();
+
+  a.label('ltk_do_stop');
+  a.jal('LulaoStream_Stop');
+  a.nop();
+
+  a.label('ltk_ret');
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // Resident State Variables (inside Sector 2..3 @ 0x800E3800..0x800E47FF)
+  // --------------------------------------------------------------------------
+  a.align(4);
+  a.label('g_StreamActive');    a.word(0);
+  a.label('g_StreamBuf');       a.word(0);
+  a.label('g_StreamCurPos');    a.word(0);
+  a.label('g_StreamTotalBytes');a.word(0);
+  a.label('g_StreamNextHalf');  a.word(0);
+  a.label('g_StreamEofFrames'); a.word(0);
+  a.label('g_EndRunSpoken');    a.word(0);
+  a.label('g_LastClipIdx');     a.word(0xFFFFFFFF);
+  a.label('g_PrngState');       a.word(0x5A3C96F1);
+  a.label('g_OrigSaved');       a.word(0);
+  a.label('g_SavedRevBit');     a.word(0);
+  a.label('g_StreamLastVSync'); a.word(0);
+  a.label('g_StreamSampleAcc'); a.word(0);
+
+  const lulaoUsed = a.pc() - ADDR.LulaoCodeBase;
+  if (lulaoUsed > 4096) throw new Error(`LULAO_CODE excede 4096 B (${lulaoUsed} B)!`);
+  console.log(`  [ASM] LULAO_CODE:   0x${ADDR.LulaoCodeBase.toString(16)}..0x${a.pc().toString(16)} (${lulaoUsed} B / 4096 B, livre: ${4096 - lulaoUsed} B)`);
+
+  a.padTo(ADDR.LulaoCodeBase + 4096);
+  return a.emit();
+}
+
+// ============================================================================
 // Helper to patch a 32-bit word with strict original/idempotent verification
 // ============================================================================
 function patchWord(buf, fileOff, expectedOrig, newVal, desc, prevValidVals = []) {
@@ -1309,7 +2358,7 @@ function jalWord(target) {
 // Main Execution
 // ============================================================================
 function applyAll() {
-  console.log('=== THPS2 PS1 Surgical MIPS Patcher v2: Boot Video Durations + Skater Voices + Music Ducking ===\n');
+  console.log('=== THPS2 PS1 Surgical MIPS Patcher v3: Boot Videos + Skater Voices + Bail Screams + Lulao Career/Cash/EndRun ===\n');
 
   fs.mkdirSync(backupDir, { recursive: true });
   for (const fn of ['SLUS_010.66', 'CD.WAD']) {
@@ -1320,30 +2369,51 @@ function applyAll() {
     }
   }
 
-  // 1. Assemble SLUS tail (0x800E2680..0x800E27FF), MODCODE (0x800E2800..0x800E2FFF) & Hook_BailSfx (0x800E3200..0x800E37FF)
+  // 1. Assemble all 5 resident sectors (0x800E2680..0x800E4FFF)
   const slusTail = assembleSlusTailCompact();
   const modCode = assembleModCode();
   const bailHookCode = assembleBailHookCode();
+  const lulaoCode = assembleLulaoEngine();
+  const { buf: lulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
+  const extraResidentSectors = Buffer.concat([lulaoCode, lulaoStrData]); // 8192 B (Sectors 2..5)
 
-  // 2. Build/update VOICES.DAT with MODCODE (Sec 0) + VOICETBL & Hook_BailSfx (Sec 1) + 28 SPU clips
+  // 2. Build/update VOICES.DAT with 6 resident sectors + all 41 SPU-ADPCM clips
   console.log('');
-  const manifest = buildVoicesBank(modCode, false, bailHookCode);
+  const manifest = buildVoicesBank(modCode, false, bailHookCode, extraResidentSectors);
 
   // 3. Patch SLUS_010.66 (exact same file size 864,256 B!)
-  console.log('\n=== Aplicando 10 Hooks Cirurgicos em SLUS_010.66 ===');
+  console.log('\n=== Aplicando 27 Hooks Cirurgicos em SLUS_010.66 ===');
   const slus = fs.readFileSync(slusPath);
   const ramToOff = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
 
-  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674');
-  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x24843800,                   'InitHeap addiu @ 0x800A2950');
+  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000]);
+  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x24845800,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000]);
   patchWord(slus, ramToOff(0x80053690), 0x28620018, 0x28620017,                   'Reserve SPU Voice 23 @ 0x80053690');
-  patchWord(slus, ramToOff(0x800527B8), jalWord(SYM.SFX_FindGlobal),      jalWord(ADDR.Tramp_BailSfx),     'Hook SFX_Play Bail Round-Robin @ 0x800527B8');
-  patchWord(slus, ramToOff(0x8006CAD4), jalWord(SYM.Movies_Init),         jalWord(ADDR.Mod_BootInit),      'Hook Movies_Init @ 0x8006CAD4');
-  patchWord(slus, ramToOff(0x8003CFB0), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),   'Boot Slot 0 (Activision) @ 0x8003CFB0', [jalWord(0x800E2758)]);
-  patchWord(slus, ramToOff(0x8003CFE8), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),   'Boot Slot 1 (Neversoft)  @ 0x8003CFE8', [jalWord(0x800E2758)]);
-  patchWord(slus, ramToOff(0x8003D024), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),   'Boot Slot 2 (Intro)      @ 0x8003D024', [jalWord(0x800E2758)]);
-  patchWord(slus, ramToOff(0x80038950), jalWord(SYM.CdMix),               jalWord(ADDR.Hook_CdMix),        'Hook XA CdMix (25% PlaySel) @ 0x80038950');
-  patchWord(slus, ramToOff(0x80082B80), jalWord(SYM.Overlay_Run),         jalWord(ADDR.Tramp_RunPlaySel),  'Hook Overlay_Run playsel @ 0x80082B80');
+  patchWord(slus, ramToOff(0x800527B8), jalWord(SYM.SFX_FindGlobal),      jalWord(ADDR.Tramp_BailSfx),        'Hook SFX_Play Bail Round-Robin @ 0x800527B8');
+  patchWord(slus, ramToOff(0x8006CAD4), jalWord(SYM.Movies_Init),         jalWord(ADDR.Mod_BootInit),         'Hook Movies_Init @ 0x8006CAD4');
+  patchWord(slus, ramToOff(0x8003CFB0), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),      'Boot Slot 0 (Activision) @ 0x8003CFB0', [jalWord(0x800E2758)]);
+  patchWord(slus, ramToOff(0x8003CFE8), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),      'Boot Slot 1 (Neversoft)  @ 0x8003CFE8', [jalWord(0x800E2758)]);
+  patchWord(slus, ramToOff(0x8003D024), jalWord(SYM.PlayFullScreenMovie), jalWord(ADDR.Tramp_BootMovie),      'Boot Slot 2 (Intro)      @ 0x8003D024', [jalWord(0x800E2758)]);
+  patchWord(slus, ramToOff(0x80038950), jalWord(SYM.CdMix),               jalWord(ADDR.Hook_CdMix),           'Hook XA CdMix (Ducking) @ 0x80038950');
+  patchWord(slus, ramToOff(0x80082B80), jalWord(SYM.Overlay_Run),         jalWord(ADDR.Tramp_RunPlaySel),     'Hook Overlay_Run playsel @ 0x80082B80');
+
+  // Lulao Career Mode: Cash Pickup ($250/$50/$100), End-of-Run (Normal/Comp/Pause), 60Hz Streamer & Lifecycle
+  patchWord(slus, ramToOff(0x800368D4), jalWord(SYM.Career_CollectCash),  jalWord(ADDR.Entry_CollectCash),    'Hook Cash Pickup $250 @ 0x800368D4');
+  patchWord(slus, ramToOff(0x80036914), jalWord(SYM.Career_CollectCash),  jalWord(ADDR.Entry_CollectCash),    'Hook Cash Pickup $50  @ 0x80036914');
+  patchWord(slus, ramToOff(0x80036954), jalWord(SYM.Career_CollectCash),  jalWord(ADDR.Entry_CollectCash),    'Hook Cash Pickup $100 @ 0x80036954');
+  patchWord(slus, ramToOff(0x8003C968), jalWord(SYM.Panel_EndRunNormal),  jalWord(ADDR.Entry_EndRunNormal),   'Hook EndRun Normal (State 7) @ 0x8003C968');
+  patchWord(slus, ramToOff(0x8003C9F0), jalWord(SYM.Panel_EndRunComp),    jalWord(ADDR.Entry_EndRunComp),     'Hook EndRun Comp (State 5/8/9) @ 0x8003C9F0');
+  patchWord(slus, ramToOff(0x80030DA0), jalWord(SYM.Panel_EndRunPause),   jalWord(ADDR.Entry_EndRunPause),    'Hook EndRun Pause Menu @ 0x80030DA0');
+  patchWord(slus, ramToOff(0x8003C2E8), jalWord(SYM.Panel_EndRunPause),   jalWord(ADDR.Entry_EndRunPause),    'Hook EndRun Time-Up Natural @ 0x8003C2E8');
+  patchWord(slus, ramToOff(0x800813CC), jalWord(SYM.Panel_EndRunPause),   jalWord(ADDR.Entry_EndRunPause),    'Hook EndRun Script/Cheat @ 0x800813CC');
+  patchWord(slus, ramToOff(0x8003CB48), jalWord(SYM.XA_Update),           jalWord(ADDR.Entry_FrameTick),      'Hook 60Hz FrameTick (XA_Update) @ 0x8003CB48');
+  patchWord(slus, ramToOff(0x8003D71C), jalWord(SYM.Gameplay_MainLoop),   jalWord(ADDR.Entry_GameplayStart),  'Hook GameplayStart/Retry @ 0x8003D71C');
+  patchWord(slus, ramToOff(0x8003D828), jalWord(SYM.Level_Unload),        jalWord(ADDR.Entry_GameplayExit),   'Hook GameplayExit Cleanup @ 0x8003D828');
+
+  // Menu Overlay_Run pre-sync hooks (ensures Career goal lists & cash labels match skater even after direct MC Load!)
+  for (const ovSite of [0x80082C38, 0x80082D2C, 0x80082DB0, 0x80082E1C, 0x80082E98, 0x80082EF0, 0x80082F70, 0x80082FD4]) {
+    patchWord(slus, ramToOff(ovSite), jalWord(SYM.Overlay_Run), jalWord(ADDR.Entry_OverlaySync), `Hook Menu Sync @ 0x${ovSite.toString(16)}`);
+  }
 
   slusTail.copy(slus, ramToOff(ADDR.Mod_BootInit));
   fs.writeFileSync(slusPath, slus);
@@ -1364,10 +2434,10 @@ function applyAll() {
   fs.writeFileSync(wadPath, wad);
   console.log(`  [OK] CD.WAD gravado (${wad.length} B — todos os offsets 100% preservados!)`);
 
-  return { slusTail, modCode, bailHookCode, manifest };
+  return { slusTail, modCode, bailHookCode, lulaoCode, lulaoStrData, lulaoMappings, manifest };
 }
 
-module.exports = { applyAll, ADDR, SYM, jalWord, assembleSlusTailClean: assembleSlusTailCompact, assembleModCode, assembleBailHookCode };
+module.exports = { applyAll, ADDR, SYM, jalWord, assembleSlusTailClean: assembleSlusTailCompact, assembleModCode, assembleBailHookCode, assembleLulaoEngine, buildLulaoStrData };
 
 if (require.main === module) {
   applyAll();

@@ -6,6 +6,19 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 
 ## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório & Enciclopédia v2
 
+### 🎯 Modo Carreira Exclusivo do Lulao, "Roubei mais X" & Streamer SPU 2 KB em Gameplay (`Scripts/patch_random_videos_and_voices.js`)
+- **88 Ponteiros Dinâmicos do Modo Carreira (`LULAO_STRDATA @ 0x800E4800..0x800E57FF`, Setores 4..5 de `VOICES.DAT`):**
+  - `Lulao_SyncStrings @ 0x800E3800` salva os 88 ponteiros originais em `0x800E4B00` no primeiro uso e troca automaticamente toda a lista de objetivos das **8 fases do Modo Carreira** (*The Hangar*, *School II*, *Marseille*, *NY City*, *Venice Beach*, *SkateStreet*, *Philadelphia* e *The Bullring* — 50 metas regulares + 19 *short labels* HUD + 9 medalhas de competição + 5 textos de pódio) exclusivamente quando **Lulao (`Slot 2`)** está selecionado, restaurando 100% dos textos originais para todos os demais skatistas (inclusive após carga direta de Memory Card via 8 hooks em `Overlay_Run`).
+- **Dinheiro Customizado ("Roubei mais 50/100/250") + Fala Aleatória em Toda Coleta:**
+  - Troca dinâmica em `g_StringTable` para o Lulao: `$50` (`0x800C0310`) → `"Roubei mais 50!"`, `$100` (`0x800C0314`) → `"Roubei mais 100!"`, `$250` (`0x800C030C`) → `"Roubei mais 250!"`, *Cash Icons Cleared* (`0x800C01D4`) → `"Zerei o BNDES da Fase!"`, e label HUD `cash` (`0x800C080C`) → `"Roubei"` (exibindo `"Roubei $50"`, `"Roubei $150"`, etc.).
+  - Hooks nos 3 chamadores de `Career_CollectCash` (`0x800368D4`, `0x80036914`, `0x80036954` → `Hook_CollectCash @ 0x800E3810`) disparam uma frase aleatória sem repetição imediata do Lulao a cada nota coletada.
+- **Fala Aleatória Engraçada no Fim de Partida:**
+  - Cobertura de 100% das rotas de encerramento (`0x8003C2E8` *Time is up* natural, `0x80030DA0` *Pause → End Run*, `0x8003C968` State 7, `0x8003C9F0` competições e `0x800813CC`), com trava 1-shot `g_EndRunSpoken` (zerada em `Hook_GameplayStart @ 0x8003D71C`) sorteando entre todos os 14 clipes do Lulao.
+- **Streamer SPU Hardware Ping-Pong de 2 KB (`LULAO_CODE @ 0x800E3800..0x800E47FF`, `NewHeapStart = 0x800E5800`):**
+  - Ring buffer circular de apenas **`2.048 B` na SPU RAM (`0x7F400..0x7FBFF`)** — estritamente acima dos 17 bancos `.VAB` (inclusive `bullring.vab` que termina em `0x7F360`, 0 bytes de corrupção de SFX!).
+  - Pausa temporariamente o bit 7 (`Reverb Master Enable`) em `SPUCNT (0x1F801DAA)` enquanto o Lulao fala (evitando que o *Reverb Work Area* de fases fechadas como *The Hangar* sobrescreva `0x7F400..0x7FBFF`), limpa os 2 KB e restaura o Reverb + volume 100% de `COMPILED.XA` + `Mem_Free` automaticamente ao final (ou ao sair/reiniciar a fase via `Hook_GameplayStart`/`Hook_GameplayExit`).
+  - Alimentado a 60 Hz via `Hook_FrameTick @ 0x8003CB48` travado no cristal `VSync(-1)` (`184,12` amostras/VBlank NTSC, recarga no meio da metade oposta + detecção exata de término via `V23_ENVX @ 0x1F801D7C == 0`), validado ao vivo no DuckStation GDB com clipes de até `108.224 B` (`17,18s`) e **0 erros PSX**.
+
 ### ✨ Skatistas Personalizados (28 Modelos `.PSX` + 7 Retratos `s2face*.bmp`)
 - **Silvio Santos (`Slot 1`, ex-Bob Burnquist — `burnq2*` — [`Scripts/mod_skater_silvio.js`](Scripts/mod_skater_silvio.js)):**
   - **Renomeação em `SLUS_010.66`:** `0x0C44EC`/`0x0C8688` `"Silvio Santos"`, `0x0C44FC` `"Sil"`, `0x0A17D8` `"Brazil's Silvio Santos"`, `0x0C459C` `"Can't Stop SS"` (preservando `\X\BURNQUIS.STR;1` e nomes de arquivos `.psx`).
