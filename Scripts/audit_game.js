@@ -668,8 +668,75 @@ try {
     if (!voicesBuf.subarray(0, 2048).equals(expModCode)) fail('VOICES', 'Setor 0 (MODCODE) em VOICES.DAT difere do assembly esperado!');
     const expSec1Code = assembleBailHookCode();
     if (!voicesBuf.subarray(2048 + 0x400, 4096).equals(expSec1Code)) fail('VOICES', 'Setor 1 +0x400 (Hook_BailSfx + VoiceSelect) em VOICES.DAT difere do assembly esperado!');
-    const expLulaoCode = assembleLulaoEngine();
-    if (!voicesBuf.subarray(4096, 8192).equals(expLulaoCode)) fail('VOICES', 'Setores 2..3 (LULAO_CODE) em VOICES.DAT diferem do assembly esperado!');
+    const voicesManifestPath = path.join(rootDir, 'build', 'voices_manifest.json');
+    const voicesManifest = fs.existsSync(voicesManifestPath) ? JSON.parse(fs.readFileSync(voicesManifestPath, 'utf8')) : null;
+    const gpMeta = voicesManifest && voicesManifest.gameplayBank;
+    if (!gpMeta || gpMeta.clipCount !== 14 || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28 || gpMeta.spuPitch !== 0x0280) {
+      fail('VOICES', 'Manifesto build/voices_manifest.json sem gameplayBank (LULAO_GPBANK 14x2 @ 0x0280) valido!');
+    } else {
+      const { buf: expLulaoCode, labels: lulaoLabels } = assembleLulaoEngine(gpMeta);
+      if (!voicesBuf.subarray(4096, 8192).equals(expLulaoCode)) fail('VOICES', 'Setores 2..3 (LULAO_CODE) em VOICES.DAT diferem do assembly esperado!');
+
+      // Static MIPS invariant audit on LULAO_CODE:
+      //  1) LulaoStream_StartFromCache MUST have ZERO calls to CdRead/CdControl/CDWAD_WaitIdle/XA_Pause/Mem_Alloc/Mem_Free!
+      //  2) LulaoCache_Load MUST walk Heap[1] freeList @ 19112(gp) (lw t0, 19112(gp) = 0x8F884AA8) BEFORE Mem_Alloc!
+      const forbiddenInStart = new Map([
+        [jalWord(SYM.CdRead),         'CdRead'],
+        [jalWord(SYM.CdControl),      'CdControl'],
+        [jalWord(SYM.CDWAD_WaitIdle), 'CDWAD_WaitIdle'],
+        [jalWord(SYM.XA_Pause),       'XA_Pause'],
+        [jalWord(SYM.Mem_Alloc),      'Mem_Alloc'],
+        [jalWord(SYM.Mem_Free),       'Mem_Free'],
+      ]);
+      const startFnPc = lulaoLabels.get('LulaoStream_StartFromCache');
+      const tickFnPc  = lulaoLabels.get('LulaoStream_Tick');
+      let mipsInvErr = 0;
+      for (let pc = startFnPc; pc < tickFnPc; pc += 4) {
+        const w = voicesBuf.readUInt32LE(4096 + (pc - ADDR.LulaoCodeBase));
+        if (forbiddenInStart.has(w)) {
+          fail('VOICES', `Violacao Zero-Stall: LulaoStream_StartFromCache @ 0x${pc.toString(16)} chama ${forbiddenInStart.get(w)}!`);
+          mipsInvErr++;
+        }
+      }
+      const cacheLoadPc = lulaoLabels.get('LulaoCache_Load');
+      const cacheFreePc = lulaoLabels.get('LulaoCache_Free');
+      let seenFreeListWalk = false, allocBeforeWalk = false;
+      const jalMemAlloc = jalWord(SYM.Mem_Alloc);
+      for (let pc = cacheLoadPc; pc < cacheFreePc; pc += 4) {
+        const w = voicesBuf.readUInt32LE(4096 + (pc - ADDR.LulaoCodeBase));
+        if (w === 0x8F884AA8) seenFreeListWalk = true; // lw t0, 19112(gp)
+        if (w === jalMemAlloc && !seenFreeListWalk) allocBeforeWalk = true;
+      }
+      if (!seenFreeListWalk || allocBeforeWalk) {
+        fail('VOICES', `Violacao OOM Guard: LulaoCache_Load sem walk freeList[1] antes de Mem_Alloc (seen=${seenFreeListWalk}, before=${allocBeforeWalk})!`);
+        mipsInvErr++;
+      }
+
+      // Validate LULAO_GPBANK payloads (14x2 ring-doubled, 16B-aligned, exact copy-1 === copy-2 parity)
+      const gpBaseOff = gpMeta.startSector * 2048;
+      let gpErr = 0;
+      if (gpBaseOff + gpMeta.totalBytes > voicesBuf.length) {
+        fail('VOICES', `LULAO_GPBANK excede VOICES.DAT (${gpBaseOff + gpMeta.totalBytes} > ${voicesBuf.length})`);
+        gpErr++;
+      } else {
+        const halfA = voicesBuf.subarray(gpBaseOff, gpBaseOff + gpMeta.singleBytes);
+        const halfB = voicesBuf.subarray(gpBaseOff + gpMeta.singleBytes, gpBaseOff + 2 * gpMeta.singleBytes);
+        if (!halfA.equals(halfB)) {
+          fail('VOICES', 'LULAO_GPBANK anel 2x inconsistente (copia 1 != copia 2)!');
+          gpErr++;
+        }
+        for (let i = 0; i < gpMeta.ringEntries.length; i++) {
+          const re = gpMeta.ringEntries[i];
+          if (re.byteSize === 0 || (re.byteSize % 16) !== 0 || (re.byteOffsetInBank % 16) !== 0 || (re.byteOffsetInBank + re.byteSize) > gpMeta.totalBytes) {
+            fail('VOICES', `LULAO_GPBANK entrada #${i} invalida: off=${re.byteOffsetInBank} sz=${re.byteSize}`);
+            gpErr++;
+          }
+        }
+      }
+      if (mipsInvErr === 0 && gpErr === 0) {
+        pass(`LULAO_GPBANK + Zero-Stall RAM Cache: 14x2 anel (${gpMeta.totalSectors} set. @ +${gpMeta.startSector}, 6890.625 Hz / 0x0280, 16B-aligned), freeList[1] OOM guard OK, 0 chamadas CdRead/XA_Pause/Mem_Alloc em gameplay`);
+      }
+    }
     const { buf: expLulaoStrData } = buildLulaoStrData();
     if (!voicesBuf.subarray(8192, 12288).equals(expLulaoStrData)) fail('VOICES', 'Setores 4..5 (LULAO_STRDATA) em VOICES.DAT diferem dos dados esperados!');
     const magic = voicesBuf.readUInt32LE(2048);

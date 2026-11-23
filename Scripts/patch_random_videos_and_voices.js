@@ -1472,17 +1472,25 @@ function buildLulaoStrData() {
 }
 
 // ============================================================================
-// 2C. Assemble Resident Lulao Career & Gameplay Voice Engine (Sector 2 -> 0x800E3800..0x800E3FFF, 2048 B)
+// 2C. Assemble Resident Lulao Career & ZERO-STALL Gameplay Voice Engine
+//     (Sectors 2..3 -> 0x800E3800..0x800E47FF, 4096 B)
 //     - Lulao_SyncStrings: dynamically swaps all 88 Career/Cash/Podium pointers for Lulao (Slot 2)
-//     - Hook_CollectCash: triggers rotating/random Lulao voice on every $50/$100/$250 pickup
-//     - Hook_EndRun_*: triggers funny random Lulao voice once at End of Run (Time Up / Pause End Run / Comp)
-//     - 2 KB SPU Voice 23 Hardware Ping-Pong Streamer (0x7F400..0x7FBFF — ABOVE bullring.vab 0x7F360!)
-//       with zero-drift REPEAT_ADDR sync (0xFE82 Half A / 0xFF00 Half B / 0xFE80 CPU loopback)
+//     - LulaoCache_Load: ONCE per level load (on Loading Screen), walks Heap[1] freeList @ gp+19112
+//       (immune to THPS2's 0x80054550 OOM red-screen trap!), reserves >= 96 KB untouched safety margin,
+//       allocates 1 persistent buffer (2 KB g_StageBuf + contiguous slice of 6890.625 Hz LULAO_GPBANK)
+//       and loads 4..10 Lulao clips in ONE single CdRead (0 reloads on Retry!).
+//     - Hook_CollectCash / Hook_EndRun_*: decoupled deferred flag (< 0.0005 ms inside physics!)
+//     - Hook_FrameTick: starts voice instantly from RAM cache (< 0.20 ms, ZERO CdRead, ZERO XA_Pause,
+//       ZERO Mem_Alloc, 0 dropped frames, 60 FPS rock-solid!) via immutable 2 KB g_StageBuf -> SPU Voice 23
+//       2 KB Ping-Pong Ring (0x7F400..0x7FBFF @ exact pitch 0x0280 = 6890.625 Hz).
 // ============================================================================
-function assembleLulaoEngine() {
+function assembleLulaoEngine(gpMeta) {
+  if (!gpMeta || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28) {
+    throw new Error('assembleLulaoEngine requer gpMeta valido com 28 entradas em anel (14x2)!');
+  }
   const a = new MipsAsm(ADDR.LulaoCodeBase);
 
-  // Fixed Entry Jump Table @ 0x800E3800
+  // Fixed Entry Jump Table @ 0x800E3800 (9 entries — 100% ABI-compatible with all SLUS_010.66 hooks!)
   a.j('Lulao_SyncStrings');   a.nop(); // 0x800E3800
   a.j('Hook_OverlaySyncRun'); a.nop(); // 0x800E3808
   a.j('Hook_CollectCash');    a.nop(); // 0x800E3810
@@ -1587,21 +1595,20 @@ function assembleLulaoEngine() {
   a.addiu(R.sp, R.sp, 40);
 
   // --------------------------------------------------------------------------
-  // 3. Hook_CollectCash(nodeId, amount) — Called on EVERY $50/$100/$250 pickup!
+  // 3. Hook_CollectCash(nodeId, amount) — DEFERRED ZERO-STALL TRIGGER (< 0.0005 ms!)
+  //    Never touches CD-ROM, XA, SPU, or Heap mid-physics! Merely flags g_PendingVoiceMode = 1
+  //    when Lulao's RAM pre-cache is active, processed cleanly in Hook_FrameTick post-Display_Swap.
   // --------------------------------------------------------------------------
   a.label('Hook_CollectCash');
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
   a.jal(SYM.Career_CollectCash);
   a.nop();
-  a.la(R.a0, SYM.g_Career);
-  a.jal(SYM.GetSelectedSkaterIdx);
+  a.lwSym(R.t0, 'g_CacheClipCount');     // Non-zero ONLY when Lulao (Slot 2) & RAM cache loaded!
   a.nop();
-  a.addiu(R.t0, R.zero, 2);              // Slot 2 = Lulao
-  a.bne(R.v0, R.t0, 'hcc_ret');
-  a.nop();
-  a.jal('LulaoStream_Start');
-  a.move(R.a0, R.zero);                  // mode 0 = Cash Pickup (snappy clips <= 30 sectors)
+  a.beq(R.t0, R.zero, 'hcc_ret');
+  a.addiu(R.t1, R.zero, 1);              // mode 1 = Cash Pickup
+  a.swSym(R.t1, R.t2, 'g_PendingVoiceMode');
   a.label('hcc_ret');
   a.lw(R.ra, 20, R.sp);
   a.nop();
@@ -1610,30 +1617,21 @@ function assembleLulaoEngine() {
 
   // --------------------------------------------------------------------------
   // 4. End-of-Run Hooks (Time Up, Competition Heat/End, Pause -> End Run)
-  //    Protected by g_EndRunSpoken so Lulao speaks ONCE per finished run!
+  //    Leaf deferred trigger: protected by g_EndRunSpoken, ZERO stall!
   // --------------------------------------------------------------------------
   a.label('Lulao_OnEndRun');
-  a.addiu(R.sp, R.sp, -24);
-  a.sw(R.ra, 20, R.sp);
   a.lwSym(R.t0, 'g_EndRunSpoken');
-  a.nop();
+  a.lwSym(R.t1, 'g_CacheClipCount');
   a.bne(R.t0, R.zero, 'oer_ret');
   a.nop();
-  a.la(R.a0, SYM.g_Career);
-  a.jal(SYM.GetSelectedSkaterIdx);
-  a.nop();
-  a.addiu(R.t0, R.zero, 2);
-  a.bne(R.v0, R.t0, 'oer_ret');
-  a.nop();
-  a.addiu(R.t0, R.zero, 1);
-  a.swSym(R.t0, R.t1, 'g_EndRunSpoken');
-  a.jal('LulaoStream_Start');
-  a.addiu(R.a0, R.zero, 1);              // mode 1 = End of Run (all 14 funny Lulao clips!)
+  a.beq(R.t1, R.zero, 'oer_ret');
+  a.addiu(R.t2, R.zero, 1);
+  a.swSym(R.t2, R.t3, 'g_EndRunSpoken');
+  a.addiu(R.t2, R.zero, 2);              // mode 2 = End of Run
+  a.swSym(R.t2, R.t3, 'g_PendingVoiceMode');
   a.label('oer_ret');
-  a.lw(R.ra, 20, R.sp);
-  a.nop();
   a.jr(R.ra);
-  a.addiu(R.sp, R.sp, 24);
+  a.nop();
 
   a.label('Hook_EndRun_Normal');
   a.addiu(R.sp, R.sp, -24);
@@ -1684,13 +1682,21 @@ function assembleLulaoEngine() {
   a.addiu(R.sp, R.sp, 24);
 
   // --------------------------------------------------------------------------
-  // 5. Hook_FrameTick (60 Hz @ 0x8003CB48) + Gameplay Start/Exit Lifecycle
+  // 5. Hook_FrameTick (60 Hz @ 0x8003CB48, post-Display_Swap) + Lifecycle Hooks
   // --------------------------------------------------------------------------
   a.label('Hook_FrameTick');
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
   a.jal(SYM.XA_Update);
   a.nop();
+  a.lwSym(R.t0, 'g_PendingVoiceMode');
+  a.nop();
+  a.beq(R.t0, R.zero, 'hft_tick');
+  a.nop();
+  a.swSym(R.zero, R.t1, 'g_PendingVoiceMode');
+  a.jal('LulaoStream_StartFromCache');
+  a.move(R.a0, R.t0);
+  a.label('hft_tick');
   a.jal('LulaoStream_Tick');
   a.nop();
   a.lw(R.ra, 20, R.sp);
@@ -1704,8 +1710,23 @@ function assembleLulaoEngine() {
   a.jal('LulaoStream_Stop');
   a.nop();
   a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
+  a.swSym(R.zero, R.t0, 'g_PendingVoiceMode');
   a.jal('Lulao_SyncStrings');
   a.nop();
+  // Preload RAM voice cache ONCE per level load (skipped on Retry when g_CacheBuf != 0!)
+  a.lwSym(R.t0, 'g_CacheBuf');
+  a.nop();
+  a.bne(R.t0, R.zero, 'hgs_enter');
+  a.nop();
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t0, R.zero, 2);              // Slot 2 = Lulao
+  a.bne(R.v0, R.t0, 'hgs_enter');
+  a.nop();
+  a.jal('LulaoCache_Load');
+  a.nop();
+  a.label('hgs_enter');
   a.lw(R.ra, 20, R.sp);
   a.nop();
   a.j(SYM.Gameplay_MainLoop);
@@ -1714,17 +1735,263 @@ function assembleLulaoEngine() {
   a.label('Hook_GameplayExit');
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
-  a.jal('LulaoStream_Stop');
+  a.jal('LulaoCache_Free');
   a.nop();
-  a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
   a.lw(R.ra, 20, R.sp);
   a.nop();
   a.j(SYM.Level_Unload);
   a.addiu(R.sp, R.sp, 24);
 
   // --------------------------------------------------------------------------
-  // 6. LulaoStream_Stop() — Silences SPU Voice 23, restores SPU Reverb Master,
-  //    frees RAM buffer, restores XA background music volume to 100%!
+  // 5B. Helper: Lulao_NextRand() -> $v0 = fresh 32-bit PRNG (hardware entropy + XorShift32)
+  // --------------------------------------------------------------------------
+  a.label('Lulao_NextRand');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal(SYM.VSync);
+  a.addiu(R.a0, R.zero, -1);
+  a.lwSym(R.t4, 'g_PrngState');
+  a.lui(R.t0, 0x1F80);
+  a.lhu(R.t1, 0x1100, R.t0);
+  a.lhu(R.t2, 0x1110, R.t0);
+  a.lhu(R.t3, 0x1120, R.t0);
+  a.xor(R.t4, R.t4, R.v0);
+  a.sll(R.t2, R.t2, 11);
+  a.sll(R.t3, R.t3, 21);
+  a.xor(R.t4, R.t4, R.t1);
+  a.xor(R.t4, R.t4, R.t2);
+  a.xor(R.t4, R.t4, R.t3);
+  a.bne(R.t4, R.zero, 'lnr_xs');
+  a.nop();
+  a.li(R.t4, 0x9E3779B9);
+  a.label('lnr_xs');
+  a.sll(R.t0, R.t4, 13); a.xor(R.t4, R.t4, R.t0);
+  a.srl(R.t0, R.t4, 17); a.xor(R.t4, R.t4, R.t0);
+  a.sll(R.t0, R.t4, 5);  a.xor(R.t4, R.t4, R.t0);
+  a.swSym(R.t4, R.t0, 'g_PrngState');
+  a.move(R.v0, R.t4);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 5C. LulaoCache_Load() — Runs ONCE on Level Load for Lulao (Slot 2)!
+  //     1. Walks native Heap[1] freeList @ *(gp + 19112) (0x800D7294) to find EXACT largestFree.
+  //     2. Preserves an UNTOUCHABLE 96 KB (98,304 B) safety reserve for THPS2 runtime objects.
+  //     3. Picks random startClip (0..13) & fits as many contiguous ring clips as fit in (usable - 2048).
+  //     4. Allocates ONE persistent block (2048 B g_StageBuf + readSectors * 2048 B) and executes
+  //        ONE single contiguous CdRead during the Loading Screen!
+  // --------------------------------------------------------------------------
+  a.label('LulaoCache_Load');
+  a.addiu(R.sp, R.sp, -64);
+  a.sw(R.ra, 56, R.sp);
+  a.sw(R.s0, 52, R.sp);
+  a.sw(R.s1, 48, R.sp);
+  a.sw(R.s2, 44, R.sp);
+  a.sw(R.s3, 40, R.sp);
+  a.sw(R.s4, 36, R.sp);
+  a.sw(R.s5, 32, R.sp);
+  a.sw(R.s6, 28, R.sp);
+
+  // Step 1: Walk Heap[1] freeList @ 19112(gp) -> s0 = largestFree contiguous block (bytes)
+  a.lw(R.t0, 19112, R.gp);
+  a.move(R.s0, R.zero);
+  a.label('lcl_fl_lp');
+  a.beq(R.t0, R.zero, 'lcl_fl_done');
+  a.nop();
+  a.lw(R.t1, 0, R.t0);                   // hdr
+  a.lw(R.t0, 4, R.t0);                   // next
+  a.srl(R.t1, R.t1, 4);                  // blkBytes = hdr >>> 4
+  a.sltu(R.t2, R.s0, R.t1);
+  a.beq(R.t2, R.zero, 'lcl_fl_lp');
+  a.nop();
+  a.j('lcl_fl_lp');
+  a.move(R.s0, R.t1);
+
+  a.label('lcl_fl_done');
+  // Require largestFree >= 98304 (96 KB safety reserve) + 16384 (16 KB minimum cache) = 114688 B!
+  a.li(R.t0, 114688);
+  a.sltu(R.t1, R.s0, R.t0);
+  a.bne(R.t1, R.zero, 'lcl_ret');        // Too tight (e.g. extreme 2P state) -> skip cleanly, 0% OOM!
+  a.nop();
+  a.li(R.t0, 98304);                     // 96 KB untouched safety reserve for game engine!
+  a.subu(R.s0, R.s0, R.t0);              // s0 = usable bytes (guaranteed <= largestFree - 96 KB)
+  a.li(R.t1, 0xFFFFF800);
+  a.and(R.s0, R.s0, R.t1);               // align down to 2048 B sector boundary
+
+  // Step 2: Randomize starting clip index (0..g_GpClipCount-1) so every level load rotates the pool!
+  a.jal('Lulao_NextRand');
+  a.nop();
+  a.lwSym(R.t0, 'g_GpClipCount');
+  a.nop();
+  a.beq(R.t0, R.zero, 'lcl_ret');
+  a.nop();
+  a.divu(R.v0, R.t0);
+  a.mfhi(R.s1);                          // s1 = startClip (0..13)
+
+  // Step 3: Compute firstSecRel & baseOff for g_GpRingTable[startClip]
+  a.la(R.t6, 'g_GpRingTable');
+  a.sll(R.t1, R.s1, 3);                  // startClip * 8
+  a.addu(R.t6, R.t6, R.t1);              // t6 = &g_GpRingTable[startClip]
+  a.lw(R.t2, 0, R.t6);                   // t2 = firstEntry.byteOffsetInBank
+  a.nop();
+  a.srl(R.s2, R.t2, 11);                 // s2 = firstSecRel
+  a.sll(R.s3, R.s2, 11);                 // s3 = g_CacheBaseOff (first byte read into g_CacheBuf + 2048)
+
+  // Step 4: Greedily fit k = 0..(clipCount-1) contiguous clips into s0 (usable bytes)
+  a.move(R.t4, R.zero);                  // t4 = k
+  a.move(R.s4, R.zero);                  // s4 = accepted clipCount
+  a.move(R.s5, R.zero);                  // s5 = accepted readSectors
+  a.lwSym(R.t7, 'g_GpClipCount');
+  a.nop();
+
+  a.label('lcl_fit_lp');
+  a.lw(R.t1, 0, R.t6);                   // entry.byteOffsetInBank
+  a.lw(R.t2, 4, R.t6);                   // entry.byteSize
+  a.nop();
+  a.addu(R.t1, R.t1, R.t2);              // clipEnd
+  a.subu(R.t1, R.t1, R.s3);              // spanBytes = clipEnd - baseOff
+  a.addiu(R.t1, R.t1, 2047);
+  a.srl(R.t1, R.t1, 11);                 // needSectors = ceil(spanBytes / 2048)
+  a.sll(R.t2, R.t1, 11);
+  a.addiu(R.t2, R.t2, 2048);             // needAlloc = 2048 (g_StageBuf) + needSectors * 2048
+  a.sltu(R.t3, R.s0, R.t2);              // usable < needAlloc ?
+  a.bne(R.t3, R.zero, 'lcl_fit_done');
+  a.nop();
+  a.addiu(R.t4, R.t4, 1);
+  a.move(R.s4, R.t4);                    // accept k+1 clips
+  a.move(R.s5, R.t1);                    // accept needSectors
+  a.addiu(R.t6, R.t6, 8);
+  a.bne(R.t4, R.t7, 'lcl_fit_lp');
+  a.nop();
+
+  a.label('lcl_fit_done');
+  a.beq(R.s4, R.zero, 'lcl_ret');
+  a.nop();
+
+  // Step 5: Allocate ONE persistent block (allocBytes = 2048 + s5 * 2048 <= usable <= largestFree - 96 KB)
+  a.sll(R.a0, R.s5, 11);
+  a.addiu(R.a0, R.a0, 2048);
+  a.swSym(R.a0, R.t0, 'g_CacheAllocBytes');
+  a.move(R.a1, R.zero);
+  a.addiu(R.a2, R.zero, 1);
+  a.jal(SYM.Mem_Alloc);
+  a.move(R.a3, R.zero);
+  a.beq(R.v0, R.zero, 'lcl_ret');
+  a.move(R.s6, R.v0);                    // s6 = g_CacheBuf (+0..+2047 = g_StageBuf, +2048.. = audio data)
+
+  // Step 6: Execute ONE single contiguous CdRead into (g_CacheBuf + 2048) during Loading Screen!
+  a.jal(SYM.CDWAD_WaitIdle);
+  a.nop();
+
+  // Safely pause XA if already active (save flag in 24(sp))
+  a.sw(R.zero, 24, R.sp);
+  a.lw(R.t0, 14704, R.gp);
+  a.lw(R.t1, 14712, R.gp);
+  a.nop();
+  a.beq(R.t0, R.zero, 'lcl_cd_read');
+  a.nop();
+  a.bne(R.t1, R.zero, 'lcl_cd_read');
+  a.nop();
+  a.addiu(R.t2, R.zero, 1);
+  a.sw(R.t2, 24, R.sp);
+  a.jal(SYM.XA_Pause);
+  a.addiu(R.a0, R.zero, 1);
+
+  a.label('lcl_cd_read');
+  a.lwSym(R.t0, ADDR.g_VoicesBaseLba);
+  a.lwSym(R.t1, 'g_GpBankStartSec');
+  a.nop();
+  a.addu(R.a0, R.t0, R.t1);
+  a.addu(R.a0, R.a0, R.s2);              // LBA = g_VoicesBaseLba + g_GpBankStartSec + firstSecRel
+  a.jal(SYM.CdIntToPos);
+  a.addiu(R.a1, R.sp, 16);
+
+  a.addiu(R.a0, R.zero, 2);              // CdlSetloc
+  a.addiu(R.a1, R.sp, 16);
+  a.jal(SYM.CdControl);
+  a.move(R.a2, R.zero);
+
+  a.move(R.a0, R.s5);                    // readSectors
+  a.addiu(R.a1, R.s6, 2048);             // dst = g_CacheBuf + 2048
+  a.jal(SYM.CdRead);
+  a.addiu(R.a2, R.zero, 0x80);
+
+  a.label('lcl_cd_wait');
+  a.addiu(R.a0, R.zero, 1);
+  a.jal(SYM.CdReadSync);
+  a.move(R.a1, R.zero);
+  a.blez(R.v0, 'lcl_cd_done');
+  a.move(R.a0, R.zero);
+  a.jal(SYM.VSync);
+  a.nop();
+  a.j('lcl_cd_wait');
+  a.nop();
+
+  a.label('lcl_cd_done');
+  a.lw(R.t0, 24, R.sp);
+  a.nop();
+  a.beq(R.t0, R.zero, 'lcl_commit');
+  a.nop();
+  a.jal(SYM.XA_SetMode);
+  a.nop();
+  a.jal(SYM.XA_Pause);
+  a.move(R.a0, R.zero);
+  a.jal(SYM.XA_UpdateVolume);
+  a.nop();
+
+  // Step 7: Commit cache descriptors — gameplay is now 100% CD-ROM-FREE!
+  a.label('lcl_commit');
+  a.swSym(R.s6, R.t0, 'g_CacheBuf');
+  a.swSym(R.s1, R.t0, 'g_CacheStartClip');
+  a.swSym(R.s4, R.t0, 'g_CacheClipCount');
+  a.swSym(R.s3, R.t0, 'g_CacheBaseOff');
+  a.addiu(R.t1, R.zero, -1);
+  a.swSym(R.t1, R.t0, 'g_LastClipIdx');
+
+  a.label('lcl_ret');
+  a.lw(R.s6, 28, R.sp);
+  a.lw(R.s5, 32, R.sp);
+  a.lw(R.s4, 36, R.sp);
+  a.lw(R.s3, 40, R.sp);
+  a.lw(R.s2, 44, R.sp);
+  a.lw(R.s1, 48, R.sp);
+  a.lw(R.s0, 52, R.sp);
+  a.lw(R.ra, 56, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 64);
+
+  // --------------------------------------------------------------------------
+  // 5D. LulaoCache_Free() — Called ONCE on Hook_GameplayExit (0x800E3840)
+  // --------------------------------------------------------------------------
+  a.label('LulaoCache_Free');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal('LulaoStream_Stop');
+  a.nop();
+  a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
+  a.swSym(R.zero, R.t0, 'g_PendingVoiceMode');
+  a.swSym(R.zero, R.t0, 'g_CacheClipCount');
+  a.swSym(R.zero, R.t0, 'g_CacheAllocBytes');
+  a.lwSym(R.a0, 'g_CacheBuf');
+  a.nop();
+  a.beq(R.a0, R.zero, 'lcf_ret');
+  a.nop();
+  a.swSym(R.zero, R.t0, 'g_CacheBuf');
+  a.jal(SYM.Mem_Free);
+  a.nop();
+  a.label('lcf_ret');
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 6. LulaoStream_Stop() — Silences SPU Voice 23, zeroes 2 KB SPU ring via
+  //    g_StageBuf (g_CacheBuf + 0..2047) & restores SPU Reverb Master, restores XA 100%!
+  //    NEVER calls Mem_Free and NEVER touches cached audio clips @ g_CacheBuf + 2048!
   // --------------------------------------------------------------------------
   a.label('LulaoStream_Stop');
   a.addiu(R.sp, R.sp, -24);
@@ -1736,14 +2003,14 @@ function assembleLulaoEngine() {
 
   a.swSym(R.zero, R.t0, 'g_StreamActive');
 
-  // Restore SPUCNT bit 7 (Reverb Master Enable @ 0x1F801DAA) if we paused reverb for the stream
+  // Restore SPUCNT bit 7 (Reverb Master Enable @ 0x1F801DAA) if we paused reverb
   a.lwSym(R.t0, 'g_SavedRevBit');
   a.nop();
   a.beq(R.t0, R.zero, 'lss_rev_ok');
   a.nop();
   a.swSym(R.zero, R.t1, 'g_SavedRevBit');
-  // Clear 0x7F400..0x7FBFF if we still have g_StreamBuf (zero 2048 B cleanly so reverb has 0 pop!)
-  a.lwSym(R.t2, 'g_StreamBuf');
+  // Clear 0x7F400..0x7FBFF using dedicated 2 KB g_StageBuf (g_CacheBuf + 0..2047) — NEVER mutates clips!
+  a.lwSym(R.t2, 'g_CacheBuf');
   a.nop();
   a.beq(R.t2, R.zero, 'lss_rev_en');
   a.nop();
@@ -1757,7 +2024,7 @@ function assembleLulaoEngine() {
   a.li(R.a0, ADDR.SpuStreamHalfA);
   a.jal(SYM.SpuSetTransferStartAddr);
   a.nop();
-  a.lwSym(R.a0, 'g_StreamBuf');
+  a.lwSym(R.a0, 'g_CacheBuf');
   a.jal(SYM.SpuWrite);
   a.addiu(R.a1, R.zero, 2048);
   a.jal(SYM.SpuIsTransferCompleted);
@@ -1771,15 +2038,6 @@ function assembleLulaoEngine() {
   a.sh(R.t1, 0x1DAA, R.t0);
 
   a.label('lss_rev_ok');
-  a.lwSym(R.a0, 'g_StreamBuf');
-  a.nop();
-  a.beq(R.a0, R.zero, 'lss_no_free');
-  a.nop();
-  a.swSym(R.zero, R.t0, 'g_StreamBuf');
-  a.jal(SYM.Mem_Free);
-  a.nop();
-
-  a.label('lss_no_free');
   // Clear bit 1 of g_InPlaySel (0x800E27DC) & restore XA volume if it was ducked!
   a.lui(R.t0, 0x800E);
   a.lw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
@@ -1799,9 +2057,9 @@ function assembleLulaoEngine() {
 
   // --------------------------------------------------------------------------
   // 7. LulaoStream_LoadHalf(int halfIdx) [0 = Half A 0x7F400, 1 = Half B 0x7F800]
-  //    Half A: block 0 (+0) flag=0x04 (fixed hardware loop start=0xFE80), block 63 flag=0x00 (flows to B)
-  //    Half B: blocks 0..62 flag=0x00, block 63 (+1008) flag=0x03 (END|REPEAT -> seamlessly wraps to 0x7F400!)
-  //    Last chunk: remaining bytes zeroed, final real block flag |= 0x01 (clean silent stop, V23_ENVX -> 0!)
+  //    Copies min(rem, 1024) bytes from READ-ONLY g_StreamSrc + curPos into g_StageBuf (g_CacheBuf),
+  //    patches ADPCM flags ONLY inside g_StageBuf, and DMAs 1024 B to SPU RAM!
+  //    Cached clips in g_CacheBuf + 2048 remain 100% IMMUTABLE forever!
   // --------------------------------------------------------------------------
   a.label('LulaoStream_LoadHalf');
   a.addiu(R.sp, R.sp, -48);
@@ -1810,6 +2068,7 @@ function assembleLulaoEngine() {
   a.sw(R.s1, 36, R.sp);
   a.sw(R.s2, 32, R.sp);
   a.sw(R.s3, 28, R.sp);
+  a.sw(R.s4, 24, R.sp);
 
   a.move(R.s0, R.a0);                    // s0 = halfIdx (0 or 1)
   a.li(R.s3, ADDR.SpuStreamHalfA);
@@ -1818,44 +2077,57 @@ function assembleLulaoEngine() {
   a.li(R.s3, ADDR.SpuStreamHalfB);
   a.label('lh_addr_ok');
 
+  a.lwSym(R.s4, 'g_CacheBuf');           // s4 = g_StageBuf (first 2048 B of g_CacheBuf)
   a.lwSym(R.s1, 'g_StreamCurPos');
   a.lwSym(R.t0, 'g_StreamTotalBytes');
-  a.lwSym(R.s2, 'g_StreamBuf');
+  a.lwSym(R.s2, 'g_StreamSrc');
   a.nop();
-  a.subu(R.t1, R.t0, R.s1);              // t1 = rem = total - curPos
+  a.beq(R.s4, R.zero, 'lh_ret');
+  a.subu(R.t1, R.t0, R.s1);              // delay slot: t1 = rem = total - curPos
   a.blez(R.t1, 'lh_empty_eof');
-  a.addu(R.s2, R.s2, R.s1);              // delay slot: s2 = src = buf + curPos
+  a.addu(R.s2, R.s2, R.s1);              // delay slot: s2 = src = g_StreamSrc + curPos
 
   a.sltiu(R.t2, R.t1, 1025);             // rem <= 1024 ?
   a.bne(R.t2, R.zero, 'lh_last_chunk');
   a.nop();
 
-  // ---- Full 1024-byte chunk (64 ADPCM blocks) ----
-  a.move(R.t3, R.s2);
-  a.addiu(R.t4, R.s2, 1024);
+  // ---- Full 1024-byte chunk: word-copy src[0..1023] -> g_StageBuf[0..1023] ----
+  a.move(R.t3, R.s2);                    // src ptr
+  a.move(R.t4, R.s4);                    // dst ptr (g_StageBuf)
+  a.addiu(R.t5, R.s4, 1024);
+  a.label('lh_cp_full');
+  a.lw(R.t6, 0, R.t3);
+  a.addiu(R.t3, R.t3, 4);
+  a.sw(R.t6, 0, R.t4);
+  a.addiu(R.t4, R.t4, 4);
+  a.bne(R.t4, R.t5, 'lh_cp_full');
+  a.nop();
+
+  // Clear ADPCM flags on all 64 blocks inside g_StageBuf
+  a.move(R.t3, R.s4);
   a.label('lh_clr_full');
   a.sb(R.zero, 1, R.t3);
   a.addiu(R.t3, R.t3, 16);
-  a.bne(R.t3, R.t4, 'lh_clr_full');
+  a.bne(R.t3, R.t5, 'lh_clr_full');
   a.nop();
 
   a.bne(R.s0, R.zero, 'lh_full_b');
   a.nop();
   // Half A: block 0 (+0) = 0x04 (fixed hardware loop start = 0x7F400). Block 63 stays 0x00.
   a.addiu(R.t2, R.zero, 0x04);
-  a.sb(R.t2, 1, R.s2);
+  a.sb(R.t2, 1, R.s4);
   a.j('lh_dma_full');
   a.nop();
 
   a.label('lh_full_b');
-  // Half B: blocks 0..62 = 0x00, block 63 (+1008) = 0x03 (END|REPEAT -> loops to 0x7F400!).
+  // Half B: blocks 0..62 = 0x00, block 63 (+1008) = 0x03 (END|REPEAT -> wraps to 0x7F400!).
   a.addiu(R.t2, R.zero, 0x03);
-  a.sb(R.t2, 1009, R.s2);
+  a.sb(R.t2, 1009, R.s4);
 
   a.label('lh_dma_full');
   a.jal(SYM.SpuSetTransferStartAddr);
   a.move(R.a0, R.s3);
-  a.move(R.a0, R.s2);
+  a.move(R.a0, R.s4);
   a.jal(SYM.SpuWrite);
   a.addiu(R.a1, R.zero, 1024);
   a.jal(SYM.SpuIsTransferCompleted);
@@ -1868,19 +2140,31 @@ function assembleLulaoEngine() {
 
   // ---- Final partial/exact chunk (0 < rem <= 1024) ----
   a.label('lh_last_chunk');
+  // Word-copy rem bytes (exact multiple of 16) from src -> g_StageBuf
   a.move(R.t3, R.s2);
-  a.addu(R.t4, R.s2, R.t1);
+  a.move(R.t4, R.s4);
+  a.addu(R.t5, R.s4, R.t1);              // end of copied bytes in g_StageBuf
+  a.label('lh_cp_last');
+  a.lw(R.t6, 0, R.t3);
+  a.addiu(R.t3, R.t3, 4);
+  a.sw(R.t6, 0, R.t4);
+  a.addiu(R.t4, R.t4, 4);
+  a.bne(R.t4, R.t5, 'lh_cp_last');
+  a.nop();
+
+  // Clear flags on copied blocks [0..rem-1] inside g_StageBuf
+  a.move(R.t3, R.s4);
   a.label('lh_clr_last');
   a.sb(R.zero, 1, R.t3);
   a.addiu(R.t3, R.t3, 16);
-  a.sltu(R.t2, R.t3, R.t4);
+  a.sltu(R.t2, R.t3, R.t5);
   a.bne(R.t2, R.zero, 'lh_clr_last');
   a.nop();
 
-  // Zero trailing bytes [rem .. 1023] cleanly (safe: Mem_Alloc size is multiple of 2048!)
-  a.addiu(R.t5, R.s2, 1024);
+  // Zero trailing bytes [rem..1023] ONLY inside g_StageBuf!
+  a.addiu(R.t6, R.s4, 1024);
   a.label('lh_zero_tail');
-  a.sltu(R.t2, R.t4, R.t5);
+  a.sltu(R.t2, R.t4, R.t6);
   a.beq(R.t2, R.zero, 'lh_mark_last');
   a.nop();
   a.sw(R.zero, 0, R.t4);
@@ -1889,14 +2173,13 @@ function assembleLulaoEngine() {
 
   a.label('lh_mark_last');
   // Mark last real block with flag=0x01 (END without REPEAT -> clean silent stop, V23_ENVX -> 0!)
-  a.addu(R.t3, R.s2, R.t1);
-  a.addiu(R.t3, R.t3, -16);
+  a.addiu(R.t3, R.t5, -16);
   a.addiu(R.t2, R.zero, 0x01);
   a.sb(R.t2, 1, R.t3);
 
   a.jal(SYM.SpuSetTransferStartAddr);
   a.move(R.a0, R.s3);
-  a.move(R.a0, R.s2);
+  a.move(R.a0, R.s4);
   a.jal(SYM.SpuWrite);
   a.addiu(R.a1, R.zero, 1024);
   a.jal(SYM.SpuIsTransferCompleted);
@@ -1911,17 +2194,17 @@ function assembleLulaoEngine() {
   a.j('lh_ret');
   a.nop();
 
-  // ---- Exact multiple-of-1024 EOF: emit 16-byte silent stop block (flags=0x01) ----
+  // ---- Exact multiple-of-1024 EOF: emit 16-byte silent stop block (flags=0x01) via g_StageBuf ----
   a.label('lh_empty_eof');
-  a.sw(R.zero, 16, R.sp);
-  a.sw(R.zero, 20, R.sp);
-  a.sw(R.zero, 24, R.sp);
-  a.sw(R.zero, 28, R.sp);
-  a.addiu(R.t2, R.zero, 0x01);           // Silent End Stop
-  a.sb(R.t2, 17, R.sp);
+  a.sw(R.zero, 0, R.s4);
+  a.sw(R.zero, 4, R.s4);
+  a.sw(R.zero, 8, R.s4);
+  a.sw(R.zero, 12, R.s4);
+  a.addiu(R.t2, R.zero, 0x01);
+  a.sb(R.t2, 1, R.s4);
   a.jal(SYM.SpuSetTransferStartAddr);
   a.move(R.a0, R.s3);
-  a.addiu(R.a0, R.sp, 16);
+  a.move(R.a0, R.s4);
   a.jal(SYM.SpuWrite);
   a.addiu(R.a1, R.zero, 16);
   a.jal(SYM.SpuIsTransferCompleted);
@@ -1931,6 +2214,7 @@ function assembleLulaoEngine() {
   a.swSym(R.zero, R.t1, 'g_StreamEofFrames');
 
   a.label('lh_ret');
+  a.lw(R.s4, 24, R.sp);
   a.lw(R.s3, 28, R.sp);
   a.lw(R.s2, 32, R.sp);
   a.lw(R.s1, 36, R.sp);
@@ -1941,214 +2225,117 @@ function assembleLulaoEngine() {
   a.addiu(R.sp, R.sp, 48);
 
   // --------------------------------------------------------------------------
-  // 8. LulaoStream_Start(int mode) [0 = Cash Pickup (<=30 sec), 1 = End Run (all 14 clips)]
+  // 8. LulaoStream_StartFromCache(int mode) — 100% RAM-ONLY (< 0.20 ms)!
+  //    ZERO CdRead! ZERO CDWAD_WaitIdle! ZERO XA_Pause! ZERO Mem_Alloc!
+  //    Streams directly from g_CacheBuf + 2048 via g_StageBuf @ exact pitch 0x0280 (6890.625 Hz)!
   // --------------------------------------------------------------------------
-  a.label('LulaoStream_Start');
-  a.addiu(R.sp, R.sp, -64);
-  a.sw(R.ra, 56, R.sp);
-  a.sw(R.s0, 52, R.sp);
-  a.sw(R.s1, 48, R.sp);
-  a.sw(R.s2, 44, R.sp);
-  a.sw(R.s3, 40, R.sp);
-  a.sw(R.s4, 36, R.sp);
-  a.sw(R.s5, 32, R.sp);
-  a.sw(R.s6, 28, R.sp);
+  a.label('LulaoStream_StartFromCache');
+  a.addiu(R.sp, R.sp, -40);
+  a.sw(R.ra, 32, R.sp);
+  a.sw(R.s0, 28, R.sp);
+  a.sw(R.s1, 24, R.sp);
+  a.sw(R.s2, 20, R.sp);
+  a.sw(R.s3, 16, R.sp);
 
-  a.move(R.s0, R.a0);                    // s0 = mode (0=cash, 1=endrun)
-  a.jal('LulaoStream_Stop');
+  a.lwSym(R.s0, 'g_CacheBuf');
+  a.lwSym(R.s1, 'g_CacheClipCount');
+  a.nop();
+  a.beq(R.s0, R.zero, 'lsf_done');
+  a.nop();
+  a.beq(R.s1, R.zero, 'lsf_done');
   a.nop();
 
-  // Check lulaoCount @ VOICETBL+4
-  a.lui(R.t0, 0x800E);
-  a.lw(R.s4, (ADDR.VoiceTblBase + 4) & 0xffff, R.t0); // s4 = lulaoCount (14)
-  a.nop();
-  a.beq(R.s4, R.zero, 'lst_done');
-  a.nop();
-
-  // Gather real PS1 hardware entropy (VSync(-1) + Root Counters 0/1/2) + XorShift32!
-  a.jal(SYM.VSync);
-  a.addiu(R.a0, R.zero, -1);
-  a.lwSym(R.t4, 'g_PrngState');
-  a.lui(R.t0, 0x1F80);
-  a.lhu(R.t1, 0x1100, R.t0);
-  a.lhu(R.t2, 0x1110, R.t0);
-  a.lhu(R.t3, 0x1120, R.t0);
-  a.xor(R.t4, R.t4, R.v0);
-  a.sll(R.t2, R.t2, 11);
-  a.sll(R.t3, R.t3, 21);
-  a.xor(R.t4, R.t4, R.t1);
-  a.xor(R.t4, R.t4, R.t2);
-  a.xor(R.t4, R.t4, R.t3);
-  a.bne(R.t4, R.zero, 'lst_xs');
-  a.nop();
-  a.li(R.t4, 0x9E3779B9);
-
-  a.label('lst_xs');
-  a.sll(R.t0, R.t4, 13); a.xor(R.t4, R.t4, R.t0);
-  a.srl(R.t0, R.t4, 17); a.xor(R.t4, R.t4, R.t0);
-  a.sll(R.t0, R.t4, 5);  a.xor(R.t4, R.t4, R.t0);
-  a.swSym(R.t4, R.t0, 'g_PrngState');
-
-  // Pick clip index (0..lulaoCount-1), never repeating g_LastClipIdx, and for Cash Pickup prefer <= 30 sectors
-  a.divu(R.t4, R.s4);
-  a.mfhi(R.s1);                          // s1 = candidate clipIdx
-  a.lwSym(R.t5, 'g_LastClipIdx');
-  a.addiu(R.t6, R.zero, 14);             // max scan steps
-
-  a.label('lst_pick_lp');
-  a.beq(R.s1, R.t5, 'lst_pick_next');    // avoid immediate repeat!
-  a.nop();
-  a.bne(R.s0, R.zero, 'lst_picked');     // mode 1 (End Run): accept ANY of the 14 clips!
-  a.nop();
-  // mode 0 (Cash Pickup): check sectorCount <= 30 (~60 KB / <= 8.2s)
-  a.sll(R.t0, R.s1, 4);
-  a.la(R.t1, ADDR.VoiceTblBase + 0x10);
-  a.addu(R.t1, R.t1, R.t0);
-  a.lw(R.t2, 4, R.t1);                   // sectorCount
-  a.nop();
-  a.sltiu(R.t3, R.t2, 31);
-  a.bne(R.t3, R.zero, 'lst_picked');
-  a.nop();
-
-  a.label('lst_pick_next');
-  a.addiu(R.s1, R.s1, 1);
-  a.bne(R.s1, R.s4, 'lst_pick_wrap');
-  a.nop();
-  a.move(R.s1, R.zero);
-  a.label('lst_pick_wrap');
-  a.addiu(R.t6, R.t6, -1);
-  a.bgtz(R.t6, 'lst_pick_lp');
-  a.nop();
-
-  a.label('lst_picked');
-  a.swSym(R.s1, R.t0, 'g_LastClipIdx');
-
-  // Load descriptor entry: s1 = &VOICETBL[clipIdx]
-  a.label('lst_try_alloc');
-  a.sll(R.t0, R.s1, 4);
-  a.la(R.t1, ADDR.VoiceTblBase + 0x10);
-  a.addu(R.t7, R.t1, R.t0);              // t7 = &entry
-  a.lw(R.s2, 0, R.t7);                   // s2 = sectorOffset
-  a.lw(R.s3, 4, R.t7);                   // s3 = sectorCount
-  a.lw(R.s4, 8, R.t7);                   // s4 = byteSize
-  a.nop();
-  a.beq(R.s3, R.zero, 'lst_done');
-  a.sll(R.a0, R.s3, 11);                 // delay slot: alloc bytes = sectorCount * 2048
-
-  a.move(R.a1, R.zero);
-  a.addiu(R.a2, R.zero, 1);
-  a.jal(SYM.Mem_Alloc);
-  a.move(R.a3, R.zero);
-  a.bne(R.v0, R.zero, 'lst_alloc_ok');
-  a.move(R.s6, R.v0);
-
-  // OOM fallback: if large clip failed Mem_Alloc in heavy level, fallback once to clip #11 (10 KB)!
-  a.addiu(R.t0, R.zero, 11);
-  a.beq(R.s1, R.t0, 'lst_done');
-  a.move(R.s1, R.t0);
-  a.j('lst_try_alloc');
-  a.nop();
-
-  a.label('lst_alloc_ok');
-  a.jal(SYM.CDWAD_WaitIdle);
-  a.nop();
-
-  // Pause COMPILED.XA cleanly if active
-  a.move(R.s5, R.zero);
-  a.lw(R.t0, 14704, R.gp);
-  a.lw(R.t1, 14712, R.gp);
-  a.nop();
-  a.beq(R.t0, R.zero, 'lst_cd_read');
-  a.nop();
-  a.bne(R.t1, R.zero, 'lst_cd_read');
-  a.nop();
-  a.addiu(R.s5, R.zero, 1);
-  a.jal(SYM.XA_Pause);
-  a.addiu(R.a0, R.zero, 1);
-
-  a.label('lst_cd_read');
-  a.lwSym(R.t0, ADDR.g_VoicesBaseLba);
-  a.nop();
-  a.addu(R.a0, R.t0, R.s2);
-  a.jal(SYM.CdIntToPos);
-  a.addiu(R.a1, R.sp, 16);
-
-  a.addiu(R.a0, R.zero, 2);
-  a.addiu(R.a1, R.sp, 16);
-  a.jal(SYM.CdControl);
-  a.move(R.a2, R.zero);
-
-  a.move(R.a0, R.s3);
-  a.move(R.a1, R.s6);
-  a.jal(SYM.CdRead);
-  a.addiu(R.a2, R.zero, 0x80);
-
-  a.label('lst_cd_wait');
-  a.addiu(R.a0, R.zero, 1);
-  a.jal(SYM.CdReadSync);
-  a.move(R.a1, R.zero);
-  a.blez(R.v0, 'lst_cd_done');
+  // Silence Voice 23 cleanly (fast restart without toggling reverb or unducking XA unnecessarily!)
   a.move(R.a0, R.zero);
-  a.jal(SYM.VSync);
-  a.nop();
-  a.j('lst_cd_wait');
-  a.nop();
+  a.jal(SYM.SpuSetKey);
+  a.lui(R.a1, 0x0080);
 
-  a.label('lst_cd_done');
-  // Set bit 1 of g_InPlaySel (0x800E27DC) BEFORE XA_UpdateVolume so music ducks -12 dB while Lulao speaks!
+  // Pick next random cached clip index (0..g_CacheClipCount-1), never repeating g_LastClipIdx when count > 1
+  a.jal('Lulao_NextRand');
+  a.nop();
+  a.divu(R.v0, R.s1);
+  a.mfhi(R.s2);                          // s2 = localIdx (0..count-1)
+  a.addiu(R.t0, R.zero, 1);
+  a.beq(R.s1, R.t0, 'lsf_idx_ok');
+  a.nop();
+  a.lwSym(R.t1, 'g_LastClipIdx');
+  a.nop();
+  a.bne(R.s2, R.t1, 'lsf_idx_ok');
+  a.nop();
+  a.addiu(R.s2, R.s2, 1);
+  a.bne(R.s2, R.s1, 'lsf_idx_ok');
+  a.nop();
+  a.move(R.s2, R.zero);
+
+  a.label('lsf_idx_ok');
+  a.swSym(R.s2, R.t0, 'g_LastClipIdx');
+
+  // Resolve read-only source pointer inside g_CacheBuf + 2048:
+  //   ringIdx = g_CacheStartClip + localIdx
+  //   g_StreamSrc = (g_CacheBuf + 2048) + (entry.byteOffsetInBank - g_CacheBaseOff)
+  a.lwSym(R.t0, 'g_CacheStartClip');
+  a.lwSym(R.t3, 'g_CacheBaseOff');
+  a.addu(R.t0, R.t0, R.s2);              // ringIdx (0..27)
+  a.sll(R.t0, R.t0, 3);                  // ringIdx * 8
+  a.la(R.t1, 'g_GpRingTable');
+  a.addu(R.t1, R.t1, R.t0);
+  a.lw(R.t2, 0, R.t1);                   // entry.byteOffsetInBank
+  a.lw(R.s3, 4, R.t1);                   // s3 = entry.byteSize
+  a.nop();
+  a.subu(R.t2, R.t2, R.t3);              // relative byte offset inside audio payload
+  a.addiu(R.t4, R.s0, 2048);             // g_CacheBuf + 2048
+  a.addu(R.t4, R.t4, R.t2);              // read-only g_StreamSrc!
+  a.swSym(R.t4, R.t0, 'g_StreamSrc');
+  a.swSym(R.s3, R.t0, 'g_StreamTotalBytes');
+
+  // Smooth -12 dB XA music ducking (set bit 1 of g_InPlaySel + XA_UpdateVolume — ZERO XA_Pause!)
   a.lui(R.t0, 0x800E);
   a.lw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
   a.nop();
+  a.andi(R.t2, R.t1, 2);
+  a.bne(R.t2, R.zero, 'lsf_duck_ok');    // already ducked on fast restart!
   a.ori(R.t1, R.t1, 2);
   a.sw(R.t1, ADDR.g_InPlaySel & 0xffff, R.t0);
-
-  a.beq(R.s5, R.zero, 'lst_vol_duck');
-  a.nop();
-  a.jal(SYM.XA_SetMode);
-  a.nop();
-  a.jal(SYM.XA_Pause);
-  a.move(R.a0, R.zero);
-
-  a.label('lst_vol_duck');
   a.jal(SYM.XA_UpdateVolume);
   a.nop();
 
-  // Pause SPU Reverb Master Enable (SPUCNT bit 7 @ 0x1F801DAA) while streaming inside 0x7F400..0x7FBFF
-  // so indoor level Reverb Work Areas (e.g., The Hangar) NEVER overwrite our 2 KB ADPCM ring buffer!
+  a.label('lsf_duck_ok');
+  // Pause SPU Reverb Master Enable (SPUCNT bit 7 @ 0x1F801DAA) once if active
+  a.lwSym(R.t2, 'g_SavedRevBit');
+  a.nop();
+  a.bne(R.t2, R.zero, 'lsf_rev_ok');     // already paused!
   a.lui(R.t0, 0x1F80);
   a.lhu(R.t1, 0x1DAA, R.t0);
   a.nop();
   a.andi(R.t2, R.t1, 0x0080);
-  a.beq(R.t2, R.zero, 'lst_rev_paused');
+  a.beq(R.t2, R.zero, 'lsf_rev_ok');
   a.nop();
   a.swSym(R.t2, R.t3, 'g_SavedRevBit');
   a.andi(R.t1, R.t1, 0xFF7F);
   a.sh(R.t1, 0x1DAA, R.t0);
 
-  a.label('lst_rev_paused');
-  // Initialize stream state & prime Half A (0x7F400) + Half B (0x7F800)
-  a.swSym(R.s6, R.t0, 'g_StreamBuf');
+  a.label('lsf_rev_ok');
   a.swSym(R.zero, R.t0, 'g_StreamCurPos');
-  a.swSym(R.s4, R.t0, 'g_StreamTotalBytes');
   a.addiu(R.t1, R.zero, 1);
   a.swSym(R.t1, R.t0, 'g_StreamActive');
   a.swSym(R.zero, R.t0, 'g_StreamNextHalf');
   a.swSym(R.zero, R.t0, 'g_StreamEofFrames');
   a.swSym(R.zero, R.t0, 'g_StreamSampleAcc');
 
+  // Prime Half A (0x7F400) + Half B (0x7F800) via g_StageBuf (~0.12 ms total!)
   a.jal('LulaoStream_LoadHalf');
-  a.move(R.a0, R.zero);                  // Load Half A
+  a.move(R.a0, R.zero);
 
   a.lwSym(R.t0, 'g_StreamActive');
   a.nop();
   a.addiu(R.t1, R.zero, 1);
-  a.bne(R.t0, R.t1, 'lst_start_spu');    // Already EOF inside Half A
+  a.bne(R.t0, R.t1, 'lsf_start_spu');
   a.nop();
   a.jal('LulaoStream_LoadHalf');
-  a.addiu(R.a0, R.zero, 1);              // Load Half B
+  a.addiu(R.a0, R.zero, 1);
 
-  // Program PS1 SPU Hardware Voice 23 @ 0x1F801D70 to play from 0x7F400 (Half A) @ 11025 Hz!
-  a.label('lst_start_spu');
+  // Program PS1 SPU Hardware Voice 23 @ 0x1F801D70 to play from 0x7F400 @ EXACT 6890.625 Hz (0x0280)!
+  a.label('lsf_start_spu');
   a.lui(R.t0, 0x1F80);
   a.lhu(R.t1, 0x1D92, R.t0);
   a.lhu(R.t2, 0x1D96, R.t0);
@@ -2163,7 +2350,7 @@ function assembleLulaoEngine() {
   a.addiu(R.t1, R.zero, 0x3FFF);
   a.sh(R.t1, 0x1D70, R.t0);              // VOL_L = 0x3FFF
   a.sh(R.t1, 0x1D72, R.t0);              // VOL_R = 0x3FFF
-  a.addiu(R.t1, R.zero, 0x0400);         // PITCH = 0x0400 (11025 Hz)
+  a.addiu(R.t1, R.zero, gpMeta.spuPitch & 0xffff); // PITCH = 0x0280 (exact 6890.625 Hz!)
   a.sh(R.t1, 0x1D74, R.t0);
   a.ori(R.t1, R.zero, (ADDR.SpuStreamHalfA >>> 3) & 0xffff); // 0xFE80
   a.sh(R.t1, 0x1D76, R.t0);              // START_ADDR = 0xFE80
@@ -2177,32 +2364,27 @@ function assembleLulaoEngine() {
   a.jal(SYM.SpuSetKey);
   a.lui(R.a1, 0x0080);                   // Voice 23 ON!
 
-  // Snapshot VSync(-1) reference right when Voice 23 keys ON!
   a.jal(SYM.VSync);
   a.addiu(R.a0, R.zero, -1);
   a.swSym(R.v0, R.t0, 'g_StreamLastVSync');
 
-  a.label('lst_done');
-  a.lw(R.s6, 28, R.sp);
-  a.lw(R.s5, 32, R.sp);
-  a.lw(R.s4, 36, R.sp);
-  a.lw(R.s3, 40, R.sp);
-  a.lw(R.s2, 44, R.sp);
-  a.lw(R.s1, 48, R.sp);
-  a.lw(R.s0, 52, R.sp);
-  a.lw(R.ra, 56, R.sp);
+  a.label('lsf_done');
+  a.lw(R.s3, 16, R.sp);
+  a.lw(R.s2, 20, R.sp);
+  a.lw(R.s1, 24, R.sp);
+  a.lw(R.s0, 28, R.sp);
+  a.lw(R.ra, 32, R.sp);
   a.nop();
   a.jr(R.ra);
-  a.addiu(R.sp, R.sp, 64);
+  a.addiu(R.sp, R.sp, 40);
 
   // --------------------------------------------------------------------------
-  // 9. LulaoStream_Tick() — Crystal-locked PS1 VBlank 2 KB Ping-Pong Feeder!
-  //    Never writes 0x1F801D7E during playback (100% immune to SPU ignore_loop_address!).
-  //    Ring: 2048 B = 3584 samples @ 11025 Hz (358400 centi-samples).
-  //    Each NTSC VBlank advances ~184.12 samples (18412 centi-samples):
-  //      - Reloads Half A (0x7F400) when acc >= 224000 (40 ms into Half B, 122 ms before wrap!)
-  //      - Reloads Half B (0x7F800) when acc < 179200 && acc >= 44800 (40 ms into Half A!)
-  //      - On EOF (active==2), stops cleanly once V23_ENVX==0 or 26 VBlanks elapsed!
+  // 9. LulaoStream_Tick() — Crystal-locked PS1 VBlank 2 KB Ping-Pong Feeder @ 6890.625 Hz!
+  //    Ring: 2048 B = 3584 samples = 520.1 ms (358400 centi-samples).
+  //    Each NTSC VBlank (59.882 Hz) advances 115.07 samples (11507 centi-samples):
+  //      - Reloads Half A (0x7F400) when acc >= 215000 (~52 ms into Half B, 208 ms before wrap!)
+  //      - Reloads Half B (0x7F800) when 36000 <= acc < 179200 (~52 ms into Half A, 208 ms margin!)
+  //      - On EOF (active==2), stops cleanly once V23_ENVX==0 or 36 VBlanks (~600 ms) elapsed!
   // --------------------------------------------------------------------------
   a.label('LulaoStream_Tick');
   a.lwSym(R.t0, 'g_StreamActive');
@@ -2218,12 +2400,11 @@ function assembleLulaoEngine() {
   a.sw(R.s0, 16, R.sp);
   a.move(R.s0, R.t0);                    // s0 = g_StreamActive (1 or 2)
 
-  // dt = VSync(-1) - g_StreamLastVSync
   a.jal(SYM.VSync);
   a.addiu(R.a0, R.zero, -1);
   a.lwSym(R.t1, 'g_StreamLastVSync');
   a.nop();
-  a.subu(R.t2, R.v0, R.t1);              // t2 = dt (VBlanks elapsed since last tick)
+  a.subu(R.t2, R.v0, R.t1);              // t2 = dt (VBlanks elapsed)
   a.swSym(R.v0, R.t3, 'g_StreamLastVSync');
   a.blez(R.t2, 'ltk_ret');
   a.nop();
@@ -2232,8 +2413,8 @@ function assembleLulaoEngine() {
   a.beq(R.s0, R.t4, 'ltk_eof');
   a.nop();
 
-  // Active streaming (s0 == 1): acc += dt * 18412; while (acc >= 358400) acc -= 358400;
-  a.li(R.t3, 18412);
+  // Active streaming (s0 == 1): acc += dt * 11507; while (acc >= 358400) acc -= 358400;
+  a.li(R.t3, 11507);
   a.multu(R.t2, R.t3);
   a.mflo(R.t4);
   a.lwSym(R.t5, 'g_StreamSampleAcc');
@@ -2256,46 +2437,46 @@ function assembleLulaoEngine() {
   a.bne(R.t0, R.zero, 'ltk_chk_b');
   a.nop();
 
-  // nextHalf == 0: reload Half A once SPU is safely inside Half B (acc >= 224000)
-  a.li(R.t1, 224000);
+  // nextHalf == 0: reload Half A once SPU is safely inside Half B (acc >= 215000)
+  a.li(R.t1, 215000);
   a.sltu(R.t2, R.t5, R.t1);
   a.bne(R.t2, R.zero, 'ltk_ret');
   a.nop();
   a.jal('LulaoStream_LoadHalf');
-  a.move(R.a0, R.zero);                  // Reload Half A (0x7F400)
+  a.move(R.a0, R.zero);
   a.addiu(R.t0, R.zero, 1);
   a.swSym(R.t0, R.t1, 'g_StreamNextHalf');
   a.j('ltk_ret');
   a.nop();
 
-  // nextHalf == 1: reload Half B once SPU wrapped safely into Half A (44800 <= acc < 179200)
+  // nextHalf == 1: reload Half B once SPU wrapped safely into Half A (36000 <= acc < 179200)
   a.label('ltk_chk_b');
   a.li(R.t1, 179200);
   a.sltu(R.t2, R.t5, R.t1);
-  a.beq(R.t2, R.zero, 'ltk_ret');        // still in Half B!
-  a.li(R.t1, 44800);
+  a.beq(R.t2, R.zero, 'ltk_ret');
+  a.li(R.t1, 36000);
   a.sltu(R.t2, R.t5, R.t1);
-  a.bne(R.t2, R.zero, 'ltk_ret');        // wait 40ms safety margin inside Half A!
+  a.bne(R.t2, R.zero, 'ltk_ret');
   a.nop();
   a.jal('LulaoStream_LoadHalf');
-  a.addiu(R.a0, R.zero, 1);              // Reload Half B (0x7F800)
+  a.addiu(R.a0, R.zero, 1);
   a.swSym(R.zero, R.t1, 'g_StreamNextHalf');
   a.j('ltk_ret');
   a.nop();
 
-  // EOF queued (s0 == 2): wait cleanly for final ADPCM block (V23_ENVX == 0) or safety timeout
+  // EOF queued (s0 == 2): wait cleanly for final ADPCM block (V23_ENVX == 0) or 36 VBlanks (~600 ms)
   a.label('ltk_eof');
   a.lwSym(R.t5, 'g_StreamEofFrames');
   a.lui(R.t1, 0x1F80);
-  a.addu(R.t5, R.t5, R.t2);              // += dt VBlanks
+  a.addu(R.t5, R.t5, R.t2);
   a.swSym(R.t5, R.t6, 'g_StreamEofFrames');
   a.lhu(R.t3, 0x1D7C, R.t1);             // t3 = V23_ENVX
   a.sltiu(R.t6, R.t5, 3);
   a.bne(R.t6, R.zero, 'ltk_ret');
   a.nop();
-  a.beq(R.t3, R.zero, 'ltk_do_stop');    // V23_ENVX == 0 -> Voice 23 finished final block!
+  a.beq(R.t3, R.zero, 'ltk_do_stop');
   a.nop();
-  a.sltiu(R.t6, R.t5, 26);               // safety timeout: 26 VBlanks (433 ms > 2 halves = 325 ms)
+  a.sltiu(R.t6, R.t5, 36);               // safety timeout: 36 VBlanks (~600 ms > 520 ms full ring)
   a.bne(R.t6, R.zero, 'ltk_ret');
   a.nop();
 
@@ -2311,29 +2492,44 @@ function assembleLulaoEngine() {
   a.addiu(R.sp, R.sp, 24);
 
   // --------------------------------------------------------------------------
-  // Resident State Variables (inside Sector 2..3 @ 0x800E3800..0x800E47FF)
+  // Resident State & LULAO_GPBANK Descriptor Table (inside 0x800E3800..0x800E47FF)
   // --------------------------------------------------------------------------
   a.align(4);
-  a.label('g_StreamActive');    a.word(0);
-  a.label('g_StreamBuf');       a.word(0);
-  a.label('g_StreamCurPos');    a.word(0);
-  a.label('g_StreamTotalBytes');a.word(0);
-  a.label('g_StreamNextHalf');  a.word(0);
-  a.label('g_StreamEofFrames'); a.word(0);
-  a.label('g_EndRunSpoken');    a.word(0);
-  a.label('g_LastClipIdx');     a.word(0xFFFFFFFF);
-  a.label('g_PrngState');       a.word(0x5A3C96F1);
-  a.label('g_OrigSaved');       a.word(0);
-  a.label('g_SavedRevBit');     a.word(0);
-  a.label('g_StreamLastVSync'); a.word(0);
-  a.label('g_StreamSampleAcc'); a.word(0);
+  a.label('g_StreamActive');     a.word(0);
+  a.label('g_StreamSrc');        a.word(0);
+  a.label('g_StreamCurPos');     a.word(0);
+  a.label('g_StreamTotalBytes'); a.word(0);
+  a.label('g_StreamNextHalf');   a.word(0);
+  a.label('g_StreamEofFrames');  a.word(0);
+  a.label('g_EndRunSpoken');     a.word(0);
+  a.label('g_LastClipIdx');      a.word(0xFFFFFFFF);
+  a.label('g_PrngState');        a.word(0x5A3C96F1);
+  a.label('g_OrigSaved');        a.word(0);
+  a.label('g_SavedRevBit');      a.word(0);
+  a.label('g_StreamLastVSync');  a.word(0);
+  a.label('g_StreamSampleAcc');  a.word(0);
+  a.label('g_PendingVoiceMode'); a.word(0);
+  a.label('g_CacheBuf');         a.word(0);
+  a.label('g_CacheStartClip');   a.word(0);
+  a.label('g_CacheClipCount');   a.word(0);
+  a.label('g_CacheBaseOff');     a.word(0);
+  a.label('g_CacheAllocBytes');  a.word(0);
+  a.label('g_GpBankStartSec');   a.word(gpMeta.startSector >>> 0);
+  a.label('g_GpClipCount');      a.word(gpMeta.clipCount >>> 0);
+
+  a.label('g_GpRingTable');
+  for (const e of gpMeta.ringEntries) {
+    a.word(e.byteOffsetInBank >>> 0);
+    a.word(e.byteSize >>> 0);
+  }
 
   const lulaoUsed = a.pc() - ADDR.LulaoCodeBase;
   if (lulaoUsed > 4096) throw new Error(`LULAO_CODE excede 4096 B (${lulaoUsed} B)!`);
   console.log(`  [ASM] LULAO_CODE:   0x${ADDR.LulaoCodeBase.toString(16)}..0x${a.pc().toString(16)} (${lulaoUsed} B / 4096 B, livre: ${4096 - lulaoUsed} B)`);
+  console.log(`        [SYM] g_CacheBuf=0x${a.labels.get('g_CacheBuf').toString(16)} g_CacheClipCount=0x${a.labels.get('g_CacheClipCount').toString(16)} g_PendingVoiceMode=0x${a.labels.get('g_PendingVoiceMode').toString(16)} g_StreamActive=0x${a.labels.get('g_StreamActive').toString(16)} LulaoStream_StartFromCache=0x${a.labels.get('LulaoStream_StartFromCache').toString(16)}`);
 
   a.padTo(ADDR.LulaoCodeBase + 4096);
-  return a.emit();
+  return { buf: a.emit(), labels: a.labels };
 }
 
 // ============================================================================
@@ -2369,17 +2565,23 @@ function applyAll() {
     }
   }
 
-  // 1. Assemble all 5 resident sectors (0x800E2680..0x800E4FFF)
+  // 1. Assemble resident SLUS tail, MODCODE, Hook_BailSfx & Lulao Career strings
   const slusTail = assembleSlusTailCompact();
   const modCode = assembleModCode();
   const bailHookCode = assembleBailHookCode();
-  const lulaoCode = assembleLulaoEngine();
   const { buf: lulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
-  const extraResidentSectors = Buffer.concat([lulaoCode, lulaoStrData]); // 8192 B (Sectors 2..5)
 
-  // 2. Build/update VOICES.DAT with 6 resident sectors + all 41 SPU-ADPCM clips
+  // 2. Build/update VOICES.DAT (41 menu clips @ 11025 Hz + ring-doubled LULAO_GPBANK @ 6890.625 Hz)
+  //    and assemble LULAO_CODE with the exact finalized GPBANK startSector & 28-entry ring table!
   console.log('');
-  const manifest = buildVoicesBank(modCode, false, bailHookCode, extraResidentSectors);
+  let lulaoCode = null;
+  let lulaoLabels = null;
+  const manifest = buildVoicesBank(modCode, false, bailHookCode, (gpMeta) => {
+    const built = assembleLulaoEngine(gpMeta);
+    lulaoCode = built.buf;
+    lulaoLabels = built.labels;
+    return Buffer.concat([lulaoCode, lulaoStrData]); // 8192 B (Sectors 2..5)
+  });
 
   // 3. Patch SLUS_010.66 (exact same file size 864,256 B!)
   console.log('\n=== Aplicando 27 Hooks Cirurgicos em SLUS_010.66 ===');

@@ -50,6 +50,17 @@ const SPU_PITCH = 0x0400; // exact 11025 / 44100 * 0x1000
 const SPU_MAX_CLIP_BYTES = 0x7EFF0 - 0x58000; // 159,728 bytes (~25.3 seconds @ 11025 Hz!)
 const MAX_CLIPS_PER_SKATER = 60; // Sector 1 holds header (16B) + up to 127 x 16B entries
 
+// Compact Gameplay Voice Sub-Bank (LULAO_GPBANK) for ZERO-STALL Main RAM pre-cache:
+//   Exact PS1 hardware pitch 0x0280 = 640 / 4096 * 44100 = 6890.625 Hz (0.00% pitch error, Nyquist 3.44 kHz > G.711!)
+const GP_SAMPLE_RATE = 6891;
+const GP_EXACT_RATE_HZ = 6890.625;
+const GP_SPU_PITCH = 0x0280;
+// Interleaved short/medium clip order (by sorted index in lulao_audios/) for maximum variety in any RAM budget:
+const GP_LULAO_ORDER = [11, 0, 8, 4, 6, 1, 13, 2, 9, 3, 7, 10, 5, 12];
+// Trim the 3 mega-long clips (#01=14.2s, #03=17.2s, #10=12.6s) to crisp 6.0s punchline highlights for gameplay RAM cache
+// (Skater Select playsel.bin keeps 100% full uncut 11,025 Hz originals!).
+const GP_MAX_CLIP_SEC = { 1: 6.0, 3: 6.0, 10: 6.0 };
+
 function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const wavPath = path.join(cacheDir, `${cacheKey}.wav`);
@@ -138,6 +149,140 @@ function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   return spu;
 }
 
+function encodeGameplayClipToSpu(mp3Path, cacheKey, maxSec = null, force = false) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const wavPath = path.join(cacheDir, `${cacheKey}.gp.wav`);
+  const spuPath = path.join(cacheDir, `${cacheKey}.gp.spu`);
+
+  const srcStat = fs.statSync(mp3Path);
+  if (!force && fs.existsSync(spuPath)) {
+    const dstStat = fs.statSync(spuPath);
+    if (dstStat.size >= 32 && dstStat.size % 16 === 0 && dstStat.mtimeMs >= srcStat.mtimeMs) {
+      return fs.readFileSync(spuPath);
+    }
+  }
+
+  // Decode, normalize & bandlimit cleanly for 6890.625 Hz exact PS1 SPU-ADPCM playback (pitch 0x0280)
+  const afParts = ['highpass=f=90', 'lowpass=f=3200', 'loudnorm=I=-12:TP=-1.0:LRA=8'];
+  if (maxSec && maxSec > 0.5) {
+    const fadeStart = (maxSec - 0.08).toFixed(3);
+    afParts.push(`afade=t=out:st=${fadeStart}:d=0.08`);
+  }
+  afParts.push(`aresample=${GP_SAMPLE_RATE}`);
+
+  const ffArgs = ['-y', '-v', 'error', '-i', mp3Path];
+  if (maxSec && maxSec > 0.5) ffArgs.push('-t', String(maxSec));
+  ffArgs.push('-ac', '1', '-ar', String(GP_SAMPLE_RATE), '-af', afParts.join(','), '-c:a', 'pcm_s16le', wavPath);
+
+  const ff = spawnSync(ffmpegExe, ffArgs, { encoding: 'utf8' });
+  if (ff.status !== 0) {
+    throw new Error(`ffmpeg (GPBANK) falhou em ${path.basename(mp3Path)}: ${ff.stderr || ff.stdout}`);
+  }
+
+  const rawSpuPath = path.join(cacheDir, `${cacheKey}.gp.raw.spu`);
+  const enc = spawnSync(psxavencExe, [
+    '-q',
+    '-t', 'spu',
+    '-f', String(GP_SAMPLE_RATE),
+    '-a', '16',
+    '-L',
+    wavPath,
+    rawSpuPath,
+  ], { encoding: 'utf8' });
+  if (enc.status !== 0) {
+    throw new Error(`psxavenc (GPBANK) falhou em ${path.basename(mp3Path)}: ${enc.stderr || enc.stdout}`);
+  }
+
+  let spu = fs.readFileSync(rawSpuPath);
+  // Strip any accidental loop/end bits from internal blocks (staging loader sets 0x04 / 0x03 / 0x01 cleanly!)
+  for (let off = 0; off + 16 <= spu.length; off += 16) {
+    spu[off + 1] = 0x00;
+  }
+  // Ensure exact multiple of 16 bytes + explicit trailing 16-byte silent stop block
+  const rem = spu.length % 16;
+  if (rem !== 0) spu = Buffer.concat([spu, Buffer.alloc(16 - rem, 0)]);
+  const stopBlk = Buffer.alloc(16, 0);
+  stopBlk[1] = 0x01;
+  spu = Buffer.concat([spu, stopBlk]);
+
+  fs.writeFileSync(spuPath, spu);
+  try { fs.unlinkSync(wavPath); } catch (_) {}
+  try { fs.unlinkSync(rawSpuPath); } catch (_) {}
+  return spu;
+}
+
+function encodeLulaoGameplayBank(lulaoFiles, force = false) {
+  const order = GP_LULAO_ORDER.filter(idx => idx < lulaoFiles.length);
+  for (let i = 0; i < lulaoFiles.length; i++) {
+    if (!order.includes(i)) order.push(i);
+  }
+  const singleClips = [];
+  const singleChunks = [];
+  let offset = 0;
+
+  console.log(`\n=== Codificando Sub-Banco Compacto de Gameplay LULAO_GPBANK (${GP_EXACT_RATE_HZ} Hz, pitch 0x0280) ===`);
+  for (let slot = 0; slot < order.length; slot++) {
+    const origIdx = order[slot];
+    const fn = lulaoFiles[origIdx];
+    const maxSec = GP_MAX_CLIP_SEC[origIdx] || null;
+    const key = `gp_${GP_SAMPLE_RATE}_${String(origIdx).padStart(2, '0')}_${maxSec ? `${maxSec}s_` : ''}${fn.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const spu = encodeGameplayClipToSpu(path.join(lulaoDir, fn), key, maxSec, force);
+    const durSec = ((spu.length / 16) * 28) / GP_EXACT_RATE_HZ;
+    singleClips.push({
+      slot,
+      origIdx,
+      file: fn,
+      trimmedSec: maxSec,
+      byteOffsetInBank: offset,
+      byteSize: spu.length,
+      durationSec: Number(durSec.toFixed(2)),
+    });
+    singleChunks.push(spu);
+    offset += spu.length;
+    console.log(
+      `  [GP #${String(slot).padStart(2, '0')} <- orig #${String(origIdx).padStart(2, '0')}] ${fn.padEnd(38)} ` +
+      `${durSec.toFixed(2).padStart(5)}s${maxSec ? '*' : ' '} | ${String(spu.length).padStart(5)} B @ +0x${singleClips[slot].byteOffsetInBank.toString(16).padStart(5, '0')}`
+    );
+  }
+
+  // Ring-double (2x = 28 contiguous entries) so ANY random startClip (0..13) loads in 1 SINGLE contiguous CdRead!
+  const singleBytes = offset;
+  const ringEntries = [];
+  for (let copy = 0; copy < 2; copy++) {
+    for (const c of singleClips) {
+      ringEntries.push({
+        ringIdx: copy * singleClips.length + c.slot,
+        origIdx: c.origIdx,
+        file: c.file,
+        trimmedSec: c.trimmedSec,
+        byteOffsetInBank: copy * singleBytes + c.byteOffsetInBank,
+        byteSize: c.byteSize,
+        durationSec: c.durationSec,
+      });
+    }
+  }
+  const rawRing = Buffer.concat([...singleChunks, ...singleChunks]);
+  const totalSectors = Math.ceil(rawRing.length / 2048);
+  const bankBuf = Buffer.alloc(totalSectors * 2048, 0);
+  rawRing.copy(bankBuf, 0);
+
+  console.log(
+    `  [GPBANK] 1x = ${singleBytes} B (${(singleBytes / 1024).toFixed(1)} KB) | ` +
+    `2x Anel = ${bankBuf.length} B (${totalSectors} setores, ${(bankBuf.length / 1024).toFixed(1)} KB) | 14 clipes x 2 = 28 entradas`
+  );
+  return {
+    clipCount: singleClips.length,
+    singleBytes,
+    totalBytes: bankBuf.length,
+    totalSectors,
+    sampleRateHz: GP_EXACT_RATE_HZ,
+    spuPitch: GP_SPU_PITCH,
+    singleClips,
+    ringEntries,
+    bankBuf,
+  };
+}
+
 function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null, extraResidentSectors = null) {
   if (!fs.existsSync(lulaoDir) || !fs.existsSync(bolsoDir) || !fs.existsSync(silvioDir)) {
     throw new Error(`Pastas de audio nao encontradas em ${audiosRoot}`);
@@ -173,22 +318,10 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
   // Resident Sectors 2..5 (8192 B = LULAO_CODE @ 0x800E3800 [4096 B] + LULAO_STRDATA @ 0x800E4800 [4096 B])
   const RESIDENT_EXTRA_SECTORS = 4;
   const RESIDENT_EXTRA_BYTES = RESIDENT_EXTRA_SECTORS * 2048;
-  let secExtra = Buffer.alloc(RESIDENT_EXTRA_BYTES, 0);
-  if (extraResidentSectors) {
-    if (extraResidentSectors.length !== RESIDENT_EXTRA_BYTES) {
-      throw new Error(`extraResidentSectors tamanho invalido: ${extraResidentSectors.length} != ${RESIDENT_EXTRA_BYTES}`);
-    }
-    extraResidentSectors.copy(secExtra, 0);
-  } else if (fs.existsSync(voicesDatPath)) {
-    const prev = fs.readFileSync(voicesDatPath);
-    if (prev.length >= (2 + RESIDENT_EXTRA_SECTORS) * 2048) {
-      prev.copy(secExtra, 0, 4096, 4096 + RESIDENT_EXTRA_BYTES);
-    }
-  }
 
   const allEntries = [];
   const payloads = [];
-  let curSector = 2 + RESIDENT_EXTRA_SECTORS; // Sector 0=MODCODE, 1=VOICETBL+Sec1Code, 2=LULAO_CODE, 3..4=LULAO_STRDATA
+  let curSector = 2 + RESIDENT_EXTRA_SECTORS; // Sector 0=MODCODE, 1=VOICETBL+Sec1Code, 2..3=LULAO_CODE, 4..5=LULAO_STRDATA
 
   const groups = [
     { skater: 'Lulao',         skaterIdx: 2, dir: lulaoDir,  files: lulaoFiles,  prefix: 'lulao' },
@@ -226,6 +359,40 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
         `  [${grp.skater.padEnd(13)} #${String(i).padStart(2, '0')}] ${fn.padEnd(38)} ` +
         `${durSec.toFixed(2).padStart(5)}s | ${String(spu.length).padStart(6)} B (${String(secCount).padStart(2)} sec) @ +${allEntries[allEntries.length - 1].sectorOffset}`
       );
+    }
+  }
+
+  // Append ring-doubled LULAO_GPBANK (6890.625 Hz / pitch 0x0280) right after the 41 menu clips
+  const gpBankStartSec = curSector;
+  const gpBank = encodeLulaoGameplayBank(lulaoFiles, force);
+  payloads.push(gpBank.bankBuf);
+  curSector += gpBank.totalSectors;
+
+  const gpMeta = {
+    startSector: gpBankStartSec,
+    clipCount: gpBank.clipCount,
+    singleBytes: gpBank.singleBytes,
+    totalBytes: gpBank.totalBytes,
+    totalSectors: gpBank.totalSectors,
+    sampleRateHz: gpBank.sampleRateHz,
+    spuPitch: gpBank.spuPitch,
+    spuPitchHex: '0x' + gpBank.spuPitch.toString(16).padStart(4, '0'),
+    ringEntries: gpBank.ringEntries,
+  };
+
+  let secExtra = Buffer.alloc(RESIDENT_EXTRA_BYTES, 0);
+  const resolvedExtra = typeof extraResidentSectors === 'function'
+    ? extraResidentSectors(gpMeta)
+    : extraResidentSectors;
+  if (resolvedExtra) {
+    if (resolvedExtra.length !== RESIDENT_EXTRA_BYTES) {
+      throw new Error(`extraResidentSectors tamanho invalido: ${resolvedExtra.length} != ${RESIDENT_EXTRA_BYTES}`);
+    }
+    resolvedExtra.copy(secExtra, 0);
+  } else if (fs.existsSync(voicesDatPath)) {
+    const prev = fs.readFileSync(voicesDatPath);
+    if (prev.length >= (2 + RESIDENT_EXTRA_SECTORS) * 2048) {
+      prev.copy(secExtra, 0, 4096, 4096 + RESIDENT_EXTRA_BYTES);
     }
   }
 
@@ -282,6 +449,18 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     silvioCount: silvioFiles.length,
     totalClips: allEntries.length,
     entries: allEntries,
+    gameplayBank: {
+      startSector: gpMeta.startSector,
+      clipCount: gpMeta.clipCount,
+      singleBytes: gpMeta.singleBytes,
+      totalBytes: gpMeta.totalBytes,
+      totalSectors: gpMeta.totalSectors,
+      sampleRateHz: gpMeta.sampleRateHz,
+      spuPitch: gpMeta.spuPitch,
+      spuPitchHex: gpMeta.spuPitchHex,
+      entries: gpBank.singleClips,
+      ringEntries: gpMeta.ringEntries,
+    },
   };
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
@@ -290,10 +469,11 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
   console.log(`  Arquivo:   ${voicesDatPath}`);
   console.log(`  Tamanho:   ${finalBuf.length} B (${finalBuf.length / 2048} setores, ${(finalBuf.length / 1048576).toFixed(2)} MB)`);
   console.log(`  Maior clip:${maxClipBytes} B / ${SPU_MAX_CLIP_BYTES} B max SPU RAM (margem: ${SPU_MAX_CLIP_BYTES - maxClipBytes} B)`);
+  console.log(`  GPBANK:    setor +${gpMeta.startSector} (${gpMeta.totalSectors} setores, ${gpMeta.clipCount}x2 clipes @ ${gpMeta.sampleRateHz} Hz / ${gpMeta.spuPitchHex})`);
   return manifest;
 }
 
-module.exports = { buildVoicesBank, SPU_SAMPLE_RATE, SPU_PITCH, SPU_MAX_CLIP_BYTES };
+module.exports = { buildVoicesBank, SPU_SAMPLE_RATE, SPU_PITCH, SPU_MAX_CLIP_BYTES, GP_SAMPLE_RATE, GP_EXACT_RATE_HZ, GP_SPU_PITCH };
 
 if (require.main === module) {
   const force = process.argv.includes('--force');
