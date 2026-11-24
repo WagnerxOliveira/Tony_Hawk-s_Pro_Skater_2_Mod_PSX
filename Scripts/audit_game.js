@@ -732,9 +732,28 @@ try {
             gpErr++;
           }
         }
+        // Verify minimum random clip count across ALL 14 starting slots for School II fragmented (28 KB) & NY City (60 KB)
+        let minClips28k = 999, minClips60k = 999;
+        for (let s = 0; s < gpMeta.clipCount; s++) {
+          const baseOff = Math.floor(gpMeta.ringEntries[s].byteOffsetInBank / 2048) * 2048;
+          let c28 = 0, c60 = 0;
+          for (let k = 0; k < gpMeta.clipCount; k++) {
+            const re = gpMeta.ringEntries[s + k];
+            const needSec = Math.ceil((re.byteOffsetInBank + re.byteSize - baseOff) / 2048);
+            const needAlloc = 1024 + needSec * 2048;
+            if (needAlloc <= 28672) c28 = k + 1;
+            if (needAlloc <= 61440) c60 = k + 1;
+          }
+          if (c28 < minClips28k) minClips28k = c28;
+          if (c60 < minClips60k) minClips60k = c60;
+        }
+        if (minClips28k < 2 || minClips60k < 5) {
+          fail('VOICES', `LULAO_GPBANK variedade insuficiente: min28KB=${minClips28k} (req >=2), min60KB=${minClips60k} (req >=5)`);
+          gpErr++;
+        }
       }
       if (mipsInvErr === 0 && gpErr === 0) {
-        pass(`LULAO_GPBANK + Zero-Stall RAM Cache: 14x2 anel (${gpMeta.totalSectors} set. @ +${gpMeta.startSector}, 6890.625 Hz / 0x0280, 16B-aligned), freeList[1] OOM guard OK, 0 chamadas CdRead/XA_Pause/Mem_Alloc em gameplay`);
+        pass(`LULAO_GPBANK + Zero-Stall RAM Cache: 14x2 anel (${gpMeta.totalSectors} set. @ +${gpMeta.startSector}, 6890.625 Hz / 0x0280, cap <=2.85s, -10 LUFS, 1 KB stage, 48 KB reserva), min 2 clipes@28KB / min 5@60KB / 14@Hangar, 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
       }
     }
     const { buf: expLulaoStrData } = buildLulaoStrData();

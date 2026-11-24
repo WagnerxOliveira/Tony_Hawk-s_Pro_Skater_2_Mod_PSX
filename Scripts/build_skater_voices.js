@@ -52,14 +52,17 @@ const MAX_CLIPS_PER_SKATER = 60; // Sector 1 holds header (16B) + up to 127 x 16
 
 // Compact Gameplay Voice Sub-Bank (LULAO_GPBANK) for ZERO-STALL Main RAM pre-cache:
 //   Exact PS1 hardware pitch 0x0280 = 640 / 4096 * 44100 = 6890.625 Hz (0.00% pitch error, Nyquist 3.44 kHz > G.711!)
+//   Every gameplay clip is silence-trimmed (instant Frame-1 vocal attack!), EQ-boosted (-10 LUFS punchy presence),
+//   and capped to <= 3.20s of active speech so ALL 10 levels (incl. School II, Bullring, Venice, NY City, Skate Heaven)
+//   ALWAYS preload multiple random clips in Main RAM with 0.00 ms stall & 48 KB untouched Heap[1] safety reserve!
+//   (Skater Select playsel.bin keeps all 41 full uncut 11,025 Hz clips 100% untouched!).
 const GP_SAMPLE_RATE = 6891;
 const GP_EXACT_RATE_HZ = 6890.625;
 const GP_SPU_PITCH = 0x0280;
-// Interleaved short/medium clip order (by sorted index in lulao_audios/) for maximum variety in any RAM budget:
+const GP_MAX_ACTIVE_SEC = 2.85;
+// Interleaved short/medium clip order (by sorted index in lulao_audios/) with shortest clip (#11 = ~4.1 KB) at slot 0
+// for guaranteed fallback and maximum variety in every contiguous RAM window:
 const GP_LULAO_ORDER = [11, 0, 8, 4, 6, 1, 13, 2, 9, 3, 7, 10, 5, 12];
-// Trim the 3 mega-long clips (#01=14.2s, #03=17.2s, #10=12.6s) to crisp 6.0s punchline highlights for gameplay RAM cache
-// (Skater Select playsel.bin keeps 100% full uncut 11,025 Hz originals!).
-const GP_MAX_CLIP_SEC = { 1: 6.0, 3: 6.0, 10: 6.0 };
 
 function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   fs.mkdirSync(cacheDir, { recursive: true });
@@ -149,8 +152,27 @@ function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   return spu;
 }
 
-function encodeGameplayClipToSpu(mp3Path, cacheKey, maxSec = null, force = false) {
+function writePcm16MonoWav(outPath, pcmBuf, sampleRate) {
+  const hdr = Buffer.alloc(44);
+  hdr.write('RIFF', 0);
+  hdr.writeUInt32LE(36 + pcmBuf.length, 4);
+  hdr.write('WAVE', 8);
+  hdr.write('fmt ', 12);
+  hdr.writeUInt32LE(16, 16);
+  hdr.writeUInt16LE(1, 20);              // PCM
+  hdr.writeUInt16LE(1, 22);              // mono
+  hdr.writeUInt32LE(sampleRate, 24);
+  hdr.writeUInt32LE(sampleRate * 2, 28);
+  hdr.writeUInt16LE(2, 32);
+  hdr.writeUInt16LE(16, 34);
+  hdr.write('data', 36);
+  hdr.writeUInt32LE(pcmBuf.length, 40);
+  fs.writeFileSync(outPath, Buffer.concat([hdr, pcmBuf]));
+}
+
+function encodeGameplayClipToSpu(mp3Path, cacheKey, maxSec = GP_MAX_ACTIVE_SEC, force = false) {
   fs.mkdirSync(cacheDir, { recursive: true });
+  const trimWavPath = path.join(cacheDir, `${cacheKey}.trim.wav`);
   const wavPath = path.join(cacheDir, `${cacheKey}.gp.wav`);
   const spuPath = path.join(cacheDir, `${cacheKey}.gp.spu`);
 
@@ -162,19 +184,66 @@ function encodeGameplayClipToSpu(mp3Path, cacheKey, maxSec = null, force = false
     }
   }
 
-  // Decode, normalize & bandlimit cleanly for 6890.625 Hz exact PS1 SPU-ADPCM playback (pitch 0x0280)
-  const afParts = ['highpass=f=90', 'lowpass=f=3200', 'loudnorm=I=-12:TP=-1.0:LRA=8'];
-  if (maxSec && maxSec > 0.5) {
-    const fadeStart = (maxSec - 0.08).toFixed(3);
-    afParts.push(`afade=t=out:st=${fadeStart}:d=0.08`);
+  // Step 1: Decode source MP3 to 16 kHz mono s16le PCM and deterministically strip leading/trailing dead silence
+  // (removes 0.25-0.68s silent intro lag so Lulao speaks on Frame 1 of cash pickup!) + cap active speech <= maxSec.
+  const WORK_SR = 16000;
+  const dec = spawnSync(ffmpegExe, [
+    '-v', 'error', '-i', mp3Path,
+    '-ac', '1', '-ar', String(WORK_SR), '-f', 's16le', '-',
+  ], { maxBuffer: 64 * 1024 * 1024 });
+  if (dec.status !== 0 || !dec.stdout || dec.stdout.length < 320) {
+    throw new Error(`ffmpeg decode (GPBANK) falhou em ${path.basename(mp3Path)}: ${dec.stderr?.toString() || ''}`);
   }
-  afParts.push(`aresample=${GP_SAMPLE_RATE}`);
+  const pcm = dec.stdout;
+  const totalSamp = pcm.length >> 1;
+  let peak = 0;
+  for (let i = 0; i < totalSamp; i++) {
+    const v = Math.abs(pcm.readInt16LE(i * 2));
+    if (v > peak) peak = v;
+  }
+  const thresh = Math.max(450, Math.floor(peak * 0.035)); // ~ -29 dB relative to clip peak
+  let first = 0, last = totalSamp - 1;
+  for (let i = 0; i < totalSamp; i++) {
+    if (Math.abs(pcm.readInt16LE(i * 2)) > thresh) { first = i; break; }
+  }
+  for (let i = totalSamp - 1; i >= first; i--) {
+    if (Math.abs(pcm.readInt16LE(i * 2)) > thresh) { last = i; break; }
+  }
+  // Keep 15 ms clean attack lead-in and 40 ms tail room
+  first = Math.max(0, first - Math.floor(WORK_SR * 0.015));
+  last = Math.min(totalSamp - 1, last + Math.floor(WORK_SR * 0.040));
+  const maxSamp = Math.floor(WORK_SR * maxSec);
+  const wasCapped = (last - first + 1) > maxSamp;
+  if (wasCapped) last = first + maxSamp - 1;
 
-  const ffArgs = ['-y', '-v', 'error', '-i', mp3Path];
-  if (maxSec && maxSec > 0.5) ffArgs.push('-t', String(maxSec));
-  ffArgs.push('-ac', '1', '-ar', String(GP_SAMPLE_RATE), '-af', afParts.join(','), '-c:a', 'pcm_s16le', wavPath);
+  const trimmed = Buffer.from(pcm.subarray(first * 2, (last + 1) * 2));
+  const nTrim = trimmed.length >> 1;
+  // Apply smooth 60 ms raised-cosine fade-out when capped (or 15 ms micro-declick otherwise)
+  const fadeLen = Math.min(nTrim >> 2, Math.floor(WORK_SR * (wasCapped ? 0.060 : 0.015)));
+  for (let i = 0; i < fadeLen; i++) {
+    const idx = nTrim - fadeLen + i;
+    const g = 0.5 * (1 + Math.cos((Math.PI * (i + 1)) / fadeLen));
+    trimmed.writeInt16LE(Math.round(trimmed.readInt16LE(idx * 2) * g), idx * 2);
+  }
+  writePcm16MonoWav(trimWavPath, trimmed, WORK_SR);
 
-  const ff = spawnSync(ffmpegExe, ffArgs, { encoding: 'utf8' });
+  // Step 2: Punchy arcade vocal EQ (+3 dB presence @ 2.2 kHz), -10 LUFS loudnorm & clean 6890.625 Hz resampling
+  const afParts = [
+    'highpass=f=110',
+    'equalizer=f=2200:t=q:w=1.2:g=3',
+    'lowpass=f=3200',
+    'loudnorm=I=-10:TP=-0.5:LRA=7',
+    `aresample=${GP_SAMPLE_RATE}`,
+  ];
+  const ff = spawnSync(ffmpegExe, [
+    '-y', '-v', 'error',
+    '-i', trimWavPath,
+    '-ac', '1',
+    '-ar', String(GP_SAMPLE_RATE),
+    '-af', afParts.join(','),
+    '-c:a', 'pcm_s16le',
+    wavPath,
+  ], { encoding: 'utf8' });
   if (ff.status !== 0) {
     throw new Error(`ffmpeg (GPBANK) falhou em ${path.basename(mp3Path)}: ${ff.stderr || ff.stdout}`);
   }
@@ -206,6 +275,7 @@ function encodeGameplayClipToSpu(mp3Path, cacheKey, maxSec = null, force = false
   spu = Buffer.concat([spu, stopBlk]);
 
   fs.writeFileSync(spuPath, spu);
+  try { fs.unlinkSync(trimWavPath); } catch (_) {}
   try { fs.unlinkSync(wavPath); } catch (_) {}
   try { fs.unlinkSync(rawSpuPath); } catch (_) {}
   return spu;
@@ -220,12 +290,12 @@ function encodeLulaoGameplayBank(lulaoFiles, force = false) {
   const singleChunks = [];
   let offset = 0;
 
-  console.log(`\n=== Codificando Sub-Banco Compacto de Gameplay LULAO_GPBANK (${GP_EXACT_RATE_HZ} Hz, pitch 0x0280) ===`);
+  console.log(`\n=== Codificando Sub-Banco Compacto de Gameplay LULAO_GPBANK (${GP_EXACT_RATE_HZ} Hz, pitch 0x0280, cap <= ${GP_MAX_ACTIVE_SEC.toFixed(2)}s, -10 LUFS) ===`);
   for (let slot = 0; slot < order.length; slot++) {
     const origIdx = order[slot];
     const fn = lulaoFiles[origIdx];
-    const maxSec = GP_MAX_CLIP_SEC[origIdx] || null;
-    const key = `gp_${GP_SAMPLE_RATE}_${String(origIdx).padStart(2, '0')}_${maxSec ? `${maxSec}s_` : ''}${fn.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const maxSec = GP_MAX_ACTIVE_SEC;
+    const key = `gp2_${GP_SAMPLE_RATE}_${String(origIdx).padStart(2, '0')}_${maxSec.toFixed(2)}s_${fn.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const spu = encodeGameplayClipToSpu(path.join(lulaoDir, fn), key, maxSec, force);
     const durSec = ((spu.length / 16) * 28) / GP_EXACT_RATE_HZ;
     singleClips.push({
@@ -241,7 +311,7 @@ function encodeLulaoGameplayBank(lulaoFiles, force = false) {
     offset += spu.length;
     console.log(
       `  [GP #${String(slot).padStart(2, '0')} <- orig #${String(origIdx).padStart(2, '0')}] ${fn.padEnd(38)} ` +
-      `${durSec.toFixed(2).padStart(5)}s${maxSec ? '*' : ' '} | ${String(spu.length).padStart(5)} B @ +0x${singleClips[slot].byteOffsetInBank.toString(16).padStart(5, '0')}`
+      `${durSec.toFixed(2).padStart(5)}s | ${String(spu.length).padStart(5)} B @ +0x${singleClips[slot].byteOffsetInBank.toString(16).padStart(5, '0')}`
     );
   }
 

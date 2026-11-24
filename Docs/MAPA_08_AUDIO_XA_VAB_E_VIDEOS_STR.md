@@ -118,13 +118,13 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 ## 4. Banco de Vozes SPU-ADPCM (`VOICES.DAT`) & Vídeos Aleatórios de Boot
 
 - **49º Arquivo da ISO (`\VOICES.DAT;1`):** posicionado após `INTRO.STR` e antes do postgap de 150 setores, preservando **48/48 LBAs originais Redump**.
-- **Layout de `VOICES.DAT` (2.342.912 B / 1144 setores):**
+- **Layout de `VOICES.DAT` (2.095.104 B / 1023 setores):**
   - **Setor 0 (`0x0000..0x07FF`):** `MODCODE` MIPS R3000A carregado em `0x800E2800` no boot via `Mod_BootInit` + `FlushCache()`.
   - **Setor 1 (`0x0800..0x0FFF`):** `VOICETBL` carregado em `0x800E3000` (`magic = 0x564F4943`, 14 clips Lulao + 14 clips Bolsonaro + 13 clips Silvio Santos) + `Hook_BailSfx @ 0x800E3400` + `VoiceSelect_Lookup @ 0x800E3600`.
   - **Setores `2..3` (`0x1000..0x1FFF`):** `LULAO_CODE` (`0x800E3800..0x800E47FF`): swapper dinâmico de 88 strings do Modo Carreira + motor de pré-cache adaptativo em Main RAM (zero-stall, OOM guard em `freeList[1] @ 0x800D7294`, staging buffer 2 KB, streamer SPU 2 KB Ping-Pong).
   - **Setores `4..5` (`0x2000..0x2FFF`):** `LULAO_STRDATA` (`0x800E4800..0x800E57FF`): 88 ponteiros + backup runtime + strings satíricas das 8 fases e `"Roubei mais 50!/100!/250!"`.
   - **Setores `6..876`:** 41 streams SPU-ADPCM mono `11025 Hz` (`pitch = 0x0400`, maior clip = `148928 B` / `159728 B` na SPU RAM `0x58000..0x7EFF0`) para a Seleção de Skatistas (`playsel.bin`).
-  - **Setores `877..1143` (`LULAO_GPBANK`):** sub-banco compacto em anel `2×` (`14 × 2 = 28` entradas, `546.816 B` / `267` setores, `6890.625 Hz` exatos / `pitch = 0x0280`, alinhado a `16 B`) pré-carregado 1 única vez no loading da fase para **0,00 ms de acesso ao CD-ROM durante partidas**.
+  - **Setores `877..1022` (`LULAO_GPBANK`):** sub-banco compacto em anel `2×` (`14 × 2 = 28` entradas, `299.008 B` / `146` setores, `6890.625 Hz` exatos / `pitch = 0x0280`, alinhado a `16 B`) pré-carregado 1 única vez no loading da fase para **0,00 ms de acesso ao CD-ROM durante partidas**.
 - **Vídeos Aleatórios no Boot (Duração Exata Original):** `BootRand_PlaySlot` substitui os 3 slots de inicialização (`ATVILOGO` = `208` frames / `13,87s`, `LOGO` = `266` frames / `17,73s`, `INTRO` = até `1486` frames / `99,07s`) por 3 vídeos customizados distintos entre os 20 disponíveis (`[2, 16..34]`), usando contador persistente no **Setor 60 (`0x3C`)** do Memory Card + timers de hardware (`0x1F801100/10/20`) + `VSync(-1)`. O campo `g_MovieTable[idx].num_frames` é ajustado temporariamente para a duração exata do slot de boot e restaurado imediatamente ao término, mantendo os vídeos finais de carreira com duração integral.
 - **Atenuação Automática da Música (`-12 dB`) & Pré-Cache Zero-Stall:** `Hook_CdMix` (`0x80038950`) + `Hook_RunPlaySel` (`0x80082B80`) usam a bitmask privada `g_InPlaySel` (`0x800E27DC`: bit 0 = Seleção de Skatistas, bit 1 = Voz do Lulao em Partida) para reduzir `COMPILED.XA` para **25% (`vol >> 2`)** enquanto **Silvio Santos**, **Lulao** ou **Bolsonaro** falam, restaurando **100%** automaticamente sem jamais pausar o streaming musical durante partidas.
 

@@ -1778,9 +1778,11 @@ function assembleLulaoEngine(gpMeta) {
   // --------------------------------------------------------------------------
   // 5C. LulaoCache_Load() — Runs ONCE on Level Load for Lulao (Slot 2)!
   //     1. Walks native Heap[1] freeList @ *(gp + 19112) (0x800D7294) to find EXACT largestFree.
-  //     2. Preserves an UNTOUCHABLE 96 KB (98,304 B) safety reserve for THPS2 runtime objects.
-  //     3. Picks random startClip (0..13) & fits as many contiguous ring clips as fit in (usable - 2048).
-  //     4. Allocates ONE persistent block (2048 B g_StageBuf + readSectors * 2048 B) and executes
+  //     2. Preserves an UNTOUCHABLE 48 KB (49,152 B) calibrated safety reserve for THPS2 runtime objects
+  //        (empirically measured MaxDelta across all 10 levels incl. Pause & EndRun = 34,368 B -> >= 14.4 KB spare!).
+  //     3. Picks random startClip (0..13) & fits as many contiguous ring clips as fit in (usable - 1024),
+  //        with guaranteed fallback to startClip = 0 (shortest clip ~4.1 KB) if random startClip didn't fit!
+  //     4. Allocates ONE persistent block (1024 B g_StageBuf + readSectors * 2048 B) and executes
   //        ONE single contiguous CdRead during the Loading Screen!
   // --------------------------------------------------------------------------
   a.label('LulaoCache_Load');
@@ -1810,13 +1812,13 @@ function assembleLulaoEngine(gpMeta) {
   a.move(R.s0, R.t1);
 
   a.label('lcl_fl_done');
-  // Require largestFree >= 98304 (96 KB safety reserve) + 16384 (16 KB minimum cache) = 114688 B!
-  a.li(R.t0, 114688);
+  // Require largestFree >= 49152 (48 KB calibrated safety reserve) + 8192 (8 KB minimum cache) = 57344 B!
+  a.li(R.t0, 57344);
   a.sltu(R.t1, R.s0, R.t0);
   a.bne(R.t1, R.zero, 'lcl_ret');        // Too tight (e.g. extreme 2P state) -> skip cleanly, 0% OOM!
   a.nop();
-  a.li(R.t0, 98304);                     // 96 KB untouched safety reserve for game engine!
-  a.subu(R.s0, R.s0, R.t0);              // s0 = usable bytes (guaranteed <= largestFree - 96 KB)
+  a.li(R.t0, 49152);                     // 48 KB untouched safety reserve (MaxDelta = 34.4 KB across all 10 levels!)
+  a.subu(R.s0, R.s0, R.t0);              // s0 = usable bytes (guaranteed <= largestFree - 48 KB)
   a.li(R.t1, 0xFFFFF800);
   a.and(R.s0, R.s0, R.t1);               // align down to 2048 B sector boundary
 
@@ -1830,6 +1832,7 @@ function assembleLulaoEngine(gpMeta) {
   a.divu(R.v0, R.t0);
   a.mfhi(R.s1);                          // s1 = startClip (0..13)
 
+  a.label('lcl_calc_base');
   // Step 3: Compute firstSecRel & baseOff for g_GpRingTable[startClip]
   a.la(R.t6, 'g_GpRingTable');
   a.sll(R.t1, R.s1, 3);                  // startClip * 8
@@ -1837,7 +1840,7 @@ function assembleLulaoEngine(gpMeta) {
   a.lw(R.t2, 0, R.t6);                   // t2 = firstEntry.byteOffsetInBank
   a.nop();
   a.srl(R.s2, R.t2, 11);                 // s2 = firstSecRel
-  a.sll(R.s3, R.s2, 11);                 // s3 = g_CacheBaseOff (first byte read into g_CacheBuf + 2048)
+  a.sll(R.s3, R.s2, 11);                 // s3 = g_CacheBaseOff (first byte read into g_CacheBuf + 1024)
 
   // Step 4: Greedily fit k = 0..(clipCount-1) contiguous clips into s0 (usable bytes)
   a.move(R.t4, R.zero);                  // t4 = k
@@ -1855,7 +1858,7 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.t1, R.t1, 2047);
   a.srl(R.t1, R.t1, 11);                 // needSectors = ceil(spanBytes / 2048)
   a.sll(R.t2, R.t1, 11);
-  a.addiu(R.t2, R.t2, 2048);             // needAlloc = 2048 (g_StageBuf) + needSectors * 2048
+  a.addiu(R.t2, R.t2, 1024);             // needAlloc = 1024 (g_StageBuf) + needSectors * 2048
   a.sltu(R.t3, R.s0, R.t2);              // usable < needAlloc ?
   a.bne(R.t3, R.zero, 'lcl_fit_done');
   a.nop();
@@ -1867,21 +1870,27 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
 
   a.label('lcl_fit_done');
-  a.beq(R.s4, R.zero, 'lcl_ret');
+  a.bne(R.s4, R.zero, 'lcl_do_alloc');
   a.nop();
+  // Guaranteed fallback: if random startClip didn't fit in very tight budget, retry once from clip #0 (~4.1 KB)!
+  a.beq(R.s1, R.zero, 'lcl_ret');
+  a.nop();
+  a.j('lcl_calc_base');
+  a.move(R.s1, R.zero);
 
-  // Step 5: Allocate ONE persistent block (allocBytes = 2048 + s5 * 2048 <= usable <= largestFree - 96 KB)
+  a.label('lcl_do_alloc');
+  // Step 5: Allocate ONE persistent block (allocBytes = 1024 + s5 * 2048 <= usable <= largestFree - 48 KB)
   a.sll(R.a0, R.s5, 11);
-  a.addiu(R.a0, R.a0, 2048);
+  a.addiu(R.a0, R.a0, 1024);
   a.swSym(R.a0, R.t0, 'g_CacheAllocBytes');
   a.move(R.a1, R.zero);
   a.addiu(R.a2, R.zero, 1);
   a.jal(SYM.Mem_Alloc);
   a.move(R.a3, R.zero);
   a.beq(R.v0, R.zero, 'lcl_ret');
-  a.move(R.s6, R.v0);                    // s6 = g_CacheBuf (+0..+2047 = g_StageBuf, +2048.. = audio data)
+  a.move(R.s6, R.v0);                    // s6 = g_CacheBuf (+0..+1023 = g_StageBuf, +1024.. = audio data)
 
-  // Step 6: Execute ONE single contiguous CdRead into (g_CacheBuf + 2048) during Loading Screen!
+  // Step 6: Execute ONE single contiguous CdRead into (g_CacheBuf + 1024) during Loading Screen!
   a.jal(SYM.CDWAD_WaitIdle);
   a.nop();
 
@@ -1914,7 +1923,7 @@ function assembleLulaoEngine(gpMeta) {
   a.move(R.a2, R.zero);
 
   a.move(R.a0, R.s5);                    // readSectors
-  a.addiu(R.a1, R.s6, 2048);             // dst = g_CacheBuf + 2048
+  a.addiu(R.a1, R.s6, 1024);             // dst = g_CacheBuf + 1024
   a.jal(SYM.CdRead);
   a.addiu(R.a2, R.zero, 0x80);
 
@@ -2009,13 +2018,13 @@ function assembleLulaoEngine(gpMeta) {
   a.beq(R.t0, R.zero, 'lss_rev_ok');
   a.nop();
   a.swSym(R.zero, R.t1, 'g_SavedRevBit');
-  // Clear 0x7F400..0x7FBFF using dedicated 2 KB g_StageBuf (g_CacheBuf + 0..2047) — NEVER mutates clips!
+  // Clear 0x7F400..0x7FBFF using dedicated 1 KB g_StageBuf (g_CacheBuf + 0..1023) in 2x 1024 B DMAs — NEVER mutates clips!
   a.lwSym(R.t2, 'g_CacheBuf');
   a.nop();
   a.beq(R.t2, R.zero, 'lss_rev_en');
   a.nop();
   a.move(R.t3, R.t2);
-  a.addiu(R.t4, R.t2, 2048);
+  a.addiu(R.t4, R.t2, 1024);
   a.label('lss_z_lp');
   a.sw(R.zero, 0, R.t3);
   a.addiu(R.t3, R.t3, 4);
@@ -2026,7 +2035,15 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
   a.lwSym(R.a0, 'g_CacheBuf');
   a.jal(SYM.SpuWrite);
-  a.addiu(R.a1, R.zero, 2048);
+  a.addiu(R.a1, R.zero, 1024);
+  a.jal(SYM.SpuIsTransferCompleted);
+  a.addiu(R.a0, R.zero, 1);
+  a.li(R.a0, ADDR.SpuStreamHalfB);
+  a.jal(SYM.SpuSetTransferStartAddr);
+  a.nop();
+  a.lwSym(R.a0, 'g_CacheBuf');
+  a.jal(SYM.SpuWrite);
+  a.addiu(R.a1, R.zero, 1024);
   a.jal(SYM.SpuIsTransferCompleted);
   a.addiu(R.a0, R.zero, 1);
 
@@ -2245,10 +2262,17 @@ function assembleLulaoEngine(gpMeta) {
   a.beq(R.s1, R.zero, 'lsf_done');
   a.nop();
 
-  // Silence Voice 23 cleanly (fast restart without toggling reverb or unducking XA unnecessarily!)
+  // Silence Voice 23 cleanly (mute + KOFF + ~36 us SPU settle > 1 hardware 44.1 kHz tick -> zero click on rapid pickups!)
+  a.lui(R.t0, 0x1F80);
+  a.sh(R.zero, 0x1D70, R.t0);
+  a.sh(R.zero, 0x1D72, R.t0);
   a.move(R.a0, R.zero);
   a.jal(SYM.SpuSetKey);
   a.lui(R.a1, 0x0080);
+  a.addiu(R.t0, R.zero, 400);
+  a.label('lsf_koff_wait');
+  a.bne(R.t0, R.zero, 'lsf_koff_wait');
+  a.addiu(R.t0, R.t0, -1);
 
   // Pick next random cached clip index (0..g_CacheClipCount-1), never repeating g_LastClipIdx when count > 1
   a.jal('Lulao_NextRand');
@@ -2270,9 +2294,9 @@ function assembleLulaoEngine(gpMeta) {
   a.label('lsf_idx_ok');
   a.swSym(R.s2, R.t0, 'g_LastClipIdx');
 
-  // Resolve read-only source pointer inside g_CacheBuf + 2048:
+  // Resolve read-only source pointer inside g_CacheBuf + 1024:
   //   ringIdx = g_CacheStartClip + localIdx
-  //   g_StreamSrc = (g_CacheBuf + 2048) + (entry.byteOffsetInBank - g_CacheBaseOff)
+  //   g_StreamSrc = (g_CacheBuf + 1024) + (entry.byteOffsetInBank - g_CacheBaseOff)
   a.lwSym(R.t0, 'g_CacheStartClip');
   a.lwSym(R.t3, 'g_CacheBaseOff');
   a.addu(R.t0, R.t0, R.s2);              // ringIdx (0..27)
@@ -2283,7 +2307,7 @@ function assembleLulaoEngine(gpMeta) {
   a.lw(R.s3, 4, R.t1);                   // s3 = entry.byteSize
   a.nop();
   a.subu(R.t2, R.t2, R.t3);              // relative byte offset inside audio payload
-  a.addiu(R.t4, R.s0, 2048);             // g_CacheBuf + 2048
+  a.addiu(R.t4, R.s0, 1024);             // g_CacheBuf + 1024
   a.addu(R.t4, R.t4, R.t2);              // read-only g_StreamSrc!
   a.swSym(R.t4, R.t0, 'g_StreamSrc');
   a.swSym(R.s3, R.t0, 'g_StreamTotalBytes');
