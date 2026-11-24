@@ -6,6 +6,18 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 
 ## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório & Enciclopédia v2
 
+### 🗿 Coletáveis 3D Recortados: Haddad no Hangar, Dilma no Barril em School II & História Completa do Projeto (`Scripts/mod_collectibles_haddad_dilma.js`)
+- **The Hangar (`LV 0`, `G5` — `"5 Haddads Ajuste Fiscal"` / `"HADDAD TAXA"`):**
+  - Recorte cirúrgico automatizado de `haddad_hangar.jpg` (`469×426`): barreira de tinta + *flood-fill* multi-bolso removendo 100% do fundo branco, silhuetas cinzas da plateia, chão bege e assinatura `"CLAYTON"` preservando Fernando Haddad, cartola, toalha azul e o coelho `"AJUSTE FISCAL"`.
+  - Substituídas as *Pilot Wings* (`skhan_o.psx WAD[14]` & `skhan_o2.psx WAD[1109]`, `M[8]`, `0xD0C4F2DA`) por uma **geometria 3D em relevo anatômico dupla-face (`34v/32n/32f`, `1.452 B`, `220×220`, `Y ∈ [-150..+70]` ≈ 1,5× o avião original)** + textura exclusiva `ti=24` (`0xDA38F58B`) convertida de `128×32` para **`64×64` 4-bit 16 cores (`2.048 B` exatos — `0 B` de crescimento de textura!)** com chave de transparência nativa PS1 **`0x7C1F`**, mantendo os Barris de Pinga 51 intactos nos mesmos setores (`122.356 / 122.880 B`, 0 deslocamento no `CD.WAD`).
+- **School II (`LV 1`, `G4` — `"5 Dilmas no Barril"` / `"DILMA BARRIL"`):**
+  - Recorte cirúrgico de `dilma_barril.png` (`145×241`) removendo 100% do fundo verde-menta com supressão de halo nas bordas e limpeza do reflexo inferior direito.
+  - Substituídos os 5 *School Bells* montados nas paredes (`sksl2_o.psx WAD[1095] M[5]`, `0x9DB64BF3`) por uma **geometria 3D semicilíndrica verdadeira de meio-barril de carvalho com a Dilma em relevo no topo (`20v/8n/12f`, `588 B ≤ 604 B`, `100×156×42` ≈ 1,5× o sino original)** curvando suavemente até encostar na parede (`Z = 0 → +42`).
+  - Upgrade de resolução da textura exclusiva `0xFC079202` em `sksl2_l.psx` (`WAD[1094]`) e `sksl2_l2.psx` (`WAD[1096]`) de `32×32` (`512 B`) para **`40×64` 4-bit 16 cores (`1.280 B`, `+768 B` dentro dos `840 B` livres dos mesmos 167 setores!)** com transparência nativa **`0x7C1F`**.
+- **2 Invariantes Reais de Hardware PS1 Descobertos e Validados ao Vivo no DuckStation:**
+  - Sentinela `+24 = 0xFFFF7FFF` (`maxDrawDist`) obrigatória no cabeçalho de malha `.PSX` + prova via desmontagem de `SLUS_010.66 @ 0x80052060..0x800520B4` de que o carregador de CLUT converte `0x0000 → 0x8000` (preto opaco) e usa exclusivamente **`0x7C1F` (magenta) → `0x0000`** para transparência por hardware (ambas travadas no Estágio 5 de `audit_game.js`).
+- **História Completa e Didática do Projeto ([`HISTORIA_DO_PROJETO_THPS2_MOD.md`](HISTORIA_DO_PROJETO_THPS2_MOD.md)):** crônica cronológica passo a passo de 11 capítulos com diagramas Mermaid, tabelas e glossário didático cobrindo cada marco desde a extração Redump até os coletáveis 3D atuais.
+
 ### 🍺 Correção Definitiva dos Objetivos Trick+Gap, `T-A-X-A-S` 3D Dinâmico, Barris Pinga 51 & Garrafa 3D de Pitú (`Scripts/mod_lulao_world_assets.js` & `patch_random_videos_and_voices.js`)
 - **Correção Cirúrgica dos Objetivos Trick+Gap (`type == 5`, `G6`) para o Lulao e Todos os Skatistas (`0x800662AC`):**
   - Causa raiz provada em `0x80066274..0x800662EC`: o verificador de objetivos Trick+Gap lê `SGoal[6].paramStr` (`+0x08`) e executa `strcasestr(trickName, paramStr)` (`jal 0x8006E4BC`) contra os nomes reais em `tricks.bin` (`WAD[11]`).

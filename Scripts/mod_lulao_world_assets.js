@@ -32,6 +32,7 @@
 const fs = require('fs');
 const path = require('path');
 const psxLib = require('./psx_skater_lib');
+const haddadDilma = require('./mod_collectibles_haddad_dilma');
 
 const ROOT = psxLib.rootDir;
 const BACKUP_DIR = psxLib.backupDir;
@@ -1225,25 +1226,46 @@ function main() {
     ? previewDirArg.slice('--preview-dir='.length)
     : path.join(ROOT, 'build', 'qa_world_assets');
 
-  console.log('=== THPS2 Lulao World Assets Builder (3D X + Pinga 51 Barrels + 3D Garrafa Pitu) ===');
+  console.log('=== THPS2 Lulao World Assets Builder (3D X + Pinga 51 + 3D Pitu + 3D Haddad + 3D Dilma) ===');
 
   // 1. items.psx (WAD[8]) with 3D uppercase 'X' (M[13])
   const itemsPsx = buildItemsPsxWithX();
 
-  // 2. skhan_o.psx (WAD[14]) + skhan_o2.psx (WAD[1109]) with Pinga 51 barrels
-  const skhanO = getOrigEntry(14).buf;
+  // 2. skhan_o.psx (WAD[14]) + skhan_o2.psx (WAD[1109]) with Pinga 51 barrels + 3D Haddad (M[8])
+  let skhanO = getOrigEntry(14).buf;
   const barrelArts = paintPinga51BarrelTextures(skhanO);
-  console.log(`  [PSX] skhan_o.psx:  ${skhanO.length} B (exato, 0 B shift) -> Barril Pinga 51 aplicado (ti=26 64x64 256c + ti=25 64x64 16c)`);
+  console.log(`  [PSX] skhan_o.psx:  Barril Pinga 51 aplicado (ti=26 64x64 256c + ti=25 64x64 16c)`);
 
-  const skhanO2 = getOrigEntry(1109).buf;
+  let skhanO2 = getOrigEntry(1109).buf;
   paintPinga51BarrelTextures(skhanO2);
-  console.log(`  [PSX] skhan_o2.psx: ${skhanO2.length} B (exato, 0 B shift) -> Barril Pinga 51 (2P) aplicado`);
+  console.log(`  [PSX] skhan_o2.psx: Barril Pinga 51 (2P) aplicado`);
+
+  const hadTex = haddadDilma.buildHaddadTexture64();
+  const hadRes1 = haddadDilma.patchHangarHaddadInPsx(skhanO, 'skhan_o.psx', hadTex);
+  const hadRes2 = haddadDilma.patchHangarHaddadInPsx(skhanO2, 'skhan_o2.psx', hadTex);
+  skhanO = hadRes1.buf;
+  skhanO2 = hadRes2.buf;
+  console.log(`  [PSX] skhan_o.psx:  ${hadRes1.origSize} -> ${hadRes1.newSize} / ${hadRes1.maxBytes} B -> 3D Haddad M[8] (${hadRes1.stats.nV}v/${hadRes1.stats.nF}f, 64x64 16c)`);
+  console.log(`  [PSX] skhan_o2.psx: ${hadRes2.origSize} -> ${hadRes2.newSize} / ${hadRes2.maxBytes} B -> 3D Haddad M[8] (2P)`);
 
   // 3. skven_o.psx (WAD[1103]) + skven_l.psx (WAD[1102]) with 3D Garrafa de Pitú
   const skvenO = buildSkvenOPsxWithPitu();
   const skvenL = getOrigEntry(1102).buf;
   const pituArts = paintPituBottleTextures(skvenL);
-  console.log(`  [PSX] skven_l.psx:  ${skvenL.length} B (exato, 0 B shift) -> Rotulo PITU + Camarão (48x48 256c) + base vidro + tampa vermelha`);
+  console.log(`  [PSX] skven_l.psx:  ${skvenL.length} B (exato, 0 B shift) -> Rotulo PITU + Camarao (48x48 256c) + base vidro + tampa vermelha`);
+
+  // 4. sksl2_o.psx (WAD[1095]) + sksl2_l.psx (WAD[1094]) + sksl2_l2.psx (WAD[1096]) with 3D Dilma no Barril (M[5])
+  const dilTex = haddadDilma.buildDilmaTexture40x64();
+  const dilRes = haddadDilma.patchSchool2Dilma(
+    getOrigEntry(1095).buf,
+    getOrigEntry(1094).buf,
+    getOrigEntry(1096).buf,
+    dilTex
+  );
+  const sksl2O = dilRes.newO, sksl2L = dilRes.newL, sksl2L2 = dilRes.newL2;
+  console.log(`  [PSX] sksl2_o.psx:  ${dilRes.sizes.o[0]} -> ${dilRes.sizes.o[1]} / ${dilRes.sizes.o[2]} B -> 3D Dilma no Barril M[5] (${dilRes.stats.nV}v/${dilRes.stats.nF}f)`);
+  console.log(`  [PSX] sksl2_l.psx:  ${dilRes.sizes.l[0]} -> ${dilRes.sizes.l[1]} / ${dilRes.sizes.l[2]} B -> Textura 0xfc079202 (40x64 16c)`);
+  console.log(`  [PSX] sksl2_l2.psx: ${dilRes.sizes.l2[0]} -> ${dilRes.sizes.l2[1]} / ${dilRes.sizes.l2[2]} B -> Textura 0xfc079202 (2P, 40x64 16c)`);
 
   if (doPreview) {
     fs.mkdirSync(previewDir, { recursive: true });
@@ -1269,6 +1291,10 @@ function main() {
       { yaw: 90, pitch: 8 }, { yaw: 135, pitch: 10 }, { yaw: 270, pitch: 8 }, { yaw: 0, pitch: 10 },
     ], 160, 180, 0.85, path.join(previewDir, 'venice_pitu_bottle_3d.png'));
 
+    // Render Hangar 3D Haddad + School II 3D Dilma no Barril multi-angle QA!
+    haddadDilma.renderPs1MeshPreview(hadRes1.geometry, hadTex, path.join(previewDir, 'hangar_haddad_3d.png'), [0, 35, 75, 180], [44, 54, 70]);
+    haddadDilma.renderPs1MeshPreview(dilRes.geometry, dilTex, path.join(previewDir, 'school2_dilma_3d.png'), [0, 30, -30, 62], [68, 62, 56]);
+
     console.log(`  [QA] Previews 3D PS1 gerados em: ${previewDir}`);
   }
 
@@ -1284,10 +1310,13 @@ function main() {
 
   const updates = [
     { idx: 8,    name: 'items.psx',    buf: itemsPsx, allowGrowWithinSectors: true },
-    { idx: 14,   name: 'skhan_o.psx',  buf: skhanO,   allowGrowWithinSectors: false },
-    { idx: 1109, name: 'skhan_o2.psx', buf: skhanO2,  allowGrowWithinSectors: false },
+    { idx: 14,   name: 'skhan_o.psx',  buf: skhanO,   allowGrowWithinSectors: true },
+    { idx: 1109, name: 'skhan_o2.psx', buf: skhanO2,  allowGrowWithinSectors: true },
     { idx: 1103, name: 'skven_o.psx',  buf: skvenO,   allowGrowWithinSectors: true },
     { idx: 1102, name: 'skven_l.psx',  buf: skvenL,   allowGrowWithinSectors: false },
+    { idx: 1095, name: 'sksl2_o.psx',  buf: sksl2O,   allowGrowWithinSectors: true },
+    { idx: 1094, name: 'sksl2_l.psx',  buf: sksl2L,   allowGrowWithinSectors: true },
+    { idx: 1096, name: 'sksl2_l2.psx', buf: sksl2L2,  allowGrowWithinSectors: true },
   ];
 
   for (const u of updates) {

@@ -278,9 +278,14 @@ try {
     // Allow ONLY size-field updates strictly within SAME CD sector allocations (ZERO offset shifts!)
     const allowedHedSizeDelta = new Map([
       [8,    1056],             // items.psx:   39096 -> 40152 B (<= 40960 B, same 20 sectors, +3D letter 'X' M[13])
+      [14,   120],              // skhan_o.psx: 122236 -> 122356 B (<= 122880 B, same 60 sectors, +3D Haddad M[8] + Pinga 51)
       [387,  SILVIO_MIC_DELTA], // burnq2.psx:  60244 -> 61404 B (<= 61440 B, same 30 sectors, +3D Mic)
       [1010, SILVIO_MIC_DELTA], // burnq_l.psx: 51932 -> 53092 B (<= 53248 B, same 26 sectors, +3D Mic)
+      [1094, 768],              // sksl2_l.psx: 341176 -> 341944 B (<= 342016 B, same 167 sectors, Dilma 40x64 16c)
+      [1095, 168],              // sksl2_o.psx:   5960 ->   6128 B (<=   6144 B, same 3 sectors, 3D Dilma Barril M[5])
+      [1096, 768],              // sksl2_l2.psx:341176 -> 341944 B (<= 342016 B, same 167 sectors, Dilma 40x64 16c 2P)
       [1103, 1116],             // skven_o.psx:  9076 -> 10192 B (<= 10240 B, same 5 sectors, 3D Garrafa Pitu M[4])
+      [1109, 120],              // skhan_o2.psx:123480 -> 123600 B (<= 124928 B, same 61 sectors, +3D Haddad M[8] 2P)
     ]);
     let hedErr = 0;
     for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
@@ -300,12 +305,12 @@ try {
       fail('WAD', 'Bytes apos tabela CD.HED diferem do Redump!');
       hedErr++;
     }
-    if (hedErr === 0) pass('CD.HED 100% integro: 1.527/1.531 entradas bit-a-bit Redump + [8/387/1010/1103] nos mesmos setores (0 deslocamento de offsets)');
+    if (hedErr === 0) pass('CD.HED 100% integro: 1.522/1.531 entradas bit-a-bit Redump + 9 modelos/texturas nos mesmos setores (0 deslocamento de offsets)');
   }
 
   const allowedWadIdxs = new Set([
     3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
-    8, 14, 1102, 1103, 1109,                        // Lulao world assets: items.psx (3D X), skhan_o/o2 (Pinga 51 barrels), skven_o/l (3D Pitu bottle)
+    8, 14, 1094, 1095, 1096, 1102, 1103, 1109,      // Lulao world assets: items (3D X), skhan_o/o2 (Pinga 51 + 3D Haddad), sksl2_o/l/l2 (3D Dilma Barril), skven_o/l (3D Pitu)
     45, 60, 61, 458,                                // options.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
     369, 370, 371, 372, 377, 378, 379,              // 7 custom portraits: s2face1,2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     387, 1010, 431, 1012,                           // Silvio Santos (4 .PSX, incl. 3D Chest Mic on 387 & 1010)
@@ -650,8 +655,33 @@ try {
     const skhanO2Mod = getWadEntry(fdMod, 455, hedDisk, 1109);
     const hp1 = psxLib.parsePsxStructure(skhanOMod);
     const hp2 = psxLib.parsePsxStructure(skhanO2Mod);
-    if (hp1.numMeshes < 10 || hp2.numMeshes < 10) fail('WORLD3D', 'skhan_o / skhan_o2 corrompido!');
-    else pass(`skhan_o.psx (idx=14, ${skhanOMod.length} B) & skhan_o2.psx (idx=1109, ${skhanO2Mod.length} B): Barris Pinga 51 validos (0 B shift)`);
+    const hMo = hp1.meshOffs[8];
+    const hV = skhanOMod.readUInt16LE(hMo + 2), hF = skhanOMod.readUInt16LE(hMo + 6);
+    const hDrawDist = skhanOMod.readUInt32LE(hMo + 24);
+    const hTex = hp1.textures.find(t => t.texIdx === 24);
+    const hPal0 = hTex ? skhanOMod.readUInt16LE(hTex.palInfo.offset) : 0;
+    if (hp1.numMeshes < 10 || hp2.numMeshes < 10 || hV !== 34 || hF !== 32 || hDrawDist !== 0xffff7fff || !hTex || hTex.w !== 64 || hTex.h !== 64 || hPal0 !== 0x7c1f) {
+      fail('WORLD3D', `skhan_o / skhan_o2 invalido (M[8] Haddad=${hV}v/${hF}f, drawDist=0x${hDrawDist.toString(16)}, pal0=0x${hPal0.toString(16)}, tex24=${hTex ? hTex.w + 'x' + hTex.h : 'missing'})!`);
+    } else {
+      pass(`skhan_o.psx (idx=14, ${skhanOMod.length}/122880 B) & skhan_o2.psx (idx=1109): Barris Pinga 51 + 3D Haddad M[8] (${hV}v/${hF}f, 64x64 16c, alpha 0x7c1f) validos`);
+    }
+    const sksl2OMod = getWadEntry(fdMod, 455, hedDisk, 1095);
+    const sksl2LMod = getWadEntry(fdMod, 455, hedDisk, 1094);
+    const sksl2L2Mod = getWadEntry(fdMod, 455, hedDisk, 1096);
+    const dp = psxLib.parsePsxStructure(sksl2OMod);
+    const dl1 = psxLib.parsePsxStructure(sksl2LMod);
+    const dl2 = psxLib.parsePsxStructure(sksl2L2Mod);
+    const dMo = dp.meshOffs[5];
+    const dV = sksl2OMod.readUInt16LE(dMo + 2), dF = sksl2OMod.readUInt16LE(dMo + 6);
+    const dDrawDist = sksl2OMod.readUInt32LE(dMo + 24);
+    const dt1 = dl1.textures.find(t => t.palId === 2582071966);
+    const dt2 = dl2.textures.find(t => t.palId === 2582071966);
+    const dPal0 = dt1 ? sksl2LMod.readUInt16LE(dt1.palInfo.offset) : 0;
+    if (dV !== 20 || dF !== 12 || dDrawDist !== 0xffff7fff || !dt1 || dt1.w !== 40 || dt1.h !== 64 || !dt2 || dt2.w !== 40 || dt2.h !== 64 || dPal0 !== 0x7c1f) {
+      fail('WORLD3D', `School II Dilma invalida (M[5]=${dV}v/${dF}f, drawDist=0x${dDrawDist.toString(16)}, pal0=0x${dPal0.toString(16)}, tex=${dt1 ? dt1.w + 'x' + dt1.h : 'missing'})!`);
+    } else {
+      pass(`sksl2_o.psx (idx=1095, ${sksl2OMod.length}/6144 B) & sksl2_l/l2.psx (idx=1094/1096, ${sksl2LMod.length}/342016 B): 3D Dilma no Barril M[5] (${dV}v/${dF}f, 40x64 16c, alpha 0x7c1f) valida`);
+    }
   }
 
   // =========================================================================

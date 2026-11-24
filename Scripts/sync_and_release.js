@@ -94,6 +94,7 @@ const scriptsToSync = [
   'mod_bail_screams.js',
   'mod_hangar_walls.js',
   'mod_lulao_world_assets.js',
+  'mod_collectibles_haddad_dilma.js',
   'build_skater_voices.js',
   'patch_random_videos_and_voices.js',
   'fix_game_errors.js',
@@ -115,6 +116,9 @@ fs.copyFileSync(path.join(repoDir, 'README.md'), path.join(rootDir, 'README.md')
 if (fs.existsSync(path.join(repoDir, 'CHANGELOG.md'))) {
   fs.copyFileSync(path.join(repoDir, 'CHANGELOG.md'), path.join(rootDir, 'CHANGELOG.md'));
 }
+if (fs.existsSync(path.join(repoDir, 'HISTORIA_DO_PROJETO_THPS2_MOD.md'))) {
+  fs.copyFileSync(path.join(repoDir, 'HISTORIA_DO_PROJETO_THPS2_MOD.md'), path.join(rootDir, 'HISTORIA_DO_PROJETO_THPS2_MOD.md'));
+}
 // Mirror static technical maps (MAPA_10..13) from repo/Docs/ into local docs/
 const localDocsDir = path.join(rootDir, 'docs');
 fs.mkdirSync(localDocsDir, { recursive: true });
@@ -126,7 +130,7 @@ for (const f of fs.readdirSync(path.join(repoDir, 'Docs'))) {
 
 // 5. Git commit & push on main
 console.log('\n=== 5. Git commit & push para GitHub (origin/main) ===');
-run('git', ['-C', repoDir, 'add', 'README.md', 'CHANGELOG.md', 'Docs', 'Scripts']);
+run('git', ['-C', repoDir, 'add', 'README.md', 'CHANGELOG.md', 'HISTORIA_DO_PROJETO_THPS2_MOD.md', 'Docs', 'Scripts']);
 const statusRes = spawnSync('git', ['-C', repoDir, 'status', '--porcelain'], { encoding: 'utf8' });
 if (statusRes.stdout.trim().length > 0) {
   run('git', ['-C', repoDir, 'commit', '-m', commitMsg]);
@@ -298,6 +302,9 @@ fs.copyFileSync(path.join(repoDir, 'README.md'), path.join(toolkitPkgDir, 'READM
 if (fs.existsSync(path.join(repoDir, 'CHANGELOG.md'))) {
   fs.copyFileSync(path.join(repoDir, 'CHANGELOG.md'), path.join(toolkitPkgDir, 'CHANGELOG.md'));
 }
+if (fs.existsSync(path.join(repoDir, 'HISTORIA_DO_PROJETO_THPS2_MOD.md'))) {
+  fs.copyFileSync(path.join(repoDir, 'HISTORIA_DO_PROJETO_THPS2_MOD.md'), path.join(toolkitPkgDir, 'HISTORIA_DO_PROJETO_THPS2_MOD.md'));
+}
 for (const f of fs.readdirSync(path.join(repoDir, 'Docs'))) {
   if (f.endsWith('.md')) fs.copyFileSync(path.join(repoDir, 'Docs', f), path.join(toolkitPkgDir, 'Docs', f));
 }
@@ -328,7 +335,7 @@ const notes = [
   '- **9 Gritos Alternados de Queda (*Bail*) + Biografias PT-BR Nativas (`á, ã, ç, é, ê, í, ó`):** 9 gritos extraídos injetados em `skate2/2g/2p .VAB/.SFX` (`0 B` extras em SPU RAM) com rotação estrita round-robin (`Hook_BailSfx @ 0x800E3400` + cooldown 50f) e fonte `s2bio.fnt` com glifos acentuados PT-BR para as biografias de Lulao e Bolsonaro.',
   '- **7 Skatistas Completamente Personalizados em Style A & B (28 modelos 3D `.PSX` + 7 retratos `s2face*.bmp`):**',
   '  - **Silvio Santos (Slot 1, ex-Bob Burnquist):** terno azul-marinho 2 botões, gravata, lenço branco de bolso + **microfone de peito 3D verdadeiramente geométrico (`+23v/+18f` em `Chest Mesh[8]` Hi/Lo-LOD)** (Style A) / camisa havaiana azul-royal com balão amarelo, palmeiras e hibiscos + bermuda xadrez sem joelheiras/cotoveleiras (Style B) + escultura facial 3D removendo chapéu pescador e capacete + retrato `s2face1.bmp` + **13 vozes**.',
-  '  - **Lulao (Slot 2):** terno + faixa presidencial (Style A) / presidiário (Style B) + rosto + barriguinha 3D anatômica + biografia PT-BR + **14 vozes** + **Modo Carreira exclusivo** (88 strings satíricas nas 8 fases, `"Roubei mais 50!/100!/250!"`, fala em cada dinheiro coletado e fim de partida com **0 ms de travamento / 60 FPS travados** via pré-cache adaptativo em RAM `LULAO_GPBANK`).',
+  '  - **Lulao (Slot 2):** terno + faixa presidencial (Style A) / presidiário (Style B) + rosto + barriguinha 3D anatômica + biografia PT-BR + **14 vozes** + **Modo Carreira & Coletáveis 3D exclusivos** (`93` strings satíricas nas 8 fases com Trick+Gap `G6` 100% funcionais, **`S-K-A-T-E` → `T-A-X-A-S` 3D dinâmico** com letra `X`, **Barris Pinga 51** + **5 Haddads 3D Ajuste Fiscal** no Hangar, **5 Dilmas no Barril 3D** em School II, **5 Garrafas 3D de Pitú** em Venice Beach, `"Roubei mais 50!/100!/250!"`, e fala em cada dinheiro coletado e fim de partida com **0 ms de travamento / 60 FPS travados** via pré-cache adaptativo em RAM `LULAO_GPBANK`).',
   '  - **Bolsonaro (Slot 3):** terno + faixa (Style A) / listrado 171 (Style B) + rosto `bolsonaro_rosto.png` + cabelo curto 360° + **pescoço anatômico fino transplantado do Tony Hawk (`hawk2.psx`)** + biografia PT-BR + **14 vozes**.',
   '  - **Wagner Oliver (Slot 4):** moletom bordô `"CIÊNCIA DA COMPUTAÇÃO"` + jeans claro (Style A) / uniforme tático policial `"POLICJA"` + calça cargo + coturnos (Style B) + viseira 3D do Rune Glifberg removida.',
   '  - **Francis Paulo (Slot 7):** raglan branca `"Uber"` + `"99"` + jeans 4-bit (Style A) / kimono Shinigami Bleach preto com gola/faixa branca + hakama 4-bit (Style B) + cabelo volumoso 3D.',
@@ -344,7 +351,7 @@ const notes = [
   `| Resultado \`THPS2_MOD.bin\` (Verificado Round-Trip: ${manifest.patch.roundTripVerified ? '✅ SIM' : '⚠️'}) | \`${manifest.patchedBin.sizeBytes}\` B (\`${manifest.patchedBin.sectors}\` setores) | SHA-256 \`${manifest.patchedBin.sha256}\` |`,
   '',
   '### 📚 Para Desenvolvedores / Modders (`THPS2_PSX_Modding_Toolkit_and_Docs.zip`)',
-  '- Inclui toda a enciclopédia técnica (`Docs/MAPA_01..13_*.md` + guias + `CHANGELOG.md`) e a suíte completa de scripts Node.js + Ghidra (`Scripts/`).',
+  '- Inclui toda a enciclopédia técnica (`Docs/MAPA_01..13_*.md` + guias + `CHANGELOG.md` + `HISTORIA_DO_PROJETO_THPS2_MOD.md`) e a suíte completa de scripts Node.js + Ghidra (`Scripts/`).',
   '',
   `> *Última atualização automática: \`${manifest.generatedAt}\` — Distribuição estritamente legal via patch delta (\`.xdelta\`), sem hospedar imagens comerciais completas.*`
 ].join('\n');
