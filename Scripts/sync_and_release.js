@@ -93,6 +93,7 @@ const scriptsToSync = [
   'mod_skater_bios.js',
   'mod_bail_screams.js',
   'mod_hangar_walls.js',
+  'mod_lulao_world_assets.js',
   'build_skater_voices.js',
   'patch_random_videos_and_voices.js',
   'fix_game_errors.js',

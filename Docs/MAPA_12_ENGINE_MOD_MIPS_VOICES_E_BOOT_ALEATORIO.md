@@ -98,3 +98,31 @@ flowchart TD
 ### D. Causa Raiz e Correção Cirúrgica do Bug "Continuar → Roda Gigante"
 - Em uma versão inicial do ducking de música, o estado de detecção de `playsel.bin` compartilhava o registrador global `23464($gp)` usado internamente pelo THPS2 para decidir a transição de estado do menu — fazendo com que clicar em *"Continuar"* retornasse para `State 0` (Roda Gigante) em vez de avançar para `State 2` (*Level Select*).
 - **Solução definitiva:** introduzimos a variável privada dedicada **`g_InPlaySel` em `0x800E27DC`** (gerenciada exclusivamente por `Hook_RunPlaySel` sem jamais ler ou gravar `23464($gp)`), validada ao vivo no DuckStation GDB (`State = 2` e `g_InPlaySel = 0` em 100% dos testes!).
+
+---
+
+## 7. Objetivos Trick+Gap (`0x800662AC`) & Coletável Dinâmico `T-A-X-A-S` (`Hook_SpawnLetter @ 0x80035D68`)
+
+### 7.1 Correção Definitiva dos Objetivos Trick+Gap (`SGoal[6].paramStr`)
+- Na rotina de validação de objetivos Trick+Gap (`type == 5`, sempre `G6` em `g_LevelTable @ 0x800B8444`), o trecho `0x80066274..0x800662EC` carrega `s2 = SGoal[6].paramStr` (`+0x08`) e percorre todas as manobras do combo chamando `jal 0x8006E4BC(trickNameFromTricksBin, paramStr)` (*case-insensitive substring match* `strcasestr`).
+- **Invariante obrigatório:** `goalShortPtr(lv, 6)` **NUNCA** pode ser sobrescrito por textos satíricos fora de `tricks.bin` (`WAD[11]`):
+  - `LV 0 (Hangar)`: `"NOSEGRIND"` (`0x800D5074`)
+  - `LV 1 (School II)`: `"Kickflip"` (`0x800D50F8` — restaurado em `SLUS_010.66` a partir do antigo `"Chutinho"`, corrigindo School II para **todos os skatistas**!)
+  - `LV 3 (NY City)`: `"50-50"` (`0x800D51CC`)
+  - `LV 4 (Venice Beach)`: `"Tailslide"` (`0x800D5234`)
+  - `LV 6 (Philadelphia)`: `"Blunt"` (`0x800D5338`)
+- Validado automaticamente no Estágio 2 e Estágio 6 de `Scripts/audit_game.js`.
+
+### 7.2 Remapeamento Dinâmico `S-K-A-T-E` → `T-A-X-A-S` (Exclusivo do Lulao `Slot 2`)
+- **Spawn 3D (`0x80035D68`: `jal Mesh_FindByHash` → `jal Entry_SpawnLetter @ 0x800E3848`):**
+  - Todos os 5 casos do switch de spawn das letras (`0x80035CE0..0x80035D64`) convergem em `0x80035D68`.
+  - `Hook_SpawnLetter` consulta `GetSelectedSkaterIdx(g_Career)`; somente quando `v0 == 2` (Lulao), consulta a tabela `g_TaxasHashMap` (5 pares × 8 B em `LULAO_CODE`) e remapeia `$a0`:
+    - `0x311D55D4 ('S') → 0x34524351 ('T', M[6])`
+    - `0x2328A71C ('K') → 0x2EBF22CA ('A', M[5])`
+    - `0x2EBF22CA ('A') → 0x58585858 ('X', M[13] customizado em items.psx)`
+    - `0x34524351 ('T') → 0x2EBF22CA ('A', M[5])`
+    - `0x29B68A16 ('E') → 0x311D55D4 ('S', M[3])`
+  - Para qualquer outro skatista (e para a Secret Tape `0x2364558E`), `$a0` segue inalterado diretamente para `Mesh_FindByHash @ 0x800667BC`.
+- **HUD Lateral & Banners de Coleta (`LULAO_STRDATA`, `93/94` slots):**
+  - `0x800D7704..0x800D7714` (5 palavras ASCII 32-bit estáticas lidas pelo HUD em `0x80063550..0x80063604`): `Lulao_SyncStrings` grava `0x54, 0x41, 0x58, 0x41, 0x53` (`T, A, X, A, S`) para o Lulao e restaura `0x53, 0x4B, 0x41, 0x54, 0x45` (`S, K, A, T, E`) para os demais skatistas.
+  - `g_StringTable @ 0x800C08E8..0x800C08F8` (banners exibidos ao pegar cada letra em `0x80036728..0x800367D8`): trocados dinamicamente para `"T", "A", "X", "A", "S"` apenas para o Lulao.

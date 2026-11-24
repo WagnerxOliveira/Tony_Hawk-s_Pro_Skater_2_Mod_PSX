@@ -100,3 +100,15 @@ Para padronizar a criação de novos skatistas com qualidade de produção, toda
 - `patchWadAndOptionsPre` (atualiza simultaneamente `CD.WAD` e `options.pre` preservando exatamente os tamanhos originais).
 
 > **Fase 1 (*The Hangar* — `skhan_l.psx`):** os murais temporários testados via [`Scripts/mod_hangar_walls.js`](../Scripts/mod_hangar_walls.js) foram removidos a pedido do projeto; `skhan_l.psx` (`316.604 B`) encontra-se **100% restaurado ao original Redump** e validado bit-a-bit no Estágio 5 de `audit_game.js`.
+
+---
+
+## 4. Assets 3D & Texturas de Mundo do Lulao (`Scripts/mod_lulao_world_assets.js`)
+
+Todos os 3 conjuntos abaixo são gerados de forma determinística a partir de `originals_backup/CD.WAD`, respeitando a lei empírica de *winding* PS1 GTE (`dot((v1 - v0) × (v2 - v0), normalExterna) < 0`), polaridade UV esquerda→direita e **zero deslocamento de offsets no `CD.WAD`** (expansões contidas na alocação original de setores de `2.048 B`, atualizando apenas `CD.HED[idx].size` + `obj[i].ptrRgbs @ +32`):
+
+| Asset / Arquivo | Entrada `CD.WAD` | Tamanho (Orig → Mod / Alocado) | Modificação Cirúrgica |
+| :--- | :---: | :---: | :--- |
+| **Letra 3D Maiúscula `X`** (`items.psx`) | `WAD[8]` | `39.096 → 40.152 B` / `40.960 B` (`20 set.`) | Anexada `M[13]` (`hash = 0x58585858`, `24v/22n/22f`, `1.012 B`, +`obj[13]`, `ptrRgbs` e `texOffs[0..12]` ajustados) com inclinação itálica e gradiente dourado-âmbar `RGBs` idênticos a `T`/`A`/`S`. |
+| **Barris Pinga 51** (`skhan_o.psx` & `skhan_o2.psx`) | `WAD[14]` / `WAD[1109]` | `122.236 B` / `123.480 B` (**exato, 0 B shift**) | Em `M[9]` (`0x4EB2C689`), substituído o losango `"FLAMMABLE"` em `ti=26` (`64×64 256c`, `0xD8113BF8`) pelo escudo **`PINGA 51 BRASIL`** + estêncil `"51"` na tampa `ti=25` (`64×64 16c`, `0x5734BAB8`). |
+| **Garrafa 3D de Pitú** (`skven_o.psx` + `skven_l.psx`) | `WAD[1103]` + `WAD[1102]` | `9.076 → 10.192 B` / `10.240 B` (`5 set.`) + `345.016 B` (exato) | `skven_o.psx M[4]` (`0xA09E4E74`, antiga lata de spray) substituído por garrafa octogonal 3D esculpida (`40v/38n/38f`: base, corpo, ombro curvo, gargalo fino com colarinho e tampa rosqueada). Texturas exclusivas em `skven_l.psx`: `T[127]` (`48×48 256c`, vidro verde-claro + rótulo frente/verso com camarão vermelho e **`"PITÚ"`**), `T[128]` (`32×32 16c`, base) e `T[129]` (`16×16 16c`, tampa vermelha/dourada). |

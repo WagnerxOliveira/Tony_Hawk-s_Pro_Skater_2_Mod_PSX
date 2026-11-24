@@ -57,6 +57,7 @@ const SYM = {
   XA_Update:              0x80038E14,
   Gameplay_MainLoop:      0x8003CD84,
   Level_Unload:           0x80063054,
+  Mesh_FindByHash:        0x800667BC,
   GetSelectedSkaterIdx:   0x8008A3A8,
   SFX_Play:               0x800526B4,
   SFX_FindGlobal:         0x80053A04,
@@ -131,6 +132,7 @@ const ADDR = {
   Entry_FrameTick:     0x800E3830,
   Entry_GameplayStart: 0x800E3838,
   Entry_GameplayExit:  0x800E3840,
+  Entry_SpawnLetter:   0x800E3848,
   // Sectors 4..5 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup & Strings
   LulaoStrDataBase:    0x800E4800,
   LulaoOrigBackup:     0x800E4B00, // 96 x 4 B = 384 B (0x800E4B00..0x800E4C7F)
@@ -1334,13 +1336,13 @@ function buildLulaoStrData() {
     [goalNamePtr(0, 0),  'Picanha Basica - 10,000'],
     [goalNamePtr(0, 1),  'Cervejinha Pro - 25,000'],
     [goalNamePtr(0, 2),  'Taxa da Shopee - 75,000'],
-    [goalNamePtr(0, 3),  'Soletre S-K-A-T-E Comp.'],
-    [goalNamePtr(0, 4),  '5 Barris de Cachaca 51'],
-    [goalShortPtr(0, 4), 'CACHACA 51'],
+    [goalNamePtr(0, 3),  'Soletre T-A-X-A-S Comp.'],
+    [goalNamePtr(0, 4),  '5 Barris de Pinga 51'],
+    [goalShortPtr(0, 4), 'PINGA 51'],
     [goalNamePtr(0, 5),  '5 Asas do Aviao da Janja'],
     [goalShortPtr(0, 5), 'AVIAO JANJA'],
-    [goalNamePtr(0, 6),  'Saudar a Mandioca no Cano'],
-    [goalShortPtr(0, 6), 'MANDIOCA'],
+    [goalNamePtr(0, 6),  'Nosegrind na Mandioca'],
+    // NOTA CRITICA: NAO sobrescrever goalShortPtr(0, 6) ("NOSEGRIND"), usado pelo matcher 0x800662AC!
     [goalNamePtr(0, 7),  '3 Voos Pobre no Aviao'],
     [goalShortPtr(0, 7), 'VOO DO POBRE'],
     [goalNamePtr(0, 8),  'Achar a Fita do Triplex'],
@@ -1350,13 +1352,13 @@ function buildLulaoStrData() {
     [goalNamePtr(1, 0),  'Nunca Li Livro - 15,000'],
     [goalNamePtr(1, 1),  'Zero Portugues - 40,000'],
     [goalNamePtr(1, 2),  'PhD em Enrolar - 100,000'],
-    [goalNamePtr(1, 3),  'S-K-A-T-E sem Diplominha'],
+    [goalNamePtr(1, 3),  'T-A-X-A-S sem Diplominha'],
     [goalNamePtr(1, 4),  '5 Sinos do Sindicato'],
     [goalShortPtr(1, 4), 'SINDICATO'],
     [goalNamePtr(1, 5),  '5 Passes pro Sitio VIP'],
     [goalShortPtr(1, 5), 'PASSES SITIO'],
     [goalNamePtr(1, 6),  'Kickflip no Teto de Gasto'],
-    [goalShortPtr(1, 6), 'TETO GASTO'],
+    // NOTA CRITICA: NAO sobrescrever goalShortPtr(1, 6) ("Kickflip"), restaurado em 0x800D50F8!
     [goalNamePtr(1, 7),  '3 Corrimoes do Mensalao'],
     [goalShortPtr(1, 7), 'MENSALAO'],
     [goalNamePtr(1, 8),  'Fita do Sigilo 100 Anos'],
@@ -1371,13 +1373,13 @@ function buildLulaoStrData() {
     [goalNamePtr(3, 0),  'Dolar a 6 Conto - 20,000'],
     [goalNamePtr(3, 1),  'Viagem na ONU - 50,000'],
     [goalNamePtr(3, 2),  'Rombo Bilionario 150,000'],
-    [goalNamePtr(3, 3),  'S-K-A-T-E em Nova Iorque'],
+    [goalNamePtr(3, 3),  'T-A-X-A-S em Nova Iorque'],
     [goalNamePtr(3, 4),  'Pular Hidrantes de Pinga'],
     [goalShortPtr(3, 4), 'PINGA'],
     [goalNamePtr(3, 5),  '5 Fichas da Obra do Metro'],
     [goalShortPtr(3, 5), 'OBRA METRO'],
     [goalNamePtr(3, 6),  '50-50 na Obra Superfatur.'],
-    [goalShortPtr(3, 6), '50-50 OBRA'],
+    // NOTA CRITICA: NAO sobrescrever goalShortPtr(3, 6) ("50-50"), usado pelo matcher 0x800662AC!
     [goalNamePtr(3, 7),  'Grind Trilho da Propina'],
     [goalNamePtr(3, 8),  'Fita da Cueca Recheada'],
     [goalNamePtr(3, 9),  '100% Taxei Nova York!'],
@@ -1386,13 +1388,13 @@ function buildLulaoStrData() {
     [goalNamePtr(4, 0),  'Praia do Guaruja - 40,000'],
     [goalNamePtr(4, 1),  'Pedalinho Sitio - 100,000'],
     [goalNamePtr(4, 2),  'Calango do Mar - 200,000'],
-    [goalNamePtr(4, 3),  'S-K-A-T-E da Cervejinha'],
+    [goalNamePtr(4, 3),  'T-A-X-A-S da Cervejinha'],
     [goalNamePtr(4, 4),  'Pular 5 Companheiros'],
     [goalShortPtr(4, 4), 'COMPANHEIROS'],
-    [goalNamePtr(4, 5),  '5 Latas de Pitu na Praia'],
-    [goalShortPtr(4, 5), 'LATAS PITU'],
+    [goalNamePtr(4, 5),  '5 Garrafas de Pitu Praia'],
+    [goalShortPtr(4, 5), 'GARRAFAS PITU'],
     [goalNamePtr(4, 6),  'Tailslide no Triplex'],
-    [goalShortPtr(4, 6), 'TRIPLEX'],
+    // NOTA CRITICA: NAO sobrescrever goalShortPtr(4, 6) ("Tailslide"), usado pelo matcher 0x800662AC!
     [goalNamePtr(4, 7),  '4 Transfers pra Cuba'],
     [goalShortPtr(4, 7), 'CUBA'],
     [goalNamePtr(4, 8),  'Fita do Ze Gotinha Sumido'],
@@ -1407,13 +1409,13 @@ function buildLulaoStrData() {
     [goalNamePtr(6, 0),  'Imposto no Shape - 50,000'],
     [goalNamePtr(6, 1),  'Saco Vazio Nao - 125,000'],
     [goalNamePtr(6, 2),  'Entrou o Grosso - 250,000'],
-    [goalNamePtr(6, 3),  'S-K-A-T-E do Petrolao'],
+    [goalNamePtr(6, 3),  'T-A-X-A-S do Petrolao'],
     [goalNamePtr(6, 4),  'Secar a Fonte do BNDES'],
     [goalShortPtr(6, 4), 'BNDES'],
     [goalNamePtr(6, 5),  '5 Sinos do Imposto Sind.'],
     [goalShortPtr(6, 5), 'IMPOSTO'],
     [goalNamePtr(6, 6),  'Blunt no Toldo da PF'],
-    [goalShortPtr(6, 6), 'TOLDO PF'],
+    // NOTA CRITICA: NAO sobrescrever goalShortPtr(6, 6) ("Blunt"), usado pelo matcher 0x800662AC!
     [goalNamePtr(6, 7),  '4 Lips Sem Sabe de Nada'],
     [goalShortPtr(6, 7), 'NADA SEI'],
     [goalNamePtr(6, 8),  'Fita do Celular da Cerva'],
@@ -1424,7 +1426,7 @@ function buildLulaoStrData() {
     [goalNamePtr(7, 1),  'Prata da Cachaca'],
     [goalNamePtr(7, 2),  'Ouro: Zerei o Brasil!'],
 
-    // ---- g_StringTable: Coleta de Dinheiro & Podio do Lulao ----
+    // ---- g_StringTable: Coleta de Dinheiro, Podio & Letras T-A-X-A-S do Lulao ----
     [0x800C0310, 'Roubei mais 50!'],               // $50 Cash Icon pickup
     [0x800C0314, 'Roubei mais 100!'],              // $100 Cash Icon pickup
     [0x800C030C, 'Roubei mais 250!'],              // $250 Cash Icon pickup
@@ -1435,16 +1437,29 @@ function buildLulaoStrData() {
     [0x800C0558, '1o - Pai dos Pobres!'],          // 1st place
     [0x800C055C, '2o - So pra Cervejinha'],        // 2nd place
     [0x800C0560, '3o - Comeu Abobora!'],           // 3rd place
+    // Letras coletaveis (banner na tela ao pegar cada letra: S,K,A,T,E -> T,A,X,A,S)
+    [0x800C08E8, 'T'],
+    [0x800C08EC, 'A'],
+    [0x800C08F0, 'X'],
+    [0x800C08F4, 'A'],
+    [0x800C08F8, 'S'],
+    // HUD superior esquerdo (5 palavras ASCII 32-bit estaticas @ 0x800D7704..0x800D7714: S,K,A,T,E -> T,A,X,A,S)
+    [0x800D7704, 0x00000054], // 'T'
+    [0x800D7708, 0x00000041], // 'A'
+    [0x800D770C, 0x00000058], // 'X'
+    [0x800D7710, 0x00000041], // 'A'
+    [0x800D7714, 0x00000053], // 'S'
   ];
 
   if (mappings.length > 94) throw new Error(`Lulao mappings (${mappings.length}) excede 94 slots!`);
-  for (const [ptr, text] of mappings) {
-    if (!/^[\x20-\x7e]+$/.test(text)) throw new Error(`String nao-ASCII em 0x${ptr.toString(16)}: ${text}`);
-    if (ptr < 0x800C0000 && text.length > 26) throw new Error(`Objetivo muito longo (${text.length} > 26): ${text}`);
+  for (const [ptr, val] of mappings) {
+    if (typeof val === 'number') continue;
+    if (!/^[\x20-\x7e]+$/.test(val)) throw new Error(`String nao-ASCII em 0x${ptr.toString(16)}: ${val}`);
+    if (ptr < 0x800C0000 && val.length > 26) throw new Error(`Objetivo muito longo (${val.length} > 26): ${val}`);
   }
 
-  // Layout inside Sectors 3..4 (4096 B @ RAM 0x800E4000..0x800E4FFF):
-  //   +0x000..+0x2FF (768 B): up to 95 x 8B pairs { uint32 targetPtr, uint32 lulaoStrPtr } + {0,0}
+  // Layout inside Sectors 4..5 (4096 B @ RAM 0x800E4800..0x800E57FF):
+  //   +0x000..+0x2FF (768 B): up to 95 x 8B pairs { uint32 targetPtr, uint32 lulaoValOrStrPtr } + {0,0}
   //   +0x300..+0x47F (384 B): runtime backup array g_OrigBackup[96] (zeroed in file, filled on first sync)
   //   +0x480..+0xFFF (2944 B): NUL-terminated ASCII strings (deduplicated)
   const buf = Buffer.alloc(4096, 0);
@@ -1452,18 +1467,24 @@ function buildLulaoStrData() {
   let strOff = 0x480;
 
   for (let i = 0; i < mappings.length; i++) {
-    const [targetPtr, text] = mappings[i];
-    let ramAddr = strPool.get(text);
-    if (ramAddr === undefined) {
-      const b = Buffer.from(text + '\0', 'ascii');
-      if (strOff + b.length > buf.length) throw new Error(`LULAO_STRDATA overflow em "${text}"!`);
-      b.copy(buf, strOff);
-      ramAddr = (ADDR.LulaoStrDataBase + strOff) >>> 0;
-      strPool.set(text, ramAddr);
-      strOff += b.length;
+    const [targetPtr, val] = mappings[i];
+    let writeVal;
+    if (typeof val === 'number') {
+      writeVal = val >>> 0;
+    } else {
+      let ramAddr = strPool.get(val);
+      if (ramAddr === undefined) {
+        const b = Buffer.from(val + '\0', 'ascii');
+        if (strOff + b.length > buf.length) throw new Error(`LULAO_STRDATA overflow em "${val}"!`);
+        b.copy(buf, strOff);
+        ramAddr = (ADDR.LulaoStrDataBase + strOff) >>> 0;
+        strPool.set(val, ramAddr);
+        strOff += b.length;
+      }
+      writeVal = ramAddr >>> 0;
     }
     buf.writeUInt32LE(targetPtr >>> 0, i * 8);
-    buf.writeUInt32LE(ramAddr >>> 0, i * 8 + 4);
+    buf.writeUInt32LE(writeVal >>> 0, i * 8 + 4);
   }
   // Terminator {0, 0} already zeroed!
 
@@ -1490,7 +1511,7 @@ function assembleLulaoEngine(gpMeta) {
   }
   const a = new MipsAsm(ADDR.LulaoCodeBase);
 
-  // Fixed Entry Jump Table @ 0x800E3800 (9 entries — 100% ABI-compatible with all SLUS_010.66 hooks!)
+  // Fixed Entry Jump Table @ 0x800E3800 (10 entries — 100% ABI-compatible with all SLUS_010.66 hooks!)
   a.j('Lulao_SyncStrings');   a.nop(); // 0x800E3800
   a.j('Hook_OverlaySyncRun'); a.nop(); // 0x800E3808
   a.j('Hook_CollectCash');    a.nop(); // 0x800E3810
@@ -1500,6 +1521,7 @@ function assembleLulaoEngine(gpMeta) {
   a.j('Hook_FrameTick');      a.nop(); // 0x800E3830
   a.j('Hook_GameplayStart');  a.nop(); // 0x800E3838
   a.j('Hook_GameplayExit');   a.nop(); // 0x800E3840
+  a.j('Hook_SpawnLetter');    a.nop(); // 0x800E3848
 
   // --------------------------------------------------------------------------
   // 1. Lulao_SyncStrings() — Backs up original pointers once, then sets Lulao
@@ -2516,9 +2538,58 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.sp, R.sp, 24);
 
   // --------------------------------------------------------------------------
+  // 10. Hook_SpawnLetter(hash, bankIdx) [@ 0x80035D68 -> Mesh_FindByHash]
+  //     Dynamically remaps 3D floating S-K-A-T-E meshes -> T-A-X-A-S ONLY when
+  //     Lulao (Slot 2) is selected! All other skaters keep classic S-K-A-T-E!
+  // --------------------------------------------------------------------------
+  a.label('Hook_SpawnLetter');
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 24, R.sp);
+  a.sw(R.s0, 20, R.sp);
+  a.sw(R.s1, 16, R.sp);
+  a.move(R.s0, R.a0);
+  a.move(R.s1, R.a1);
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t0, R.zero, 2);              // Slot 2 = Lulao
+  a.bne(R.v0, R.t0, 'hsl_go');
+  a.nop();
+  a.la(R.t1, 'g_TaxasHashMap');
+  a.addiu(R.t2, R.t1, 40);               // 5 pairs x 8 B
+  a.label('hsl_lp');
+  a.lw(R.t3, 0, R.t1);
+  a.nop();                               // R3000A load delay slot
+  a.beq(R.s0, R.t3, 'hsl_hit');
+  a.addiu(R.t1, R.t1, 8);
+  a.bne(R.t1, R.t2, 'hsl_lp');
+  a.nop();
+  a.j('hsl_go');
+  a.nop();
+  a.label('hsl_hit');
+  a.lw(R.s0, -4, R.t1);
+  a.nop();                               // R3000A load delay slot before move a0, s0!
+  a.label('hsl_go');
+  a.move(R.a0, R.s0);
+  a.move(R.a1, R.s1);
+  a.lw(R.s1, 16, R.sp);
+  a.lw(R.s0, 20, R.sp);
+  a.lw(R.ra, 24, R.sp);
+  a.nop();
+  a.j(SYM.Mesh_FindByHash);
+  a.addiu(R.sp, R.sp, 32);
+
+  // --------------------------------------------------------------------------
   // Resident State & LULAO_GPBANK Descriptor Table (inside 0x800E3800..0x800E47FF)
   // --------------------------------------------------------------------------
   a.align(4);
+  a.label('g_TaxasHashMap');
+  a.word(0x311D55D4); a.word(0x34524351); // S -> T
+  a.word(0x2328A71C); a.word(0x2EBF22CA); // K -> A
+  a.word(0x2EBF22CA); a.word(0x58585858); // A -> X (custom 3D M[13] in items.psx!)
+  a.word(0x34524351); a.word(0x2EBF22CA); // T -> A
+  a.word(0x29B68A16); a.word(0x311D55D4); // E -> S
+
   a.label('g_StreamActive');     a.word(0);
   a.label('g_StreamSrc');        a.word(0);
   a.label('g_StreamCurPos');     a.word(0);
@@ -2608,9 +2679,14 @@ function applyAll() {
   });
 
   // 3. Patch SLUS_010.66 (exact same file size 864,256 B!)
-  console.log('\n=== Aplicando 27 Hooks Cirurgicos em SLUS_010.66 ===');
+  console.log('\n=== Aplicando 28 Hooks Cirurgicos + Fix School II G6 em SLUS_010.66 ===');
   const slus = fs.readFileSync(slusPath);
   const ramToOff = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
+
+  // Fix legacy bug in School II G6.paramStr @ 0x800D50F8 ("Chutinho" -> original Redump "Kickflip")
+  // so Kickflip TC's Roof Gap completes cleanly for Lulao AND all other skaters!
+  patchWord(slus, ramToOff(0x800D50F8), 0x74756843, 0x6B63694B,                   'Fix School II G6 "Kick" @ 0x800D50F8');
+  patchWord(slus, ramToOff(0x800D50FC), 0x6F686E69, 0x70696C66,                   'Fix School II G6 "flip" @ 0x800D50FC');
 
   patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000]);
   patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x24845800,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000]);
@@ -2635,6 +2711,7 @@ function applyAll() {
   patchWord(slus, ramToOff(0x8003CB48), jalWord(SYM.XA_Update),           jalWord(ADDR.Entry_FrameTick),      'Hook 60Hz FrameTick (XA_Update) @ 0x8003CB48');
   patchWord(slus, ramToOff(0x8003D71C), jalWord(SYM.Gameplay_MainLoop),   jalWord(ADDR.Entry_GameplayStart),  'Hook GameplayStart/Retry @ 0x8003D71C');
   patchWord(slus, ramToOff(0x8003D828), jalWord(SYM.Level_Unload),        jalWord(ADDR.Entry_GameplayExit),   'Hook GameplayExit Cleanup @ 0x8003D828');
+  patchWord(slus, ramToOff(0x80035D68), jalWord(SYM.Mesh_FindByHash),     jalWord(ADDR.Entry_SpawnLetter),    'Hook 3D T-A-X-A-S Spawn @ 0x80035D68');
 
   // Menu Overlay_Run pre-sync hooks (ensures Career goal lists & cash labels match skater even after direct MC Load!)
   for (const ovSite of [0x80082C38, 0x80082D2C, 0x80082DB0, 0x80082E1C, 0x80082E98, 0x80082EF0, 0x80082F70, 0x80082FD4]) {

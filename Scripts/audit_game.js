@@ -124,6 +124,7 @@ try {
   } = require('./mod_skater_bios');
   const expectedSlusHooks = new Map([
     [0x80030DA0, jalWord(ADDR.Entry_EndRunPause)],     // Hook Pause -> End Run (Lulao random funny voice)
+    [0x80035D68, jalWord(ADDR.Entry_SpawnLetter)],     // Hook 3D S-K-A-T-E -> T-A-X-A-S dynamic spawn (Lulao only!)
     [0x8003C2E8, jalWord(ADDR.Entry_EndRunPause)],     // Hook Time-Up Natural End Run (Lulao random funny voice)
     [0x800813CC, jalWord(ADDR.Entry_EndRunPause)],     // Hook Script/Cheat End Run (Lulao random funny voice)
     [0x800368D4, jalWord(ADDR.Entry_CollectCash)],     // Hook Cash Pickup $250 (Lulao voice)
@@ -256,6 +257,7 @@ try {
   chkStr(0x0C4DC4, 'Valter');
   chkStr(0x0C873C, 'Valter Pacheco');
   chkStr(0x0A2034, "Valter's only been");
+  chkStr(0x0C58F8, 'Kickflip'); // School II G6.paramStr @ 0x800D50F8 restored for Trick+Gap matcher 0x800662AC!
   for (const item of [...BIO_LULAO, ...BIO_BOLSONARO]) {
     chkStr(item.fileOff, item.text, 'latin1');
   }
@@ -266,16 +268,19 @@ try {
   // =========================================================================
   console.log('\n[STAGE 3] CD.HED & CD.WAD — Integridade de Todas as 1.531 Entradas');
   const { SILVIO_MIC_DELTA, SILVIO_MIC_VERTS, SILVIO_MIC_FACES } = require('./mod_skater_silvio');
+  const { HASH_X_LETTER, buildItemsPsxWithX, buildSkvenOPsxWithPitu } = require('./mod_lulao_world_assets');
   const hedRed = readSectorsUser(fdRed, 446, 9);
   const hedMod = readSectorsUser(fdMod, 446, 9);
   const hedDisk = fs.readFileSync(hedCurPath);
   if (!hedMod.subarray(0, hedDisk.length).equals(hedDisk)) {
     fail('WAD', 'CD.HED na ISO difere do arquivo CD.HED no workspace!');
   } else {
-    // Allow ONLY size-field update inside SAME CD sectors for burnq2.psx (idx=387) & burnq_l.psx (idx=1010) (+1,160 B 3D Mic!)
+    // Allow ONLY size-field updates strictly within SAME CD sector allocations (ZERO offset shifts!)
     const allowedHedSizeDelta = new Map([
-      [387,  SILVIO_MIC_DELTA], // burnq2.psx:  60244 -> 61404 B (<= 61440 B, same 30 sectors)
-      [1010, SILVIO_MIC_DELTA], // burnq_l.psx: 51932 -> 53092 B (<= 53248 B, same 26 sectors)
+      [8,    1056],             // items.psx:   39096 -> 40152 B (<= 40960 B, same 20 sectors, +3D letter 'X' M[13])
+      [387,  SILVIO_MIC_DELTA], // burnq2.psx:  60244 -> 61404 B (<= 61440 B, same 30 sectors, +3D Mic)
+      [1010, SILVIO_MIC_DELTA], // burnq_l.psx: 51932 -> 53092 B (<= 53248 B, same 26 sectors, +3D Mic)
+      [1103, 1116],             // skven_o.psx:  9076 -> 10192 B (<= 10240 B, same 5 sectors, 3D Garrafa Pitu M[4])
     ]);
     let hedErr = 0;
     for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
@@ -295,11 +300,12 @@ try {
       fail('WAD', 'Bytes apos tabela CD.HED diferem do Redump!');
       hedErr++;
     }
-    if (hedErr === 0) pass('CD.HED 100% integro: 1.529/1.531 entradas bit-a-bit Redump + [387/1010] Silvio Mic 3D (+1.160 B nos mesmos setores, 0 deslocamento de offsets)');
+    if (hedErr === 0) pass('CD.HED 100% integro: 1.527/1.531 entradas bit-a-bit Redump + [8/387/1010/1103] nos mesmos setores (0 deslocamento de offsets)');
   }
 
   const allowedWadIdxs = new Set([
     3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
+    8, 14, 1102, 1103, 1109,                        // Lulao world assets: items.psx (3D X), skhan_o/o2 (Pinga 51 barrels), skven_o/l (3D Pitu bottle)
     45, 60, 61, 458,                                // options.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
     369, 370, 371, 372, 377, 378, 379,              // 7 custom portraits: s2face1,2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     387, 1010, 431, 1012,                           // Silvio Santos (4 .PSX, incl. 3D Chest Mic on 387 & 1010)
@@ -619,6 +625,34 @@ try {
     if (!hOrig.equals(hCur)) fail('HANGAR', `skhan_l.psx difere do original Redump (${hCur.length} B)!`);
     else pass('skhan_l.psx (Fase 1 The Hangar 1P/2P): 100% restaurado ao original Redump (316.604 B intocados)');
   }
+  // Validate Lulao 3D World Assets: items.psx (3D 'X'), skhan_o/o2 (Pinga 51 barrels), skven_o/l (3D Garrafa Pitu)
+  {
+    const psxLib = require('./psx_skater_lib');
+    const itemsMod = getWadEntry(fdMod, 455, hedDisk, 8);
+    const expItems = buildItemsPsxWithX();
+    if (!itemsMod.equals(expItems)) fail('WORLD3D', `items.psx (idx=8) difere do binario esperado com letra 3D 'X'!`);
+    else {
+      const ip = psxLib.parsePsxStructure(itemsMod);
+      if (ip.numMeshes !== 14 || ip.meshHashes[13] !== HASH_X_LETTER) fail('WORLD3D', `items.psx M[13] 'X' invalido!`);
+      else pass(`items.psx (idx=8): letra 3D maiuscula 'X' (M[13], hash=0x${HASH_X_LETTER.toString(16)}, ${itemsMod.length}/40960 B) 100% valida`);
+    }
+    const skvenOMod = getWadEntry(fdMod, 455, hedDisk, 1103);
+    const expSkvenO = buildSkvenOPsxWithPitu();
+    if (!skvenOMod.equals(expSkvenO)) fail('WORLD3D', `skven_o.psx (idx=1103) difere da Garrafa 3D de Pitu esperada!`);
+    else {
+      const vp = psxLib.parsePsxStructure(skvenOMod);
+      const mo = vp.meshOffs[4];
+      const nV = skvenOMod.readUInt16LE(mo + 2), nN = skvenOMod.readUInt16LE(mo + 4), nF = skvenOMod.readUInt16LE(mo + 6);
+      if (nV !== 40 || nN !== 38 || nF !== 38) fail('WORLD3D', `skven_o.psx M[4] Pitu contagens invalidas: ${nV}v/${nN}n/${nF}f`);
+      else pass(`skven_o.psx (idx=1103) & skven_l.psx (idx=1102): Garrafa 3D de Pitu (${nV}v/${nF}f, ${skvenOMod.length}/10240 B) + rotulo PITU validos`);
+    }
+    const skhanOMod = getWadEntry(fdMod, 455, hedDisk, 14);
+    const skhanO2Mod = getWadEntry(fdMod, 455, hedDisk, 1109);
+    const hp1 = psxLib.parsePsxStructure(skhanOMod);
+    const hp2 = psxLib.parsePsxStructure(skhanO2Mod);
+    if (hp1.numMeshes < 10 || hp2.numMeshes < 10) fail('WORLD3D', 'skhan_o / skhan_o2 corrompido!');
+    else pass(`skhan_o.psx (idx=14, ${skhanOMod.length} B) & skhan_o2.psx (idx=1109, ${skhanO2Mod.length} B): Barris Pinga 51 validos (0 B shift)`);
+  }
 
   // =========================================================================
   // STAGE 6: ISO-9660 LBA ORDER, SIZES, XA ATTRIBUTES, UNMODIFIED FILES & VOICES.DAT
@@ -756,8 +790,20 @@ try {
         pass(`LULAO_GPBANK + Zero-Stall RAM Cache: 14x2 anel (${gpMeta.totalSectors} set. @ +${gpMeta.startSector}, 6890.625 Hz / 0x0280, cap <=2.85s, -10 LUFS, 1 KB stage, 48 KB reserva), min 2 clipes@28KB / min 5@60KB / 14@Hangar, 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
       }
     }
-    const { buf: expLulaoStrData } = buildLulaoStrData();
+    const { buf: expLulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
     if (!voicesBuf.subarray(8192, 12288).equals(expLulaoStrData)) fail('VOICES', 'Setores 4..5 (LULAO_STRDATA) em VOICES.DAT diferem dos dados esperados!');
+    // Pillar 1 & 2 invariants on LULAO_STRDATA:
+    //  - NEVER overwrite ANY Trick+Gap G6.paramStr (levels 0,1,3,4,6 -> matcher 0x800662AC)!
+    //  - MUST include T-A-X-A-S toast pointers (0x800C08E8..0x800C08F8) & HUD words (0x800D7704..0x800D7714)!
+    const forbiddenG6Shorts = new Set([0, 1, 3, 4, 6].map(lv => (SYM.g_LevelTable + lv * 0x174 + 0x88 + 6 * 24) >>> 0));
+    const mapByAddr = new Map(lulaoMappings);
+    for (const badPtr of forbiddenG6Shorts) {
+      if (mapByAddr.has(badPtr)) fail('VOICES', `Violacao Pilar 1: LULAO_STRDATA sobrescreve G6.paramStr em 0x${badPtr.toString(16)}!`);
+    }
+    const expHudTaxas = [[0x800D7704, 0x54], [0x800D7708, 0x41], [0x800D770C, 0x58], [0x800D7710, 0x41], [0x800D7714, 0x53]];
+    for (const [ptr, ch] of expHudTaxas) {
+      if (mapByAddr.get(ptr) !== ch) fail('VOICES', `Violacao Pilar 2: HUD T-A-X-A-S em 0x${ptr.toString(16)} esperado 0x${ch.toString(16)}, encontrado ${mapByAddr.get(ptr)}`);
+    }
     const magic = voicesBuf.readUInt32LE(2048);
     const lCnt = voicesBuf.readUInt32LE(2052);
     const bCnt = voicesBuf.readUInt32LE(2056);
