@@ -118,56 +118,56 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 ## 4. Banco de Vozes SPU-ADPCM (`VOICES.DAT`) & Vídeos Aleatórios de Boot
 
 - **49º Arquivo da ISO (`\VOICES.DAT;1`):** posicionado após `INTRO.STR` e antes do postgap de 150 setores, preservando **48/48 LBAs originais Redump**.
-- **Layout de `VOICES.DAT` (2.095.104 B / 1023 setores):**
+- **Layout de `VOICES.DAT` (2.383.872 B / 1164 setores):**
   - **Setor 0 (`0x0000..0x07FF`):** `MODCODE` MIPS R3000A carregado em `0x800E2800` no boot via `Mod_BootInit` + `FlushCache()`.
   - **Setor 1 (`0x0800..0x0FFF`):** `VOICETBL` carregado em `0x800E3000` (`magic = 0x564F4943`, 14 clips Lulao + 14 clips Bolsonaro + 13 clips Silvio Santos) + `Hook_BailSfx @ 0x800E3400` + `VoiceSelect_Lookup @ 0x800E3600`.
   - **Setores `2..3` (`0x1000..0x1FFF`):** `LULAO_CODE` (`0x800E3800..0x800E47FF`): swapper dinâmico de 88 strings do Modo Carreira + motor de pré-cache adaptativo em Main RAM (zero-stall, OOM guard em `freeList[1] @ 0x800D7294`, staging buffer 2 KB, streamer SPU 2 KB Ping-Pong).
   - **Setores `4..5` (`0x2000..0x2FFF`):** `LULAO_STRDATA` (`0x800E4800..0x800E57FF`): 88 ponteiros + backup runtime + strings satíricas das 8 fases e `"Roubei mais 50!/100!/250!"`.
-  - **Setores `6..876`:** 41 streams SPU-ADPCM mono `11025 Hz` (`pitch = 0x0400`, maior clip = `148928 B` / `159728 B` na SPU RAM `0x58000..0x7EFF0`) para a Seleção de Skatistas (`playsel.bin`).
-  - **Setores `877..1022` (`LULAO_GPBANK`):** sub-banco compacto em anel `2×` (`14 × 2 = 28` entradas, `299.008 B` / `146` setores, `6890.625 Hz` exatos / `pitch = 0x0280`, alinhado a `16 B`) pré-carregado 1 única vez no loading da fase para **0,00 ms de acesso ao CD-ROM durante partidas**.
+  - **Setores `6..877`:** 41 streams SPU-ADPCM mono `11025 Hz` (`pitch = 0x0400`, maior clip = `148928 B` / `159728 B` na SPU RAM `0x58000..0x7EFF0`) para a Seleção de Skatistas (`playsel.bin`).
+  - **Setores `878..1023` (`LULAO_GPBANK`):** sub-banco compacto em anel `2×` (`14 × 2 = 28` entradas, `299.008 B` / `146` setores, `6890.625 Hz` exatos / `pitch = 0x0280`, alinhado a `16 B`) pré-carregado 1 única vez no loading da fase para **0,00 ms de acesso ao CD-ROM durante partidas**.
 - **Vídeos Aleatórios no Boot (Duração Exata Original):** `BootRand_PlaySlot` substitui os 3 slots de inicialização (`ATVILOGO` = `208` frames / `13,87s`, `LOGO` = `266` frames / `17,73s`, `INTRO` = até `1486` frames / `99,07s`) por 3 vídeos customizados distintos entre os 20 disponíveis (`[2, 16..34]`), usando contador persistente no **Setor 60 (`0x3C`)** do Memory Card + timers de hardware (`0x1F801100/10/20`) + `VSync(-1)`. O campo `g_MovieTable[idx].num_frames` é ajustado temporariamente para a duração exata do slot de boot e restaurado imediatamente ao término, mantendo os vídeos finais de carreira com duração integral.
 - **Atenuação Automática da Música (`-12 dB`) & Pré-Cache Zero-Stall:** `Hook_CdMix` (`0x80038950`) + `Hook_RunPlaySel` (`0x80082B80`) usam a bitmask privada `g_InPlaySel` (`0x800E27DC`: bit 0 = Seleção de Skatistas, bit 1 = Voz do Lulao em Partida) para reduzir `COMPILED.XA` para **25% (`vol >> 2`)** enquanto **Silvio Santos**, **Lulao** ou **Bolsonaro** falam, restaurando **100%** automaticamente sem jamais pausar o streaming musical durante partidas.
 
 | # | Skatista | Arquivo Original | Duração | Bytes SPU | Setores | Offset Setor |
 | :-: | :--- | :--- | :-: | :-: | :-: | :-: |
-| 0 | **Lulao** (idx 2) | `cade_o_ze_gotinha.mp3` | 6.07s | 38272 B | 19 | +6 |
-| 1 | **Lulao** (idx 2) | `lula_cantando_numb.mp3` | 14.16s | 89216 B | 44 | +25 |
-| 2 | **Lulao** (idx 2) | `lula_cara_sem_dente.mp3` | 6.19s | 38976 B | 20 | +69 |
-| 3 | **Lulao** (idx 2) | `lula_o_cracudo_nao_arruma_desculpas.mp3` | 17.18s | 108224 B | 53 | +89 |
-| 4 | **Lulao** (idx 2) | `lula_pobre_andar_de_aviao.mp3` | 5.79s | 36480 B | 18 | +142 |
-| 5 | **Lulao** (idx 2) | `lula_por_favor_me_ajuda.mp3` | 5.15s | 32448 B | 16 | +160 |
-| 6 | **Lulao** (idx 2) | `lula_saco_de_pe_nao_para_vazio.mp3` | 3.02s | 19008 B | 10 | +176 |
-| 7 | **Lulao** (idx 2) | `lula_vai_todo_mindo_se_fdr.mp3` | 5.14s | 32384 B | 16 | +186 |
-| 8 | **Lulao** (idx 2) | `o_bagulho_e_loko_manolo.mp3` | 2.52s | 15872 B | 8 | +202 |
-| 9 | **Lulao** (idx 2) | `o_brasil_acabou.mp3` | 4.28s | 26944 B | 14 | +210 |
-| 10 | **Lulao** (idx 2) | `pense_no_lula.mp3` | 12.56s | 79104 B | 39 | +224 |
-| 11 | **Lulao** (idx 2) | `pergunta_pro_google.mp3` | 1.31s | 8256 B | 5 | +263 |
-| 12 | **Lulao** (idx 2) | `setembro_vai_entrar_o_grosso-lula.mp3` | 8.20s | 51648 B | 26 | +268 |
-| 13 | **Lulao** (idx 2) | `solta_meu_pai.mp3` | 3.69s | 23232 B | 12 | +294 |
-| 14 | **Bolsonaro** (idx 3) | `a_sra_nao_pode.mp3` | 3.49s | 22016 B | 11 | +306 |
-| 15 | **Bolsonaro** (idx 3) | `bolsonaro_acabou_porra.mp3` | 1.27s | 8000 B | 4 | +317 |
-| 16 | **Bolsonaro** (idx 3) | `bolsonaro_cara_de_homossexual.mp3` | 4.01s | 25280 B | 13 | +321 |
-| 17 | **Bolsonaro** (idx 3) | `bolsonaro_familia.mp3` | 20.37s | 128320 B | 63 | +334 |
-| 18 | **Bolsonaro** (idx 3) | `bolsonaro_historico_de_atleta.mp3` | 14.58s | 91840 B | 45 | +397 |
-| 19 | **Bolsonaro** (idx 3) | `bolsonaro_popcorn_and_ice_cream.mp3` | 13.00s | 81920 B | 40 | +442 |
-| 20 | **Bolsonaro** (idx 3) | `bolsonaro_posso_fazer_uma_brincadeira.mp3` | 3.09s | 19456 B | 10 | +482 |
-| 21 | **Bolsonaro** (idx 3) | `bolsonaro_prisao.mp3` | 1.56s | 9856 B | 5 | +492 |
-| 22 | **Bolsonaro** (idx 3) | `bolsonaro_risada.mp3` | 6.54s | 41216 B | 21 | +497 |
-| 23 | **Bolsonaro** (idx 3) | `bolsonaro_tomar_um_cafe.mp3` | 2.84s | 17920 B | 9 | +518 |
-| 24 | **Bolsonaro** (idx 3) | `canalhas_canalhas.mp3` | 4.33s | 27264 B | 14 | +527 |
-| 25 | **Bolsonaro** (idx 3) | `eu_tenho_nada_a_ver_com_isso.mp3` | 1.36s | 8576 B | 5 | +541 |
-| 26 | **Bolsonaro** (idx 3) | `explica.mp3` | 4.17s | 26240 B | 13 | +546 |
-| 27 | **Bolsonaro** (idx 3) | `fica_aqui.mp3` | 3.61s | 22720 B | 12 | +559 |
-| 28 | **Silvio Santos** (idx 1) | `abertura.mp3` | 15.67s | 98752 B | 49 | +571 |
-| 29 | **Silvio Santos** (idx 1) | `aiaiuiui.mp3` | 14.83s | 93440 B | 46 | +620 |
-| 30 | **Silvio Santos** (idx 1) | `cala_a_boca.mp3` | 1.82s | 11456 B | 6 | +666 |
-| 31 | **Silvio Santos** (idx 1) | `certa_a_resposta.mp3` | 1.22s | 7680 B | 4 | +672 |
-| 32 | **Silvio Santos** (idx 1) | `certa_resposta.mp3` | 1.87s | 11776 B | 6 | +676 |
-| 33 | **Silvio Santos** (idx 1) | `nao_consegue.mp3` | 1.27s | 8000 B | 4 | +682 |
-| 34 | **Silvio Santos** (idx 1) | `oi.mp3` | 1.12s | 7040 B | 4 | +686 |
-| 35 | **Silvio Santos** (idx 1) | `olha_so.mp3` | 14.23s | 89664 B | 44 | +690 |
-| 36 | **Silvio Santos** (idx 1) | `rap.mp3` | 5.79s | 36480 B | 18 | +734 |
-| 37 | **Silvio Santos** (idx 1) | `ritmo_de_dance.mp3` | 23.64s | 148928 B | 73 | +752 |
-| 38 | **Silvio Santos** (idx 1) | `ritmo_de_festa.mp3` | 6.55s | 41280 B | 21 | +825 |
-| 39 | **Silvio Santos** (idx 1) | `seu_tempo_acabou.mp3` | 2.16s | 13632 B | 7 | +846 |
-| 40 | **Silvio Santos** (idx 1) | `silvio.mp3` | 7.59s | 47808 B | 24 | +853 |
+| 0 | **Lulao** (idx 2) | `cade_o_ze_gotinha.mp3` | 6.07s | 38272 B | 19 | +7 |
+| 1 | **Lulao** (idx 2) | `lula_cantando_numb.mp3` | 14.16s | 89216 B | 44 | +26 |
+| 2 | **Lulao** (idx 2) | `lula_cara_sem_dente.mp3` | 6.19s | 38976 B | 20 | +70 |
+| 3 | **Lulao** (idx 2) | `lula_o_cracudo_nao_arruma_desculpas.mp3` | 17.18s | 108224 B | 53 | +90 |
+| 4 | **Lulao** (idx 2) | `lula_pobre_andar_de_aviao.mp3` | 5.79s | 36480 B | 18 | +143 |
+| 5 | **Lulao** (idx 2) | `lula_por_favor_me_ajuda.mp3` | 5.15s | 32448 B | 16 | +161 |
+| 6 | **Lulao** (idx 2) | `lula_saco_de_pe_nao_para_vazio.mp3` | 3.02s | 19008 B | 10 | +177 |
+| 7 | **Lulao** (idx 2) | `lula_vai_todo_mindo_se_fdr.mp3` | 5.14s | 32384 B | 16 | +187 |
+| 8 | **Lulao** (idx 2) | `o_bagulho_e_loko_manolo.mp3` | 2.52s | 15872 B | 8 | +203 |
+| 9 | **Lulao** (idx 2) | `o_brasil_acabou.mp3` | 4.28s | 26944 B | 14 | +211 |
+| 10 | **Lulao** (idx 2) | `pense_no_lula.mp3` | 12.56s | 79104 B | 39 | +225 |
+| 11 | **Lulao** (idx 2) | `pergunta_pro_google.mp3` | 1.31s | 8256 B | 5 | +264 |
+| 12 | **Lulao** (idx 2) | `setembro_vai_entrar_o_grosso-lula.mp3` | 8.20s | 51648 B | 26 | +269 |
+| 13 | **Lulao** (idx 2) | `solta_meu_pai.mp3` | 3.69s | 23232 B | 12 | +295 |
+| 14 | **Bolsonaro** (idx 3) | `a_sra_nao_pode.mp3` | 3.49s | 22016 B | 11 | +307 |
+| 15 | **Bolsonaro** (idx 3) | `bolsonaro_acabou_porra.mp3` | 1.27s | 8000 B | 4 | +318 |
+| 16 | **Bolsonaro** (idx 3) | `bolsonaro_cara_de_homossexual.mp3` | 4.01s | 25280 B | 13 | +322 |
+| 17 | **Bolsonaro** (idx 3) | `bolsonaro_familia.mp3` | 20.37s | 128320 B | 63 | +335 |
+| 18 | **Bolsonaro** (idx 3) | `bolsonaro_historico_de_atleta.mp3` | 14.58s | 91840 B | 45 | +398 |
+| 19 | **Bolsonaro** (idx 3) | `bolsonaro_popcorn_and_ice_cream.mp3` | 13.00s | 81920 B | 40 | +443 |
+| 20 | **Bolsonaro** (idx 3) | `bolsonaro_posso_fazer_uma_brincadeira.mp3` | 3.09s | 19456 B | 10 | +483 |
+| 21 | **Bolsonaro** (idx 3) | `bolsonaro_prisao.mp3` | 1.56s | 9856 B | 5 | +493 |
+| 22 | **Bolsonaro** (idx 3) | `bolsonaro_risada.mp3` | 6.54s | 41216 B | 21 | +498 |
+| 23 | **Bolsonaro** (idx 3) | `bolsonaro_tomar_um_cafe.mp3` | 2.84s | 17920 B | 9 | +519 |
+| 24 | **Bolsonaro** (idx 3) | `canalhas_canalhas.mp3` | 4.33s | 27264 B | 14 | +528 |
+| 25 | **Bolsonaro** (idx 3) | `eu_tenho_nada_a_ver_com_isso.mp3` | 1.36s | 8576 B | 5 | +542 |
+| 26 | **Bolsonaro** (idx 3) | `explica.mp3` | 4.17s | 26240 B | 13 | +547 |
+| 27 | **Bolsonaro** (idx 3) | `fica_aqui.mp3` | 3.61s | 22720 B | 12 | +560 |
+| 28 | **Silvio Santos** (idx 1) | `abertura.mp3` | 15.67s | 98752 B | 49 | +572 |
+| 29 | **Silvio Santos** (idx 1) | `aiaiuiui.mp3` | 14.83s | 93440 B | 46 | +621 |
+| 30 | **Silvio Santos** (idx 1) | `cala_a_boca.mp3` | 1.82s | 11456 B | 6 | +667 |
+| 31 | **Silvio Santos** (idx 1) | `certa_a_resposta.mp3` | 1.22s | 7680 B | 4 | +673 |
+| 32 | **Silvio Santos** (idx 1) | `certa_resposta.mp3` | 1.87s | 11776 B | 6 | +677 |
+| 33 | **Silvio Santos** (idx 1) | `nao_consegue.mp3` | 1.27s | 8000 B | 4 | +683 |
+| 34 | **Silvio Santos** (idx 1) | `oi.mp3` | 1.12s | 7040 B | 4 | +687 |
+| 35 | **Silvio Santos** (idx 1) | `olha_so.mp3` | 14.23s | 89664 B | 44 | +691 |
+| 36 | **Silvio Santos** (idx 1) | `rap.mp3` | 5.79s | 36480 B | 18 | +735 |
+| 37 | **Silvio Santos** (idx 1) | `ritmo_de_dance.mp3` | 23.64s | 148928 B | 73 | +753 |
+| 38 | **Silvio Santos** (idx 1) | `ritmo_de_festa.mp3` | 6.55s | 41280 B | 21 | +826 |
+| 39 | **Silvio Santos** (idx 1) | `seu_tempo_acabou.mp3` | 2.16s | 13632 B | 7 | +847 |
+| 40 | **Silvio Santos** (idx 1) | `silvio.mp3` | 7.59s | 47808 B | 24 | +854 |

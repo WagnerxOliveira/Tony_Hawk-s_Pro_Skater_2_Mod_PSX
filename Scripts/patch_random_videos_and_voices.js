@@ -58,6 +58,7 @@ const SYM = {
   Gameplay_MainLoop:      0x8003CD84,
   Level_Unload:           0x80063054,
   Mesh_FindByHash:        0x800667BC,
+  PSX_ParseAndUploadTex:  0x80066C5C,
   GetSelectedSkaterIdx:   0x8008A3A8,
   SFX_Play:               0x800526B4,
   SFX_FindGlobal:         0x80053A04,
@@ -86,14 +87,15 @@ const SYM = {
   _card_read:             0x800AF1F0,
   _card_write:            0x800A9CF4,
   g_LevelTable:           0x800B8444, // 11 levels, stride 0x174, goals @ +0x90 (stride 24), short @ +0x88
+  g_PsxBanks:             0x800BF434, // 20 PSX bank structs, stride 64 B (+0=name, +20=psxBuf)
   g_MovieTable:           0x800C1CB4, // stride 36 bytes, +14 = uint16 num_frames
   g_Career:               0x800C2958,
 };
 
-// Fixed Mod RAM Addresses (reserved below heap 0x800E5800 = 6 resident sectors from VOICES.DAT!)
+// Fixed Mod RAM Addresses (reserved below heap 0x800E6000 = 7 resident sectors from VOICES.DAT!)
 const ADDR = {
   HeapStartPtr:        0x800E2674,
-  NewHeapStart:        0x800E5800,
+  NewHeapStart:        0x800E6000,
   Mod_BootInit:        0x800E2680,
   Tramp_BootMovie:     0x800E2734,
   Tramp_PlaySelScroll: 0x800E2744,
@@ -121,7 +123,7 @@ const ADDR = {
   Hook_BailSfx:        0x800E3400, // Sector 1 +0x400..+0x5FF (512 B: 9 rotating bail screams)
   VoiceSelect_Lookup:  0x800E3600, // Sector 1 +0x600..+0x67F (128 B: multi-skater voice dispatcher: Slots 1, 2, 3)
   VoiceSelect_SeedAll: 0x800E3680, // Sector 1 +0x680..+0x7FF (384 B: PRNG seeder for Slots 1, 2, 3)
-  // Sector 2 of VOICES.DAT (2048 B): Lulao Career Swapper + Cash/EndRun Hooks + 2 KB SPU Ping-Pong Streamer
+  // Sectors 2..4 of VOICES.DAT (6144 B): Lulao Career Swapper + Cash/EndRun/CarHit/PsxUpload Hooks + 2 KB SPU Ping-Pong Streamer
   LulaoCodeBase:       0x800E3800,
   Entry_LulaoSync:     0x800E3800,
   Entry_OverlaySync:   0x800E3808,
@@ -133,9 +135,11 @@ const ADDR = {
   Entry_GameplayStart: 0x800E3838,
   Entry_GameplayExit:  0x800E3840,
   Entry_SpawnLetter:   0x800E3848,
-  // Sectors 4..5 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup & Strings
-  LulaoStrDataBase:    0x800E4800,
-  LulaoOrigBackup:     0x800E4B00, // 96 x 4 B = 384 B (0x800E4B00..0x800E4C7F)
+  Entry_CarHitVoice:   0x800E3850,
+  Entry_PsxUpload:     0x800E3858,
+  // Sectors 5..6 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup & Strings
+  LulaoStrDataBase:    0x800E5000,
+  LulaoOrigBackup:     0x800E5300, // 96 x 4 B = 384 B (0x800E5300..0x800E547F)
   SpuVoiceBuf:         0x00058000, // Menu Skater Select SPU slot (0x58000..0x7EFF0 = 159,728 B free above shell.vab)
   SpuStreamHalfA:      0x0007F400, // Gameplay Ping-Pong Half A (1024 B, ABOVE bullring.vab 0x7F360!)
   SpuStreamHalfB:      0x0007F800, // Gameplay Ping-Pong Half B (1024 B, 0x7F800..0x7FBFF)
@@ -361,8 +365,8 @@ function assembleSlusTailCompact() {
   a.jal(SYM.CdControl);
   a.move(R.a2, R.zero);
 
-  // CdRead(6 sectors, 0x800E2800, 0x80) -> loads MODCODE (Sec0), VOICETBL+Sec1 (Sec1), LULAO_CODE (Sec2..3), LULAO_STRDATA (Sec4..5)
-  a.addiu(R.a0, R.zero, 6);
+  // CdRead(7 sectors, 0x800E2800, 0x80) -> loads MODCODE (Sec0), VOICETBL+Sec1 (Sec1), LULAO_CODE (Sec2..4), LULAO_STRDATA (Sec5..6)
+  a.addiu(R.a0, R.zero, 7);
   a.addiu(R.a1, R.s0, ADDR.ModCodeBase & 0xffff);
   a.jal(SYM.CdRead);
   a.addiu(R.a2, R.zero, 0x80);
@@ -1355,14 +1359,14 @@ function buildLulaoStrData() {
     [goalNamePtr(1, 3),  'T-A-X-A-S sem Diplominha'],
     [goalNamePtr(1, 4),  '5 Dilmas no Barril'],
     [goalShortPtr(1, 4), 'DILMA BARRIL'],
-    [goalNamePtr(1, 5),  '5 Passes pro Sitio VIP'],
-    [goalShortPtr(1, 5), 'PASSES SITIO'],
+    [goalNamePtr(1, 5),  '5 Pacotes Vento Estocado'],
+    [goalShortPtr(1, 5), 'VENTO ESTOCADO'],
     [goalNamePtr(1, 6),  'Kickflip no Teto de Gasto'],
     // NOTA CRITICA: NAO sobrescrever goalShortPtr(1, 6) ("Kickflip"), restaurado em 0x800D50F8!
     [goalNamePtr(1, 7),  '3 Corrimoes do Mensalao'],
     [goalShortPtr(1, 7), 'MENSALAO'],
     [goalNamePtr(1, 8),  'Fita do Sigilo 100 Anos'],
-    [goalNamePtr(1, 9),  '100% Bolsa Shape!'],
+    [goalNamePtr(1, 9),  '100% Diploma no Buteco!'],
 
     // ---- Fase 3: Marseille (Level 2 - Competicao 1) ----
     [goalNamePtr(2, 0),  'Bronze da Abobora'],
@@ -1509,9 +1513,12 @@ function assembleLulaoEngine(gpMeta) {
   if (!gpMeta || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28) {
     throw new Error('assembleLulaoEngine requer gpMeta valido com 28 entradas em anel (14x2)!');
   }
+  if (!gpMeta.bolso || !Array.isArray(gpMeta.bolso.ringEntries) || gpMeta.bolso.ringEntries.length !== 28) {
+    throw new Error('assembleLulaoEngine requer gpMeta.bolso valido com 28 entradas em anel (14x2)!');
+  }
   const a = new MipsAsm(ADDR.LulaoCodeBase);
 
-  // Fixed Entry Jump Table @ 0x800E3800 (10 entries — 100% ABI-compatible with all SLUS_010.66 hooks!)
+  // Fixed Entry Jump Table @ 0x800E3800 (12 entries — 100% ABI-compatible with all SLUS_010.66 hooks!)
   a.j('Lulao_SyncStrings');   a.nop(); // 0x800E3800
   a.j('Hook_OverlaySyncRun'); a.nop(); // 0x800E3808
   a.j('Hook_CollectCash');    a.nop(); // 0x800E3810
@@ -1522,6 +1529,8 @@ function assembleLulaoEngine(gpMeta) {
   a.j('Hook_GameplayStart');  a.nop(); // 0x800E3838
   a.j('Hook_GameplayExit');   a.nop(); // 0x800E3840
   a.j('Hook_SpawnLetter');    a.nop(); // 0x800E3848
+  a.j('Hook_CarHitVoice');    a.nop(); // 0x800E3850
+  a.j('Hook_PsxUpload');      a.nop(); // 0x800E3858
 
   // --------------------------------------------------------------------------
   // 1. Lulao_SyncStrings() — Backs up original pointers once, then sets Lulao
@@ -1798,144 +1807,79 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.sp, R.sp, 24);
 
   // --------------------------------------------------------------------------
-  // 5C. LulaoCache_Load() — Runs ONCE on Level Load for Lulao (Slot 2)!
-  //     1. Walks native Heap[1] freeList @ *(gp + 19112) (0x800D7294) to find EXACT largestFree.
-  //     2. Preserves an UNTOUCHABLE 48 KB (49,152 B) calibrated safety reserve for THPS2 runtime objects
-  //        (empirically measured MaxDelta across all 10 levels incl. Pause & EndRun = 34,368 B -> >= 14.4 KB spare!).
-  //     3. Picks random startClip (0..13) & fits as many contiguous ring clips as fit in (usable - 1024),
-  //        with guaranteed fallback to startClip = 0 (shortest clip ~4.1 KB) if random startClip didn't fit!
-  //     4. Allocates ONE persistent block (1024 B g_StageBuf + readSectors * 2048 B) and executes
-  //        ONE single contiguous CdRead during the Loading Screen!
+  // 5C-0. Helper: LulaoCache_FitSlice(budgetAudioBytes $a0, clipCount $a1, ringTbl $a2, startClip $a3)
+  //       Pure leaf helper — greedily fits contiguous ring clips into budgetAudioBytes (excluding g_StageBuf).
+  //       Falls back cleanly to startClip = 0 (shortest clip!) if random startClip didn't fit.
+  //       Returns: $v0 = acceptedClipCount, $v1 = acceptedSectors, $t8 = firstSecRel, $t9 = baseOff, $a3 = actualStartClip
   // --------------------------------------------------------------------------
-  a.label('LulaoCache_Load');
-  a.addiu(R.sp, R.sp, -64);
-  a.sw(R.ra, 56, R.sp);
-  a.sw(R.s0, 52, R.sp);
-  a.sw(R.s1, 48, R.sp);
-  a.sw(R.s2, 44, R.sp);
-  a.sw(R.s3, 40, R.sp);
-  a.sw(R.s4, 36, R.sp);
-  a.sw(R.s5, 32, R.sp);
-  a.sw(R.s6, 28, R.sp);
-
-  // Step 1: Walk Heap[1] freeList @ 19112(gp) -> s0 = largestFree contiguous block (bytes)
-  a.lw(R.t0, 19112, R.gp);
-  a.move(R.s0, R.zero);
-  a.label('lcl_fl_lp');
-  a.beq(R.t0, R.zero, 'lcl_fl_done');
+  a.label('LulaoCache_FitSlice');
+  a.beq(R.a1, R.zero, 'fit_zero');
   a.nop();
-  a.lw(R.t1, 0, R.t0);                   // hdr
-  a.lw(R.t0, 4, R.t0);                   // next
-  a.srl(R.t1, R.t1, 4);                  // blkBytes = hdr >>> 4
-  a.sltu(R.t2, R.s0, R.t1);
-  a.beq(R.t2, R.zero, 'lcl_fl_lp');
-  a.nop();
-  a.j('lcl_fl_lp');
-  a.move(R.s0, R.t1);
-
-  a.label('lcl_fl_done');
-  // Require largestFree >= 49152 (48 KB calibrated safety reserve) + 8192 (8 KB minimum cache) = 57344 B!
-  a.li(R.t0, 57344);
-  a.sltu(R.t1, R.s0, R.t0);
-  a.bne(R.t1, R.zero, 'lcl_ret');        // Too tight (e.g. extreme 2P state) -> skip cleanly, 0% OOM!
-  a.nop();
-  a.li(R.t0, 49152);                     // 48 KB untouched safety reserve (MaxDelta = 34.4 KB across all 10 levels!)
-  a.subu(R.s0, R.s0, R.t0);              // s0 = usable bytes (guaranteed <= largestFree - 48 KB)
-  a.li(R.t1, 0xFFFFF800);
-  a.and(R.s0, R.s0, R.t1);               // align down to 2048 B sector boundary
-
-  // Step 2: Randomize starting clip index (0..g_GpClipCount-1) so every level load rotates the pool!
-  a.jal('Lulao_NextRand');
-  a.nop();
-  a.lwSym(R.t0, 'g_GpClipCount');
-  a.nop();
-  a.beq(R.t0, R.zero, 'lcl_ret');
-  a.nop();
-  a.divu(R.v0, R.t0);
-  a.mfhi(R.s1);                          // s1 = startClip (0..13)
-
-  a.label('lcl_calc_base');
-  // Step 3: Compute firstSecRel & baseOff for g_GpRingTable[startClip]
-  a.la(R.t6, 'g_GpRingTable');
-  a.sll(R.t1, R.s1, 3);                  // startClip * 8
-  a.addu(R.t6, R.t6, R.t1);              // t6 = &g_GpRingTable[startClip]
-  a.lw(R.t2, 0, R.t6);                   // t2 = firstEntry.byteOffsetInBank
-  a.nop();
-  a.srl(R.s2, R.t2, 11);                 // s2 = firstSecRel
-  a.sll(R.s3, R.s2, 11);                 // s3 = g_CacheBaseOff (first byte read into g_CacheBuf + 1024)
-
-  // Step 4: Greedily fit k = 0..(clipCount-1) contiguous clips into s0 (usable bytes)
-  a.move(R.t4, R.zero);                  // t4 = k
-  a.move(R.s4, R.zero);                  // s4 = accepted clipCount
-  a.move(R.s5, R.zero);                  // s5 = accepted readSectors
-  a.lwSym(R.t7, 'g_GpClipCount');
+  a.sltiu(R.t0, R.a0, 4096);             // Need at least 2 sectors (4 KB)
+  a.bne(R.t0, R.zero, 'fit_zero');
   a.nop();
 
-  a.label('lcl_fit_lp');
+  a.label('fit_retry');
+  a.sll(R.t1, R.a3, 3);                  // startClip * 8
+  a.addu(R.t6, R.a2, R.t1);              // t6 = &ringTbl[startClip]
+  a.lw(R.t2, 0, R.t6);                   // firstEntry.byteOffsetInBank
+  a.nop();
+  a.srl(R.t8, R.t2, 11);                 // t8 = firstSecRel
+  a.sll(R.t9, R.t8, 11);                 // t9 = baseOff
+
+  a.move(R.t4, R.zero);                  // k = 0
+  a.move(R.v0, R.zero);                  // accepted clipCount
+  a.move(R.v1, R.zero);                  // accepted readSectors
+
+  a.label('fit_lp');
   a.lw(R.t1, 0, R.t6);                   // entry.byteOffsetInBank
   a.lw(R.t2, 4, R.t6);                   // entry.byteSize
   a.nop();
   a.addu(R.t1, R.t1, R.t2);              // clipEnd
-  a.subu(R.t1, R.t1, R.s3);              // spanBytes = clipEnd - baseOff
+  a.subu(R.t1, R.t1, R.t9);              // spanBytes = clipEnd - baseOff
   a.addiu(R.t1, R.t1, 2047);
   a.srl(R.t1, R.t1, 11);                 // needSectors = ceil(spanBytes / 2048)
-  a.sll(R.t2, R.t1, 11);
-  a.addiu(R.t2, R.t2, 1024);             // needAlloc = 1024 (g_StageBuf) + needSectors * 2048
-  a.sltu(R.t3, R.s0, R.t2);              // usable < needAlloc ?
-  a.bne(R.t3, R.zero, 'lcl_fit_done');
+  a.sll(R.t2, R.t1, 11);                 // needBytes = needSectors * 2048
+  a.sltu(R.t3, R.a0, R.t2);              // budget < needBytes ?
+  a.bne(R.t3, R.zero, 'fit_done');
   a.nop();
   a.addiu(R.t4, R.t4, 1);
-  a.move(R.s4, R.t4);                    // accept k+1 clips
-  a.move(R.s5, R.t1);                    // accept needSectors
+  a.move(R.v0, R.t4);
+  a.move(R.v1, R.t1);
   a.addiu(R.t6, R.t6, 8);
-  a.bne(R.t4, R.t7, 'lcl_fit_lp');
+  a.bne(R.t4, R.a1, 'fit_lp');
   a.nop();
 
-  a.label('lcl_fit_done');
-  a.bne(R.s4, R.zero, 'lcl_do_alloc');
+  a.label('fit_done');
+  a.bne(R.v0, R.zero, 'fit_ret');
   a.nop();
-  // Guaranteed fallback: if random startClip didn't fit in very tight budget, retry once from clip #0 (~4.1 KB)!
-  a.beq(R.s1, R.zero, 'lcl_ret');
+  a.beq(R.a3, R.zero, 'fit_ret');
   a.nop();
-  a.j('lcl_calc_base');
-  a.move(R.s1, R.zero);
-
-  a.label('lcl_do_alloc');
-  // Step 5: Allocate ONE persistent block (allocBytes = 1024 + s5 * 2048 <= usable <= largestFree - 48 KB)
-  a.sll(R.a0, R.s5, 11);
-  a.addiu(R.a0, R.a0, 1024);
-  a.swSym(R.a0, R.t0, 'g_CacheAllocBytes');
-  a.move(R.a1, R.zero);
-  a.addiu(R.a2, R.zero, 1);
-  a.jal(SYM.Mem_Alloc);
+  a.j('fit_retry');
   a.move(R.a3, R.zero);
-  a.beq(R.v0, R.zero, 'lcl_ret');
-  a.move(R.s6, R.v0);                    // s6 = g_CacheBuf (+0..+1023 = g_StageBuf, +1024.. = audio data)
 
-  // Step 6: Execute ONE single contiguous CdRead into (g_CacheBuf + 1024) during Loading Screen!
-  a.jal(SYM.CDWAD_WaitIdle);
+  a.label('fit_zero');
+  a.move(R.v0, R.zero);
+  a.move(R.v1, R.zero);
+  a.label('fit_ret');
+  a.jr(R.ra);
   a.nop();
 
-  // Safely pause XA if already active (save flag in 24(sp))
-  a.sw(R.zero, 24, R.sp);
-  a.lw(R.t0, 14704, R.gp);
-  a.lw(R.t1, 14712, R.gp);
-  a.nop();
-  a.beq(R.t0, R.zero, 'lcl_cd_read');
-  a.nop();
-  a.bne(R.t1, R.zero, 'lcl_cd_read');
-  a.nop();
-  a.addiu(R.t2, R.zero, 1);
-  a.sw(R.t2, 24, R.sp);
-  a.jal(SYM.XA_Pause);
-  a.addiu(R.a0, R.zero, 1);
+  // --------------------------------------------------------------------------
+  // 5C-1. Helper: LulaoCache_CdReadSync(lbaOffsetFromVoices $a0, readSectors $a1, dstPtr $a2)
+  //       Executes ONE synchronous CdRead into dstPtr (caller handles CDWAD_WaitIdle & XA pause/resume!).
+  // --------------------------------------------------------------------------
+  a.label('LulaoCache_CdReadSync');
+  a.addiu(R.sp, R.sp, -40);
+  a.sw(R.ra, 36, R.sp);
+  a.sw(R.s0, 32, R.sp);
+  a.sw(R.s1, 28, R.sp);
+  a.move(R.s0, R.a1);                    // s0 = readSectors
+  a.move(R.s1, R.a2);                    // s1 = dstPtr
 
-  a.label('lcl_cd_read');
   a.lwSym(R.t0, ADDR.g_VoicesBaseLba);
-  a.lwSym(R.t1, 'g_GpBankStartSec');
   a.nop();
-  a.addu(R.a0, R.t0, R.t1);
-  a.addu(R.a0, R.a0, R.s2);              // LBA = g_VoicesBaseLba + g_GpBankStartSec + firstSecRel
+  a.addu(R.a0, R.t0, R.a0);              // abs LBA
   a.jal(SYM.CdIntToPos);
   a.addiu(R.a1, R.sp, 16);
 
@@ -1944,24 +1888,194 @@ function assembleLulaoEngine(gpMeta) {
   a.jal(SYM.CdControl);
   a.move(R.a2, R.zero);
 
-  a.move(R.a0, R.s5);                    // readSectors
-  a.addiu(R.a1, R.s6, 1024);             // dst = g_CacheBuf + 1024
+  a.move(R.a0, R.s0);                    // readSectors
+  a.move(R.a1, R.s1);                    // dstPtr
   a.jal(SYM.CdRead);
   a.addiu(R.a2, R.zero, 0x80);
 
-  a.label('lcl_cd_wait');
+  a.label('crs_wait');
   a.addiu(R.a0, R.zero, 1);
   a.jal(SYM.CdReadSync);
   a.move(R.a1, R.zero);
-  a.blez(R.v0, 'lcl_cd_done');
+  a.blez(R.v0, 'crs_done');
   a.move(R.a0, R.zero);
   a.jal(SYM.VSync);
   a.nop();
-  a.j('lcl_cd_wait');
+  a.j('crs_wait');
   a.nop();
 
+  a.label('crs_done');
+  a.lw(R.s1, 28, R.sp);
+  a.lw(R.s0, 32, R.sp);
+  a.lw(R.ra, 36, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 40);
+
+  // --------------------------------------------------------------------------
+  // 5C. LulaoCache_Load() — Runs ONCE on Level Load for Lulao (Slot 2)!
+  //     1. Walks native Heap[1] freeList @ *(gp + 19112) to find EXACT largestFree.
+  //     2. Preserves an UNTOUCHABLE 48 KB (49,152 B) calibrated safety reserve for THPS2 runtime objects.
+  //     3. In School II (14976(gp) == 1), splits usable audio RAM cleanly between LULAO_GPBANK (50%)
+  //        and BOLSO_GPBANK (remaining 50%+ for Golf Cart run-over!), allocating ONE persistent g_CacheBuf!
+  //        In all other levels, 100% of usable audio RAM goes to LULAO_GPBANK!
+  // --------------------------------------------------------------------------
+  a.label('LulaoCache_Load');
+  a.addiu(R.sp, R.sp, -80);
+  a.sw(R.ra, 72, R.sp);
+  a.sw(R.s0, 68, R.sp);
+  a.sw(R.s1, 64, R.sp);
+  a.sw(R.s2, 60, R.sp);
+  a.sw(R.s3, 56, R.sp);
+  a.sw(R.s4, 52, R.sp);
+  a.sw(R.s5, 48, R.sp);
+  a.sw(R.s6, 44, R.sp);
+  a.sw(R.s7, 40, R.sp);
+
+  // Reset Bolsonaro cache state first
+  a.swSym(R.zero, R.t0, 'g_BolsoClipCount');
+  a.swSym(R.zero, R.t0, 'g_BolsoDataPtr');
+
+  // Step 1: Walk Heap[1] freeList @ 19112(gp) -> s0 = largestFree contiguous block
+  a.lw(R.t0, 19112, R.gp);
+  a.move(R.s0, R.zero);
+  a.label('lcl_fl_lp');
+  a.beq(R.t0, R.zero, 'lcl_fl_done');
+  a.nop();
+  a.lw(R.t1, 0, R.t0);
+  a.lw(R.t0, 4, R.t0);
+  a.srl(R.t1, R.t1, 4);
+  a.sltu(R.t2, R.s0, R.t1);
+  a.beq(R.t2, R.zero, 'lcl_fl_lp');
+  a.nop();
+  a.j('lcl_fl_lp');
+  a.move(R.s0, R.t1);
+
+  a.label('lcl_fl_done');
+  // Require largestFree >= 49152 (48 KB safety reserve) + 8192 (min cache) = 57344 B!
+  a.li(R.t0, 57344);
+  a.sltu(R.t1, R.s0, R.t0);
+  a.bne(R.t1, R.zero, 'lcl_ret');
+  a.nop();
+  a.li(R.t0, 49152);
+  a.subu(R.s0, R.s0, R.t0);              // s0 = total usable bytes (excl. 48 KB safety reserve)
+  a.addiu(R.s0, R.s0, -1024);            // reserve 1024 B for g_StageBuf!
+  a.li(R.t1, 0xFFFFF800);
+  a.and(R.s0, R.s0, R.t1);               // s0 = total audio budget (multiple of 2048 B!)
+
+  // Step 2: Compute Lulao budget (50% in School II so Bolsonaro gets the other 50%+, 100% elsewhere!)
+  a.lw(R.t0, 14980, R.gp);               // g_CurrentLevel @ gp+14980 (0=Hangar, 1=School II)
+  a.addiu(R.t1, R.zero, 1);
+  a.move(R.s7, R.s0);                    // s7 = lulaoBudget (default = 100%)
+  a.bne(R.t0, R.t1, 'lcl_pick_lulao');
+  a.nop();
+  a.srl(R.s7, R.s0, 1);                  // School II: 50% for Lulao
+  a.li(R.t1, 0xFFFFF800);
+  a.and(R.s7, R.s7, R.t1);
+
+  a.label('lcl_pick_lulao');
+  a.jal('Lulao_NextRand');
+  a.nop();
+  a.lwSym(R.a1, 'g_GpClipCount');
+  a.nop();
+  a.beq(R.a1, R.zero, 'lcl_ret');
+  a.nop();
+  a.divu(R.v0, R.a1);
+  a.mfhi(R.a3);                          // random startClip (0..13)
+  a.move(R.a0, R.s7);                    // budgetAudioBytes
+  a.la(R.a2, 'g_GpRingTable');
+  a.jal('LulaoCache_FitSlice');
+  a.nop();
+  a.beq(R.v0, R.zero, 'lcl_ret');
+  a.move(R.s4, R.v0);                    // s4 = lulaoClipCount
+  a.move(R.s5, R.v1);                    // s5 = lulaoSectors
+  a.move(R.s1, R.a3);                    // s1 = lulaoStartClip
+  a.move(R.s2, R.t8);                    // s2 = lulaoFirstSecRel
+  a.move(R.s3, R.t9);                    // s3 = lulaoBaseOff
+
+  // Step 3: If in School II (14980(gp) == 1), fit BOLSO_GPBANK into ALL remaining audio budget!
+  a.sw(R.zero, 16, R.sp);                // 16(sp) = bolsoClipCount
+  a.sw(R.zero, 20, R.sp);                // 20(sp) = bolsoSectors
+  a.lw(R.t0, 14980, R.gp);
+  a.addiu(R.t1, R.zero, 1);
+  a.bne(R.t0, R.t1, 'lcl_do_alloc');
+  a.nop();
+
+  a.sll(R.t2, R.s5, 11);                 // lulaoBytes = lulaoSectors * 2048
+  a.subu(R.s7, R.s0, R.t2);              // s7 = bolsoBudget (all leftover audio RAM!)
+  a.jal('Lulao_NextRand');
+  a.nop();
+  a.lwSym(R.a1, 'g_BolsoBankClipCount');
+  a.nop();
+  a.beq(R.a1, R.zero, 'lcl_do_alloc');
+  a.nop();
+  a.divu(R.v0, R.a1);
+  a.mfhi(R.a3);                          // random bolsoStartClip (0..13)
+  a.move(R.a0, R.s7);
+  a.la(R.a2, 'g_BolsoRingTable');
+  a.jal('LulaoCache_FitSlice');
+  a.nop();
+  a.sw(R.v0, 16, R.sp);                  // bolsoClipCount
+  a.sw(R.v1, 20, R.sp);                  // bolsoSectors
+  a.sw(R.a3, 24, R.sp);                  // bolsoStartClip
+  a.sw(R.t8, 28, R.sp);                  // bolsoFirstSecRel
+  a.sw(R.t9, 32, R.sp);                  // bolsoBaseOff
+
+  a.label('lcl_do_alloc');
+  // Step 4: Allocate ONE persistent block = 1024 + (lulaoSectors + bolsoSectors) * 2048!
+  a.lw(R.t0, 20, R.sp);                  // bolsoSectors
+  a.nop();
+  a.addu(R.t1, R.s5, R.t0);              // totalSectors
+  a.sll(R.a0, R.t1, 11);
+  a.addiu(R.a0, R.a0, 1024);
+  a.swSym(R.a0, R.t2, 'g_CacheAllocBytes');
+  a.move(R.a1, R.zero);
+  a.addiu(R.a2, R.zero, 1);
+  a.jal(SYM.Mem_Alloc);
+  a.move(R.a3, R.zero);
+  a.beq(R.v0, R.zero, 'lcl_ret');
+  a.move(R.s6, R.v0);                    // s6 = g_CacheBuf
+
+  // Step 5: Pause XA once if active, execute contiguous CdRead(s) on Loading Screen, restore XA!
+  a.jal(SYM.CDWAD_WaitIdle);
+  a.nop();
+  a.sw(R.zero, 36, R.sp);                // 36(sp) = xaWasPaused
+  a.lw(R.t0, 14704, R.gp);
+  a.lw(R.t1, 14712, R.gp);
+  a.nop();
+  a.beq(R.t0, R.zero, 'lcl_reads');
+  a.nop();
+  a.bne(R.t1, R.zero, 'lcl_reads');
+  a.nop();
+  a.addiu(R.t2, R.zero, 1);
+  a.sw(R.t2, 36, R.sp);
+  a.jal(SYM.XA_Pause);
+  a.addiu(R.a0, R.zero, 1);
+
+  a.label('lcl_reads');
+  // Read Lulao slice into g_CacheBuf + 1024
+  a.lwSym(R.t0, 'g_GpBankStartSec');
+  a.nop();
+  a.addu(R.a0, R.t0, R.s2);
+  a.move(R.a1, R.s5);
+  a.jal('LulaoCache_CdReadSync');
+  a.addiu(R.a2, R.s6, 1024);
+
+  // If in School II & bolsoSectors > 0, read Bolsonaro slice into g_CacheBuf + 1024 + lulaoSectors*2048!
+  a.lw(R.a1, 20, R.sp);                  // bolsoSectors
+  a.nop();
+  a.beq(R.a1, R.zero, 'lcl_cd_done');
+  a.nop();
+  a.lwSym(R.t0, 'g_BolsoBankStartSec');
+  a.lw(R.t1, 28, R.sp);                  // bolsoFirstSecRel
+  a.sll(R.t2, R.s5, 11);                 // lulaoBytes
+  a.addu(R.a0, R.t0, R.t1);
+  a.addiu(R.a2, R.s6, 1024);
+  a.jal('LulaoCache_CdReadSync');
+  a.addu(R.a2, R.a2, R.t2);
+
   a.label('lcl_cd_done');
-  a.lw(R.t0, 24, R.sp);
+  a.lw(R.t0, 36, R.sp);
   a.nop();
   a.beq(R.t0, R.zero, 'lcl_commit');
   a.nop();
@@ -1972,7 +2086,7 @@ function assembleLulaoEngine(gpMeta) {
   a.jal(SYM.XA_UpdateVolume);
   a.nop();
 
-  // Step 7: Commit cache descriptors — gameplay is now 100% CD-ROM-FREE!
+  // Step 6: Commit Lulao & (if School II) Bolsonaro cache descriptors — gameplay is 100% CD-ROM-FREE!
   a.label('lcl_commit');
   a.swSym(R.s6, R.t0, 'g_CacheBuf');
   a.swSym(R.s1, R.t0, 'g_CacheStartClip');
@@ -1981,18 +2095,36 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.t1, R.zero, -1);
   a.swSym(R.t1, R.t0, 'g_LastClipIdx');
 
+  a.lw(R.t2, 16, R.sp);                  // bolsoClipCount
+  a.nop();
+  a.beq(R.t2, R.zero, 'lcl_ret');
+  a.nop();
+  a.sll(R.t3, R.s5, 11);
+  a.addiu(R.t4, R.s6, 1024);
+  a.addu(R.t4, R.t4, R.t3);              // g_BolsoDataPtr
+  a.swSym(R.t4, R.t0, 'g_BolsoDataPtr');
+  a.swSym(R.t2, R.t0, 'g_BolsoClipCount');
+  a.lw(R.t3, 24, R.sp);                  // bolsoStartClip
+  a.lw(R.t4, 32, R.sp);                  // bolsoBaseOff
+  a.nop();
+  a.swSym(R.t3, R.t0, 'g_BolsoStartClip');
+  a.swSym(R.t4, R.t0, 'g_BolsoBaseOff');
+  a.addiu(R.t1, R.zero, -1);
+  a.swSym(R.t1, R.t0, 'g_BolsoLastClipIdx');
+
   a.label('lcl_ret');
-  a.lw(R.s6, 28, R.sp);
-  a.lw(R.s5, 32, R.sp);
-  a.lw(R.s4, 36, R.sp);
-  a.lw(R.s3, 40, R.sp);
-  a.lw(R.s2, 44, R.sp);
-  a.lw(R.s1, 48, R.sp);
-  a.lw(R.s0, 52, R.sp);
-  a.lw(R.ra, 56, R.sp);
+  a.lw(R.s7, 40, R.sp);
+  a.lw(R.s6, 44, R.sp);
+  a.lw(R.s5, 48, R.sp);
+  a.lw(R.s4, 52, R.sp);
+  a.lw(R.s3, 56, R.sp);
+  a.lw(R.s2, 60, R.sp);
+  a.lw(R.s1, 64, R.sp);
+  a.lw(R.s0, 68, R.sp);
+  a.lw(R.ra, 72, R.sp);
   a.nop();
   a.jr(R.ra);
-  a.addiu(R.sp, R.sp, 64);
+  a.addiu(R.sp, R.sp, 80);
 
   // --------------------------------------------------------------------------
   // 5D. LulaoCache_Free() — Called ONCE on Hook_GameplayExit (0x800E3840)
@@ -2005,6 +2137,8 @@ function assembleLulaoEngine(gpMeta) {
   a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
   a.swSym(R.zero, R.t0, 'g_PendingVoiceMode');
   a.swSym(R.zero, R.t0, 'g_CacheClipCount');
+  a.swSym(R.zero, R.t0, 'g_BolsoClipCount');
+  a.swSym(R.zero, R.t0, 'g_BolsoDataPtr');
   a.swSym(R.zero, R.t0, 'g_CacheAllocBytes');
   a.lwSym(R.a0, 'g_CacheBuf');
   a.nop();
@@ -2265,26 +2399,41 @@ function assembleLulaoEngine(gpMeta) {
 
   // --------------------------------------------------------------------------
   // 8. LulaoStream_StartFromCache(int mode) — 100% RAM-ONLY (< 0.20 ms)!
+  //    mode 1 = Lulao Cash Pickup, mode 2 = Lulao End of Run,
+  //    mode 3 = Bolsonaro School II Golf Cart Run-Over!
   //    ZERO CdRead! ZERO CDWAD_WaitIdle! ZERO XA_Pause! ZERO Mem_Alloc!
-  //    Streams directly from g_CacheBuf + 2048 via g_StageBuf @ exact pitch 0x0280 (6890.625 Hz)!
   // --------------------------------------------------------------------------
   a.label('LulaoStream_StartFromCache');
-  a.addiu(R.sp, R.sp, -40);
-  a.sw(R.ra, 32, R.sp);
-  a.sw(R.s0, 28, R.sp);
-  a.sw(R.s1, 24, R.sp);
-  a.sw(R.s2, 20, R.sp);
-  a.sw(R.s3, 16, R.sp);
+  a.addiu(R.sp, R.sp, -48);
+  a.sw(R.ra, 40, R.sp);
+  a.sw(R.s0, 36, R.sp);
+  a.sw(R.s1, 32, R.sp);
+  a.sw(R.s2, 28, R.sp);
+  a.sw(R.s3, 24, R.sp);
+  a.sw(R.s4, 20, R.sp);
+  a.move(R.s4, R.a0);                    // s4 = mode (1/2 = Lulao, 3 = Bolsonaro Golf Cart!)
 
   a.lwSym(R.s0, 'g_CacheBuf');
-  a.lwSym(R.s1, 'g_CacheClipCount');
   a.nop();
   a.beq(R.s0, R.zero, 'lsf_done');
   a.nop();
+
+  // Select clipCount based on mode == 3 (Bolsonaro) vs mode 1/2 (Lulao)
+  a.addiu(R.t0, R.zero, 3);
+  a.beq(R.s4, R.t0, 'lsf_cnt_bolso');
+  a.nop();
+  a.lwSym(R.s1, 'g_CacheClipCount');
+  a.j('lsf_chk_cnt');
+  a.nop();
+  a.label('lsf_cnt_bolso');
+  a.lwSym(R.s1, 'g_BolsoClipCount');
+  a.nop();
+
+  a.label('lsf_chk_cnt');
   a.beq(R.s1, R.zero, 'lsf_done');
   a.nop();
 
-  // Silence Voice 23 cleanly (mute + KOFF + ~36 us SPU settle > 1 hardware 44.1 kHz tick -> zero click on rapid pickups!)
+  // Silence Voice 23 cleanly (mute + KOFF + ~36 us SPU settle > 1 hardware 44.1 kHz tick -> zero click!)
   a.lui(R.t0, 0x1F80);
   a.sh(R.zero, 0x1D70, R.t0);
   a.sh(R.zero, 0x1D72, R.t0);
@@ -2296,15 +2445,26 @@ function assembleLulaoEngine(gpMeta) {
   a.bne(R.t0, R.zero, 'lsf_koff_wait');
   a.addiu(R.t0, R.t0, -1);
 
-  // Pick next random cached clip index (0..g_CacheClipCount-1), never repeating g_LastClipIdx when count > 1
+  // Pick next random cached clip index (0..s1-1), never repeating last clip of that speaker when count > 1
   a.jal('Lulao_NextRand');
   a.nop();
   a.divu(R.v0, R.s1);
   a.mfhi(R.s2);                          // s2 = localIdx (0..count-1)
+
+  a.addiu(R.t0, R.zero, 3);
+  a.beq(R.s4, R.t0, 'lsf_last_bolso');
+  a.nop();
+  a.la(R.t5, 'g_LastClipIdx');
+  a.j('lsf_norep');
+  a.nop();
+  a.label('lsf_last_bolso');
+  a.la(R.t5, 'g_BolsoLastClipIdx');
+
+  a.label('lsf_norep');
   a.addiu(R.t0, R.zero, 1);
   a.beq(R.s1, R.t0, 'lsf_idx_ok');
   a.nop();
-  a.lwSym(R.t1, 'g_LastClipIdx');
+  a.lw(R.t1, 0, R.t5);
   a.nop();
   a.bne(R.s2, R.t1, 'lsf_idx_ok');
   a.nop();
@@ -2314,22 +2474,34 @@ function assembleLulaoEngine(gpMeta) {
   a.move(R.s2, R.zero);
 
   a.label('lsf_idx_ok');
-  a.swSym(R.s2, R.t0, 'g_LastClipIdx');
+  a.sw(R.s2, 0, R.t5);
 
-  // Resolve read-only source pointer inside g_CacheBuf + 1024:
-  //   ringIdx = g_CacheStartClip + localIdx
-  //   g_StreamSrc = (g_CacheBuf + 1024) + (entry.byteOffsetInBank - g_CacheBaseOff)
+  // Resolve read-only source pointer (Lulao vs Bolsonaro bank!)
+  a.addiu(R.t0, R.zero, 3);
+  a.beq(R.s4, R.t0, 'lsf_src_bolso');
+  a.nop();
   a.lwSym(R.t0, 'g_CacheStartClip');
   a.lwSym(R.t3, 'g_CacheBaseOff');
+  a.la(R.t1, 'g_GpRingTable');
+  a.addiu(R.t4, R.s0, 1024);             // dataBase = g_CacheBuf + 1024
+  a.j('lsf_src_calc');
+  a.nop();
+
+  a.label('lsf_src_bolso');
+  a.lwSym(R.t0, 'g_BolsoStartClip');
+  a.lwSym(R.t3, 'g_BolsoBaseOff');
+  a.la(R.t1, 'g_BolsoRingTable');
+  a.lwSym(R.t4, 'g_BolsoDataPtr');       // dataBase = g_BolsoDataPtr
+  a.nop();
+
+  a.label('lsf_src_calc');
   a.addu(R.t0, R.t0, R.s2);              // ringIdx (0..27)
   a.sll(R.t0, R.t0, 3);                  // ringIdx * 8
-  a.la(R.t1, 'g_GpRingTable');
   a.addu(R.t1, R.t1, R.t0);
   a.lw(R.t2, 0, R.t1);                   // entry.byteOffsetInBank
   a.lw(R.s3, 4, R.t1);                   // s3 = entry.byteSize
   a.nop();
   a.subu(R.t2, R.t2, R.t3);              // relative byte offset inside audio payload
-  a.addiu(R.t4, R.s0, 1024);             // g_CacheBuf + 1024
   a.addu(R.t4, R.t4, R.t2);              // read-only g_StreamSrc!
   a.swSym(R.t4, R.t0, 'g_StreamSrc');
   a.swSym(R.s3, R.t0, 'g_StreamTotalBytes');
@@ -2415,14 +2587,15 @@ function assembleLulaoEngine(gpMeta) {
   a.swSym(R.v0, R.t0, 'g_StreamLastVSync');
 
   a.label('lsf_done');
-  a.lw(R.s3, 16, R.sp);
-  a.lw(R.s2, 20, R.sp);
-  a.lw(R.s1, 24, R.sp);
-  a.lw(R.s0, 28, R.sp);
-  a.lw(R.ra, 32, R.sp);
+  a.lw(R.s4, 20, R.sp);
+  a.lw(R.s3, 24, R.sp);
+  a.lw(R.s2, 28, R.sp);
+  a.lw(R.s1, 32, R.sp);
+  a.lw(R.s0, 36, R.sp);
+  a.lw(R.ra, 40, R.sp);
   a.nop();
   a.jr(R.ra);
-  a.addiu(R.sp, R.sp, 40);
+  a.addiu(R.sp, R.sp, 48);
 
   // --------------------------------------------------------------------------
   // 9. LulaoStream_Tick() — Crystal-locked PS1 VBlank 2 KB Ping-Pong Feeder @ 6890.625 Hz!
@@ -2580,7 +2753,179 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.sp, R.sp, 32);
 
   // --------------------------------------------------------------------------
-  // Resident State & LULAO_GPBANK Descriptor Table (inside 0x800E3800..0x800E47FF)
+  // 11. Hook_CarHitVoice(sfxId, vol, pan) [@ 0x800623B8 -> SFX_Play]
+  //     Intercepts School II Golf Cart (type 217, s4 = CCar*) running over Lulao (Slot 2)!
+  //     Suppresses original English security guard yell & generic overlapping bail scream,
+  //     and triggers ZERO-STALL random Bolsonaro voice clip (mode 3) from RAM cache!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CarHitVoice');
+  a.lhu(R.t0, 56, R.s4);                 // car->type (217 = c_kart, School II Golf Cart!)
+  a.addiu(R.t1, R.zero, 217);
+  a.bne(R.t0, R.t1, 'hch_orig');
+  a.nop();
+  a.lwSym(R.t0, 'g_BolsoClipCount');     // Non-zero ONLY when playing Lulao (Slot 2) in School II!
+  a.nop();
+  a.beq(R.t0, R.zero, 'hch_orig');
+  a.addiu(R.t1, R.zero, 3);              // mode 3 = Bolsonaro Golf Cart Run-Over!
+  a.swSym(R.t1, R.t2, 'g_PendingVoiceMode');
+
+  // Extend g_LastBailFrame cooldown by +45 frames (~1.6s total) so generic bail scream won't drown out Bolsonaro!
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 16, R.sp);
+  a.jal(SYM.VSync);
+  a.addiu(R.a0, R.zero, -1);
+  a.addiu(R.v0, R.v0, 45);
+  a.lui(R.t0, 0x800E);
+  a.sw(R.v0, ADDR.g_LastBailFrame & 0xffff, R.t0);
+  a.lw(R.ra, 16, R.sp);
+  a.addiu(R.v0, R.zero, -1);             // Suppress original English security guard voice (261..264)!
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('hch_orig');
+  a.j(SYM.SFX_Play);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 12. Hook_PsxUpload(int bankIdx) [@ 0x8006833C/394/944/AA0 -> PSX_ParseAndUploadTex]
+  //     Dynamic Per-Skater Lulao Cash Bills ($100/$50/$250 in ALL levels)!
+  //     When "items" (.psx) finishes loading into RAM on the Loading Screen and selected skater
+  //     is Lulao (Slot 2), stamps Lulao's engraved monochrome portraits directly into T[0..2]
+  //     BEFORE native VRAM upload! All other skaters see 100% original Tony Hawk cash bills!
+  // --------------------------------------------------------------------------
+  a.label('Hook_PsxUpload');
+  a.la(R.t0, SYM.g_PsxBanks);
+  a.sll(R.t1, R.a0, 6);
+  a.addu(R.t0, R.t0, R.t1);              // t0 = &g_PsxBanks[bankIdx]
+  a.lw(R.t1, 0, R.t0);                   // bank->name[0..3]
+  a.li(R.t2, 0x6D657469);                // "item" LE
+  a.bne(R.t1, R.t2, 'hpu_orig');
+  a.lbu(R.t1, 4, R.t0);                  // bank->name[4]
+  a.addiu(R.t2, R.zero, 0x73);           // 's'
+  a.bne(R.t1, R.t2, 'hpu_orig');
+  a.lbu(R.t1, 5, R.t0);                  // delay slot: bank->name[5]
+  a.nop();                               // R3000A load-delay slot before bne!
+  a.bne(R.t1, R.zero, 'hpu_orig');
+  a.nop();
+
+  // It IS "items"! Check if selected skater == 2 (Lulao) & cash art exists in VOICES.DAT!
+  a.addiu(R.sp, R.sp, -48);
+  a.sw(R.ra, 40, R.sp);
+  a.sw(R.s0, 36, R.sp);
+  a.sw(R.s1, 32, R.sp);
+  a.sw(R.s2, 28, R.sp);
+  a.sw(R.s3, 24, R.sp);
+  a.move(R.s0, R.a0);                    // s0 = bankIdx
+  a.lw(R.s1, 20, R.t0);                  // s1 = raw items.psx RAM buffer!
+
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t0, R.zero, 2);              // Slot 2 = Lulao
+  a.bne(R.v0, R.t0, 'hpu_done');
+  a.nop();
+  a.lwSym(R.s3, 'g_CashArtStartSec');
+  a.nop();
+  a.beq(R.s3, R.zero, 'hpu_done');
+  a.nop();
+  a.beq(R.s1, R.zero, 'hpu_done');
+  a.nop();
+
+  // Temp alloc 6,144 B (3 sectors) on Loading Screen -> read CASHART -> stamp T[0..2] -> Mem_Free!
+  a.addiu(R.a0, R.zero, 6144);
+  a.move(R.a1, R.zero);
+  a.addiu(R.a2, R.zero, 1);
+  a.jal(SYM.Mem_Alloc);
+  a.move(R.a3, R.zero);
+  a.beq(R.v0, R.zero, 'hpu_done');
+  a.move(R.s2, R.v0);                    // s2 = temp 6144 B buffer
+
+  a.jal(SYM.CDWAD_WaitIdle);
+  a.nop();
+  // Safely pause XA if active (save flag at 16(sp))
+  a.sw(R.zero, 16, R.sp);
+  a.lw(R.t0, 14704, R.gp);
+  a.lw(R.t1, 14712, R.gp);
+  a.nop();
+  a.beq(R.t0, R.zero, 'hpu_read');
+  a.nop();
+  a.bne(R.t1, R.zero, 'hpu_read');
+  a.nop();
+  a.addiu(R.t2, R.zero, 1);
+  a.sw(R.t2, 16, R.sp);
+  a.jal(SYM.XA_Pause);
+  a.addiu(R.a0, R.zero, 1);
+
+  a.label('hpu_read');
+  a.move(R.a0, R.s3);                    // g_CashArtStartSec
+  a.addiu(R.a1, R.zero, 3);              // 3 sectors
+  a.jal('LulaoCache_CdReadSync');
+  a.move(R.a2, R.s2);
+
+  a.lw(R.t0, 16, R.sp);
+  a.nop();
+  a.beq(R.t0, R.zero, 'hpu_stamp');
+  a.nop();
+  a.jal(SYM.XA_SetMode);
+  a.nop();
+  a.jal(SYM.XA_Pause);
+  a.move(R.a0, R.zero);
+  a.jal(SYM.XA_UpdateVolume);
+  a.nop();
+
+  a.label('hpu_stamp');
+  a.lw(R.t0, 0, R.s2);                   // magic == 0x43415348 ("CASH")
+  a.li(R.t1, 0x43415348);
+  a.bne(R.t0, R.t1, 'hpu_free');
+  a.move(R.t0, R.zero);                  // billIdx = 0..2
+  a.addiu(R.t1, R.s2, 16);               // srcPtr = s2 + 16
+
+  a.label('hpu_bill_lp');
+  a.sll(R.t2, R.t0, 2);
+  a.addu(R.t2, R.s2, R.t2);
+  a.lw(R.t3, 4, R.t2);                   // dataOff[billIdx]
+  a.nop();
+  a.addu(R.t3, R.s1, R.t3);
+  a.addiu(R.t3, R.t3, 16);               // dstPtr = psxBuf + dataOff + 16 (x=32 in 4-bit!)
+  a.addiu(R.t4, R.zero, 64);             // 64 rows
+
+  a.label('hpu_row_lp');
+  // Copy 6 aligned uint32 words (24 bytes = 48 pixels!) per row
+  a.lw(R.t5, 0, R.t1);  a.lw(R.t6, 4, R.t1);
+  a.sw(R.t5, 0, R.t3);  a.sw(R.t6, 4, R.t3);
+  a.lw(R.t5, 8, R.t1);  a.lw(R.t6, 12, R.t1);
+  a.sw(R.t5, 8, R.t3);  a.sw(R.t6, 12, R.t3);
+  a.lw(R.t5, 16, R.t1); a.lw(R.t6, 20, R.t1);
+  a.sw(R.t5, 16, R.t3); a.sw(R.t6, 20, R.t3);
+  a.addiu(R.t1, R.t1, 24);
+  a.addiu(R.t4, R.t4, -1);
+  a.bne(R.t4, R.zero, 'hpu_row_lp');
+  a.addiu(R.t3, R.t3, 64);               // delay slot: next 128px 4-bit row (+64 B)!
+
+  a.addiu(R.t0, R.t0, 1);
+  a.addiu(R.t2, R.zero, 3);
+  a.bne(R.t0, R.t2, 'hpu_bill_lp');
+  a.nop();
+
+  a.label('hpu_free');
+  a.jal(SYM.Mem_Free);
+  a.move(R.a0, R.s2);
+
+  a.label('hpu_done');
+  a.move(R.a0, R.s0);                    // restore bankIdx!
+  a.lw(R.s3, 24, R.sp);
+  a.lw(R.s2, 28, R.sp);
+  a.lw(R.s1, 32, R.sp);
+  a.lw(R.s0, 36, R.sp);
+  a.lw(R.ra, 40, R.sp);
+  a.addiu(R.sp, R.sp, 48);
+
+  a.label('hpu_orig');
+  a.j(SYM.PSX_ParseAndUploadTex);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // Resident State & LULAO_GPBANK + BOLSO_GPBANK Descriptor Tables (0x800E3800..0x800E4FFF)
   // --------------------------------------------------------------------------
   a.align(4);
   a.label('g_TaxasHashMap');
@@ -2590,40 +2935,53 @@ function assembleLulaoEngine(gpMeta) {
   a.word(0x34524351); a.word(0x2EBF22CA); // T -> A
   a.word(0x29B68A16); a.word(0x311D55D4); // E -> S
 
-  a.label('g_StreamActive');     a.word(0);
-  a.label('g_StreamSrc');        a.word(0);
-  a.label('g_StreamCurPos');     a.word(0);
-  a.label('g_StreamTotalBytes'); a.word(0);
-  a.label('g_StreamNextHalf');   a.word(0);
-  a.label('g_StreamEofFrames');  a.word(0);
-  a.label('g_EndRunSpoken');     a.word(0);
-  a.label('g_LastClipIdx');      a.word(0xFFFFFFFF);
-  a.label('g_PrngState');        a.word(0x5A3C96F1);
-  a.label('g_OrigSaved');        a.word(0);
-  a.label('g_SavedRevBit');      a.word(0);
-  a.label('g_StreamLastVSync');  a.word(0);
-  a.label('g_StreamSampleAcc');  a.word(0);
-  a.label('g_PendingVoiceMode'); a.word(0);
-  a.label('g_CacheBuf');         a.word(0);
-  a.label('g_CacheStartClip');   a.word(0);
-  a.label('g_CacheClipCount');   a.word(0);
-  a.label('g_CacheBaseOff');     a.word(0);
-  a.label('g_CacheAllocBytes');  a.word(0);
-  a.label('g_GpBankStartSec');   a.word(gpMeta.startSector >>> 0);
-  a.label('g_GpClipCount');      a.word(gpMeta.clipCount >>> 0);
+  a.label('g_StreamActive');       a.word(0);
+  a.label('g_StreamSrc');          a.word(0);
+  a.label('g_StreamCurPos');       a.word(0);
+  a.label('g_StreamTotalBytes');   a.word(0);
+  a.label('g_StreamNextHalf');     a.word(0);
+  a.label('g_StreamEofFrames');    a.word(0);
+  a.label('g_EndRunSpoken');       a.word(0);
+  a.label('g_LastClipIdx');        a.word(0xFFFFFFFF);
+  a.label('g_PrngState');          a.word(0x5A3C96F1);
+  a.label('g_OrigSaved');          a.word(0);
+  a.label('g_SavedRevBit');        a.word(0);
+  a.label('g_StreamLastVSync');    a.word(0);
+  a.label('g_StreamSampleAcc');    a.word(0);
+  a.label('g_PendingVoiceMode');   a.word(0);
+  a.label('g_CacheBuf');           a.word(0);
+  a.label('g_CacheStartClip');     a.word(0);
+  a.label('g_CacheClipCount');     a.word(0);
+  a.label('g_CacheBaseOff');       a.word(0);
+  a.label('g_CacheAllocBytes');    a.word(0);
+  a.label('g_GpBankStartSec');     a.word(gpMeta.startSector >>> 0);
+  a.label('g_GpClipCount');        a.word(gpMeta.clipCount >>> 0);
+  a.label('g_BolsoDataPtr');       a.word(0);
+  a.label('g_BolsoStartClip');     a.word(0);
+  a.label('g_BolsoClipCount');     a.word(0);
+  a.label('g_BolsoBaseOff');       a.word(0);
+  a.label('g_BolsoLastClipIdx');   a.word(0xFFFFFFFF);
+  a.label('g_BolsoBankStartSec');  a.word(gpMeta.bolso.startSector >>> 0);
+  a.label('g_BolsoBankClipCount'); a.word(gpMeta.bolso.clipCount >>> 0);
+  a.label('g_CashArtStartSec');    a.word((gpMeta.cashArt?.startSector || 0) >>> 0);
 
   a.label('g_GpRingTable');
   for (const e of gpMeta.ringEntries) {
     a.word(e.byteOffsetInBank >>> 0);
     a.word(e.byteSize >>> 0);
   }
+  a.label('g_BolsoRingTable');
+  for (const e of gpMeta.bolso.ringEntries) {
+    a.word(e.byteOffsetInBank >>> 0);
+    a.word(e.byteSize >>> 0);
+  }
 
   const lulaoUsed = a.pc() - ADDR.LulaoCodeBase;
-  if (lulaoUsed > 4096) throw new Error(`LULAO_CODE excede 4096 B (${lulaoUsed} B)!`);
-  console.log(`  [ASM] LULAO_CODE:   0x${ADDR.LulaoCodeBase.toString(16)}..0x${a.pc().toString(16)} (${lulaoUsed} B / 4096 B, livre: ${4096 - lulaoUsed} B)`);
-  console.log(`        [SYM] g_CacheBuf=0x${a.labels.get('g_CacheBuf').toString(16)} g_CacheClipCount=0x${a.labels.get('g_CacheClipCount').toString(16)} g_PendingVoiceMode=0x${a.labels.get('g_PendingVoiceMode').toString(16)} g_StreamActive=0x${a.labels.get('g_StreamActive').toString(16)} LulaoStream_StartFromCache=0x${a.labels.get('LulaoStream_StartFromCache').toString(16)}`);
+  if (lulaoUsed > 6144) throw new Error(`LULAO_CODE excede 6144 B (${lulaoUsed} B)!`);
+  console.log(`  [ASM] LULAO_CODE:   0x${ADDR.LulaoCodeBase.toString(16)}..0x${a.pc().toString(16)} (${lulaoUsed} B / 6144 B, livre: ${6144 - lulaoUsed} B)`);
+  console.log(`        [SYM] g_CacheBuf=0x${a.labels.get('g_CacheBuf').toString(16)} g_CacheClipCount=0x${a.labels.get('g_CacheClipCount').toString(16)} g_BolsoClipCount=0x${a.labels.get('g_BolsoClipCount').toString(16)} g_PendingVoiceMode=0x${a.labels.get('g_PendingVoiceMode').toString(16)} g_StreamActive=0x${a.labels.get('g_StreamActive').toString(16)}`);
 
-  a.padTo(ADDR.LulaoCodeBase + 4096);
+  a.padTo(ADDR.LulaoCodeBase + 6144);
   return { buf: a.emit(), labels: a.labels };
 }
 
@@ -2675,11 +3033,11 @@ function applyAll() {
     const built = assembleLulaoEngine(gpMeta);
     lulaoCode = built.buf;
     lulaoLabels = built.labels;
-    return Buffer.concat([lulaoCode, lulaoStrData]); // 8192 B (Sectors 2..5)
+    return Buffer.concat([lulaoCode, lulaoStrData]); // 10240 B (Sectors 2..6)
   });
 
   // 3. Patch SLUS_010.66 (exact same file size 864,256 B!)
-  console.log('\n=== Aplicando 28 Hooks Cirurgicos + Fix School II G6 em SLUS_010.66 ===');
+  console.log('\n=== Aplicando 33 Hooks Cirurgicos + Fix School II G6 em SLUS_010.66 ===');
   const slus = fs.readFileSync(slusPath);
   const ramToOff = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
 
@@ -2688,8 +3046,8 @@ function applyAll() {
   patchWord(slus, ramToOff(0x800D50F8), 0x74756843, 0x6B63694B,                   'Fix School II G6 "Kick" @ 0x800D50F8');
   patchWord(slus, ramToOff(0x800D50FC), 0x6F686E69, 0x70696C66,                   'Fix School II G6 "flip" @ 0x800D50FC');
 
-  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000]);
-  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x24845800,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000]);
+  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000, 0x800E5800]);
+  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x24846000,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000, 0x24845800]);
   patchWord(slus, ramToOff(0x80053690), 0x28620018, 0x28620017,                   'Reserve SPU Voice 23 @ 0x80053690');
   patchWord(slus, ramToOff(0x800527B8), jalWord(SYM.SFX_FindGlobal),      jalWord(ADDR.Tramp_BailSfx),        'Hook SFX_Play Bail Round-Robin @ 0x800527B8');
   patchWord(slus, ramToOff(0x8006CAD4), jalWord(SYM.Movies_Init),         jalWord(ADDR.Mod_BootInit),         'Hook Movies_Init @ 0x8006CAD4');
@@ -2712,6 +3070,11 @@ function applyAll() {
   patchWord(slus, ramToOff(0x8003D71C), jalWord(SYM.Gameplay_MainLoop),   jalWord(ADDR.Entry_GameplayStart),  'Hook GameplayStart/Retry @ 0x8003D71C');
   patchWord(slus, ramToOff(0x8003D828), jalWord(SYM.Level_Unload),        jalWord(ADDR.Entry_GameplayExit),   'Hook GameplayExit Cleanup @ 0x8003D828');
   patchWord(slus, ramToOff(0x80035D68), jalWord(SYM.Mesh_FindByHash),     jalWord(ADDR.Entry_SpawnLetter),    'Hook 3D T-A-X-A-S Spawn @ 0x80035D68');
+  patchWord(slus, ramToOff(0x800623B8), jalWord(SYM.SFX_Play),            jalWord(ADDR.Entry_CarHitVoice),    'Hook School II Golf Cart RunOver @ 0x800623B8');
+  // Dynamic Per-Skater Lulao Cash Bills ($100/$50/$250): stamp items.psx RAM before VRAM upload!
+  for (const psxSite of [0x8006833C, 0x80068394, 0x80068944, 0x80068AA0]) {
+    patchWord(slus, ramToOff(psxSite), jalWord(SYM.PSX_ParseAndUploadTex), jalWord(ADDR.Entry_PsxUpload), `Hook PSX Upload (Lulao Cash) @ 0x${psxSite.toString(16)}`);
+  }
 
   // Menu Overlay_Run pre-sync hooks (ensures Career goal lists & cash labels match skater even after direct MC Load!)
   for (const ovSite of [0x80082C38, 0x80082D2C, 0x80082DB0, 0x80082E1C, 0x80082E98, 0x80082EF0, 0x80082F70, 0x80082FD4]) {

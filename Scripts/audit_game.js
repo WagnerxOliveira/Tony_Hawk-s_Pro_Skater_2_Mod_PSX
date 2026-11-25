@@ -142,7 +142,12 @@ try {
     [0x800527B8, jalWord(ADDR.Tramp_BailSfx)],         // Hook SFX_Play -> 9 rotating bail screams (round-robin + 50f cooldown)
     [0x80053690, 0x28620017],                          // Reserve SPU Voice 23 for skater voices (slti v0,v1,23)
     ...FONT_PATCH_WORDS.map(p => [p.ram, p.patched]),  // Font_CharToGlyph @ 0x8005B9B4: 5 words for native PT-BR accents (ã,ê,í,ó)
-    [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..5 + FlushCache
+    [0x800623B8, jalWord(ADDR.Entry_CarHitVoice)],     // Hook School II Golf Cart RunOver (Bolsonaro Zero-Stall!)
+    [0x8006833C, jalWord(ADDR.Entry_PsxUpload)],       // Hook PSX Upload (Dynamic Lulao Cash Bills)
+    [0x80068394, jalWord(ADDR.Entry_PsxUpload)],       // Hook PSX Upload (Dynamic Lulao Cash Bills)
+    [0x80068944, jalWord(ADDR.Entry_PsxUpload)],       // Hook PSX Upload (Dynamic Lulao Cash Bills)
+    [0x80068AA0, jalWord(ADDR.Entry_PsxUpload)],       // Hook PSX Upload (Dynamic Lulao Cash Bills)
+    [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..6 + FlushCache
     [0x80082B80, jalWord(ADDR.Tramp_RunPlaySel)],      // Hook Overlay_Run playsel -> instant music ducking + sync Lulao goals on exit
     [0x80082C38, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync (skateshp/career)
     [0x80082D2C, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync (levelsel)
@@ -152,8 +157,8 @@ try {
     [0x80082EF0, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
     [0x80082F70, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
     [0x80082FD4, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
-    [0x800A2950, 0x24845800],                          // InitHeap start -> 0x800E5800
-    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800E5800
+    [0x800A2950, 0x24846000],                          // InitHeap start -> 0x800E6000
+    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800E6000
   ]);
   const isTextPool = (off) => (off >= 0x059BC0 && off < 0x05BC00) || (off >= 0x0A0000 && off < 0x0D2E74);
   const isModTail = (ram) => ram >= 0x800E2680 && ram < 0x800E2800;
@@ -277,15 +282,16 @@ try {
   } else {
     // Allow ONLY size-field updates strictly within SAME CD sector allocations (ZERO offset shifts!)
     const allowedHedSizeDelta = new Map([
-      [8,    1056],             // items.psx:   39096 -> 40152 B (<= 40960 B, same 20 sectors, +3D letter 'X' M[13])
-      [14,   120],              // skhan_o.psx: 122236 -> 122356 B (<= 122880 B, same 60 sectors, +3D Haddad M[8] + Pinga 51)
+      [8,    1688],             // items.psx:   39096 -> 40784 B (<= 40960 B, same 20 sectors, +3D 'X' M[13] + 3D Garrafa 51 & Aura M[8])
+      [14,   -316],             // skhan_o.psx: 122236 -> 121920 B (<= 122880 B, same 60 sectors, Barril 51+Lulao + 3D Haddad M[8])
       [387,  SILVIO_MIC_DELTA], // burnq2.psx:  60244 -> 61404 B (<= 61440 B, same 30 sectors, +3D Mic)
       [1010, SILVIO_MIC_DELTA], // burnq_l.psx: 51932 -> 53092 B (<= 53248 B, same 26 sectors, +3D Mic)
-      [1094, 768],              // sksl2_l.psx: 341176 -> 341944 B (<= 342016 B, same 167 sectors, Dilma 40x64 16c)
-      [1095, 168],              // sksl2_o.psx:   5960 ->   6128 B (<=   6144 B, same 3 sectors, 3D Dilma Barril M[5])
-      [1096, 768],              // sksl2_l2.psx:341176 -> 341944 B (<= 342016 B, same 167 sectors, Dilma 40x64 16c 2P)
+      [1094, 528],              // sksl2_l.psx: 341176 -> 341704 B (<= 342016 B, same 167 sectors, Dilma 40x64 + Vento Estocado 48x64)
+      [1095, 168],              // sksl2_o.psx:   5960 ->   6128 B (<=   6144 B, same 3 sectors, 3D Dilma M[5] + 3D Vento Estocado M[4])
+      [1096, 528],              // sksl2_l2.psx:341176 -> 341704 B (<= 342016 B, same 167 sectors, 2P)
+      [1100, 644],              // c_kart.psx:   19792 ->  20436 B (<=  20480 B, same 10 sectors, Cabeca 3D Bolsonaro Doidao)
       [1103, 1116],             // skven_o.psx:  9076 -> 10192 B (<= 10240 B, same 5 sectors, 3D Garrafa Pitu M[4])
-      [1109, 120],              // skhan_o2.psx:123480 -> 123600 B (<= 124928 B, same 61 sectors, +3D Haddad M[8] 2P)
+      [1109, -316],             // skhan_o2.psx:123480 -> 123164 B (<= 124928 B, same 61 sectors, Barril 51+Lulao + 3D Haddad M[8] 2P)
     ]);
     let hedErr = 0;
     for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
@@ -305,12 +311,12 @@ try {
       fail('WAD', 'Bytes apos tabela CD.HED diferem do Redump!');
       hedErr++;
     }
-    if (hedErr === 0) pass('CD.HED 100% integro: 1.522/1.531 entradas bit-a-bit Redump + 9 modelos/texturas nos mesmos setores (0 deslocamento de offsets)');
+    if (hedErr === 0) pass('CD.HED 100% integro: 1.521/1.531 entradas bit-a-bit Redump + 10 modelos/texturas nos mesmos setores (0 deslocamento de offsets)');
   }
 
   const allowedWadIdxs = new Set([
     3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
-    8, 14, 1094, 1095, 1096, 1102, 1103, 1109,      // Lulao world assets: items (3D X), skhan_o/o2 (Pinga 51 + 3D Haddad), sksl2_o/l/l2 (3D Dilma Barril), skven_o/l (3D Pitu)
+    8, 14, 1094, 1095, 1096, 1100, 1102, 1103, 1109,// Lulao world assets: items (3D X + 51 Bottle/Aura), skhan_o/o2 (Barril 51+Lulao + Haddad), sksl2_o/l/l2 (Dilma + Vento Estocado), c_kart (Bolsonaro), skven_o/l (Pitu)
     45, 60, 61, 458,                                // options.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
     369, 370, 371, 372, 377, 378, 379,              // 7 custom portraits: s2face1,2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     387, 1010, 431, 1012,                           // Silvio Santos (4 .PSX, incl. 3D Chest Mic on 387 & 1010)
@@ -630,16 +636,20 @@ try {
     if (!hOrig.equals(hCur)) fail('HANGAR', `skhan_l.psx difere do original Redump (${hCur.length} B)!`);
     else pass('skhan_l.psx (Fase 1 The Hangar 1P/2P): 100% restaurado ao original Redump (316.604 B intocados)');
   }
-  // Validate Lulao 3D World Assets: items.psx (3D 'X'), skhan_o/o2 (Pinga 51 barrels), skven_o/l (3D Garrafa Pitu)
+  // Validate Lulao 3D World Assets: items.psx (3D 'X' + 3D 51 Bottle/Aura), skhan_o/o2 (Barril 51+Lulao + Haddad), skven_o/l (Pitu), sksl2 (Dilma + Vento), c_kart (Bolsonaro)
   {
     const psxLib = require('./psx_skater_lib');
     const itemsMod = getWadEntry(fdMod, 455, hedDisk, 8);
-    const expItems = buildItemsPsxWithX();
-    if (!itemsMod.equals(expItems)) fail('WORLD3D', `items.psx (idx=8) difere do binario esperado com letra 3D 'X'!`);
-    else {
-      const ip = psxLib.parsePsxStructure(itemsMod);
-      if (ip.numMeshes !== 14 || ip.meshHashes[13] !== HASH_X_LETTER) fail('WORLD3D', `items.psx M[13] 'X' invalido!`);
-      else pass(`items.psx (idx=8): letra 3D maiuscula 'X' (M[13], hash=0x${HASH_X_LETTER.toString(16)}, ${itemsMod.length}/40960 B) 100% valida`);
+    const ip = psxLib.parsePsxStructure(itemsMod);
+    const bMo = ip.meshOffs[8];
+    const bV = itemsMod.readUInt16LE(bMo + 2), bF = itemsMod.readUInt16LE(bMo + 6);
+    const bDrawDist = itemsMod.readUInt32LE(bMo + 24);
+    const auraTex = ip.textures.find(t => t.texIdx === 9);
+    const auraPal0 = auraTex ? itemsMod.readUInt16LE(auraTex.palInfo.offset) : 0;
+    if (ip.numMeshes !== 14 || ip.meshHashes[13] !== HASH_X_LETTER || bV !== 56 || bF !== 50 || bDrawDist !== 0xffff7fff || !auraTex || auraPal0 !== 0x7c1f) {
+      fail('WORLD3D', `items.psx (idx=8) invalido: meshes=${ip.numMeshes}, M[8]=${bV}v/${bF}f, drawDist=0x${bDrawDist.toString(16)}, auraPal0=0x${auraPal0.toString(16)}`);
+    } else {
+      pass(`items.psx (idx=8, ${itemsMod.length}/40960 B): letra 3D 'X' (M[13]) + 3D Garrafa 51 + Aura Dourada Aditiva (M[8], ${bV}v/${bF}f, alpha 0x7c1f) 100% validos`);
     }
     const skvenOMod = getWadEntry(fdMod, 455, hedDisk, 1103);
     const expSkvenO = buildSkvenOPsxWithPitu();
@@ -660,10 +670,12 @@ try {
     const hDrawDist = skhanOMod.readUInt32LE(hMo + 24);
     const hTex = hp1.textures.find(t => t.texIdx === 24);
     const hPal0 = hTex ? skhanOMod.readUInt16LE(hTex.palInfo.offset) : 0;
-    if (hp1.numMeshes < 10 || hp2.numMeshes < 10 || hV !== 34 || hF !== 32 || hDrawDist !== 0xffff7fff || !hTex || hTex.w !== 64 || hTex.h !== 64 || hPal0 !== 0x7c1f) {
-      fail('WORLD3D', `skhan_o / skhan_o2 invalido (M[8] Haddad=${hV}v/${hF}f, drawDist=0x${hDrawDist.toString(16)}, pal0=0x${hPal0.toString(16)}, tex24=${hTex ? hTex.w + 'x' + hTex.h : 'missing'})!`);
+    const bFrontTex = hp1.textures.find(t => t.texIdx === 26);
+    const bBackTex  = hp1.textures.find(t => t.texIdx === 39);
+    if (hp1.numMeshes < 10 || hp2.numMeshes < 10 || hV !== 34 || hF !== 32 || hDrawDist !== 0xffff7fff || !hTex || hTex.w !== 64 || hTex.h !== 64 || hPal0 !== 0x7c1f || !bFrontTex || bFrontTex.palSize !== 16 || !bBackTex || bBackTex.w !== 64 || bBackTex.h !== 64) {
+      fail('WORLD3D', `skhan_o / skhan_o2 invalido (M[8] Haddad=${hV}v/${hF}f, barril ti26=${bFrontTex ? bFrontTex.palSize : 'missing'}, ti39=${bBackTex ? bBackTex.w + 'x' + bBackTex.h : 'missing'})!`);
     } else {
-      pass(`skhan_o.psx (idx=14, ${skhanOMod.length}/122880 B) & skhan_o2.psx (idx=1109): Barris Pinga 51 + 3D Haddad M[8] (${hV}v/${hF}f, 64x64 16c, alpha 0x7c1f) validos`);
+      pass(`skhan_o.psx (idx=14, ${skhanOMod.length}/122880 B) & skhan_o2.psx (idx=1109): Barris 51 Frente + Lulao Atras (ti=26/39 64x64 16c) + 3D Haddad M[8] (${hV}v/${hF}f) validos`);
     }
     const sksl2OMod = getWadEntry(fdMod, 455, hedDisk, 1095);
     const sksl2LMod = getWadEntry(fdMod, 455, hedDisk, 1094);
@@ -677,10 +689,25 @@ try {
     const dt1 = dl1.textures.find(t => t.palId === 2582071966);
     const dt2 = dl2.textures.find(t => t.palId === 2582071966);
     const dPal0 = dt1 ? sksl2LMod.readUInt16LE(dt1.palInfo.offset) : 0;
-    if (dV !== 20 || dF !== 12 || dDrawDist !== 0xffff7fff || !dt1 || dt1.w !== 40 || dt1.h !== 64 || !dt2 || dt2.w !== 40 || dt2.h !== 64 || dPal0 !== 0x7c1f) {
-      fail('WORLD3D', `School II Dilma invalida (M[5]=${dV}v/${dF}f, drawDist=0x${dDrawDist.toString(16)}, pal0=0x${dPal0.toString(16)}, tex=${dt1 ? dt1.w + 'x' + dt1.h : 'missing'})!`);
+    const vMo = dp.meshOffs[4];
+    const vV = sksl2OMod.readUInt16LE(vMo + 2), vF = sksl2OMod.readUInt16LE(vMo + 6);
+    const vDrawDist = sksl2OMod.readUInt32LE(vMo + 24);
+    const vt1 = dl1.textures.find(t => t.palId === 0xabe1c32e);
+    const vt2 = dl2.textures.find(t => t.palId === 0xabe1c32e);
+    if (dV !== 20 || dF !== 12 || dDrawDist !== 0xffff7fff || !dt1 || dt1.w !== 40 || dt1.h !== 64 || !dt2 || dPal0 !== 0x7c1f || vV !== 12 || vF !== 10 || vDrawDist !== 0xffff7fff || !vt1 || vt1.w !== 48 || vt1.h !== 64 || !vt2) {
+      fail('WORLD3D', `School II Dilma/Vento invalido (M[5]=${dV}v/${dF}f, M[4]=${vV}v/${vF}f, vTex=${vt1 ? vt1.w + 'x' + vt1.h : 'missing'})!`);
     } else {
-      pass(`sksl2_o.psx (idx=1095, ${sksl2OMod.length}/6144 B) & sksl2_l/l2.psx (idx=1094/1096, ${sksl2LMod.length}/342016 B): 3D Dilma no Barril M[5] (${dV}v/${dF}f, 40x64 16c, alpha 0x7c1f) valida`);
+      pass(`sksl2_o.psx (idx=1095, ${sksl2OMod.length}/6144 B) & sksl2_l/l2.psx (${sksl2LMod.length}/342016 B): 3D Dilma M[5] (40x64) + 3D Vento Estocado M[4] (${vV}v/${vF}f, 48x64) validos`);
+    }
+    const kartMod = getWadEntry(fdMod, 455, hedDisk, 1100);
+    const kp = psxLib.parsePsxStructure(kartMod);
+    const kMo = kp.meshOffs[0];
+    const kV = kartMod.readUInt16LE(kMo + 2), kF = kartMod.readUInt16LE(kMo + 6);
+    const kFace = kp.textures.find(t => t.texIdx === 10);
+    if (kV !== 190 || kF !== 140 || !kFace || kFace.w !== 48 || kFace.h !== 52) {
+      fail('WORLD3D', `c_kart.psx (idx=1100) Bolsonaro invalido: ${kV}v/${kF}f, face=${kFace ? kFace.w + 'x' + kFace.h : 'missing'}`);
+    } else {
+      pass(`c_kart.psx (idx=1100, ${kartMod.length}/20480 B): Cabeca 3D Bolsonaro Doidao (${kV}v/${kF}f, face 48x52 16c) 100% valida`);
     }
   }
 
@@ -735,11 +762,14 @@ try {
     const voicesManifestPath = path.join(rootDir, 'build', 'voices_manifest.json');
     const voicesManifest = fs.existsSync(voicesManifestPath) ? JSON.parse(fs.readFileSync(voicesManifestPath, 'utf8')) : null;
     const gpMeta = voicesManifest && voicesManifest.gameplayBank;
-    if (!gpMeta || gpMeta.clipCount !== 14 || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28 || gpMeta.spuPitch !== 0x0280) {
-      fail('VOICES', 'Manifesto build/voices_manifest.json sem gameplayBank (LULAO_GPBANK 14x2 @ 0x0280) valido!');
+    const bolsoMeta = voicesManifest && voicesManifest.bolsoGameplayBank;
+    const cashMeta = voicesManifest && voicesManifest.cashArt;
+    if (!gpMeta || gpMeta.clipCount !== 14 || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28 || gpMeta.spuPitch !== 0x0280 || !bolsoMeta || bolsoMeta.clipCount !== 14 || bolsoMeta.ringEntries.length !== 28 || !cashMeta || !cashMeta.startSector) {
+      fail('VOICES', 'Manifesto build/voices_manifest.json sem gameplayBank/bolsoGameplayBank/cashArt validos!');
     } else {
-      const { buf: expLulaoCode, labels: lulaoLabels } = assembleLulaoEngine(gpMeta);
-      if (!voicesBuf.subarray(4096, 8192).equals(expLulaoCode)) fail('VOICES', 'Setores 2..3 (LULAO_CODE) em VOICES.DAT diferem do assembly esperado!');
+      const fullGpMeta = { ...gpMeta, bolso: bolsoMeta, cashArt: cashMeta };
+      const { buf: expLulaoCode, labels: lulaoLabels } = assembleLulaoEngine(fullGpMeta);
+      if (!voicesBuf.subarray(4096, 10240).equals(expLulaoCode)) fail('VOICES', 'Setores 2..4 (LULAO_CODE 6144 B) em VOICES.DAT diferem do assembly esperado!');
 
       // Static MIPS invariant audit on LULAO_CODE:
       //  1) LulaoStream_StartFromCache MUST have ZERO calls to CdRead/CdControl/CDWAD_WaitIdle/XA_Pause/Mem_Alloc/Mem_Free!
@@ -816,12 +846,23 @@ try {
           gpErr++;
         }
       }
+      // Validate BOLSO_GPBANK (14x2 ring-doubled) & LULAO_CASHART (magic "CASH" + exact items.psx T[0..2] offsets!)
+      const bBaseOff = bolsoMeta.startSector * 2048;
+      if (bBaseOff + bolsoMeta.totalBytes > voicesBuf.length || !voicesBuf.subarray(bBaseOff, bBaseOff + bolsoMeta.singleBytes).equals(voicesBuf.subarray(bBaseOff + bolsoMeta.singleBytes, bBaseOff + 2 * bolsoMeta.singleBytes))) {
+        fail('VOICES', 'BOLSO_GPBANK anel 2x invalido em VOICES.DAT!');
+        gpErr++;
+      }
+      const cBaseOff = cashMeta.startSector * 2048;
+      if (cBaseOff + 6144 > voicesBuf.length || voicesBuf.readUInt32LE(cBaseOff) !== 0x43415348) {
+        fail('VOICES', `LULAO_CASHART invalido em VOICES.DAT @ setor +${cashMeta.startSector}!`);
+        gpErr++;
+      }
       if (mipsInvErr === 0 && gpErr === 0) {
-        pass(`LULAO_GPBANK + Zero-Stall RAM Cache: 14x2 anel (${gpMeta.totalSectors} set. @ +${gpMeta.startSector}, 6890.625 Hz / 0x0280, cap <=2.85s, -10 LUFS, 1 KB stage, 48 KB reserva), min 2 clipes@28KB / min 5@60KB / 14@Hangar, 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
+        pass(`LULAO_GPBANK + BOLSO_GPBANK + CASHART Zero-Stall: Lulao 14x2 (@+${gpMeta.startSector}) + Bolsonaro 14x2 (@+${bolsoMeta.startSector}) + CashArt (@+${cashMeta.startSector}, 48 KB reserva), 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
       }
     }
     const { buf: expLulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
-    if (!voicesBuf.subarray(8192, 12288).equals(expLulaoStrData)) fail('VOICES', 'Setores 4..5 (LULAO_STRDATA) em VOICES.DAT diferem dos dados esperados!');
+    if (!voicesBuf.subarray(10240, 14336).equals(expLulaoStrData)) fail('VOICES', 'Setores 5..6 (LULAO_STRDATA) em VOICES.DAT diferem dos dados esperados!');
     // Pillar 1 & 2 invariants on LULAO_STRDATA:
     //  - NEVER overwrite ANY Trick+Gap G6.paramStr (levels 0,1,3,4,6 -> matcher 0x800662AC)!
     //  - MUST include T-A-X-A-S toast pointers (0x800C08E8..0x800C08F8) & HUD words (0x800D7704..0x800D7714)!
@@ -868,7 +909,7 @@ try {
         }
       }
       if (clipErr === 0) {
-        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): 6 setores residentes (MODCODE + VOICETBL + BailSfx + VoiceSelect + LULAO_CODE + LULAO_STRDATA) + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
+        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): 7 setores residentes (MODCODE + VOICETBL + BailSfx + VoiceSelect + LULAO_CODE 6KB + LULAO_STRDATA) + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
       }
     }
   }

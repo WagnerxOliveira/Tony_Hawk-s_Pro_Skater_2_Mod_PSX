@@ -63,6 +63,7 @@ const GP_MAX_ACTIVE_SEC = 2.85;
 // Interleaved short/medium clip order (by sorted index in lulao_audios/) with shortest clip (#11 = ~4.1 KB) at slot 0
 // for guaranteed fallback and maximum variety in every contiguous RAM window:
 const GP_LULAO_ORDER = [11, 0, 8, 4, 6, 1, 13, 2, 9, 3, 7, 10, 5, 12];
+const cashArtPath = path.join(rootDir, 'build', 'lulao_cash_art.bin');
 
 function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   fs.mkdirSync(cacheDir, { recursive: true });
@@ -281,22 +282,35 @@ function encodeGameplayClipToSpu(mp3Path, cacheKey, maxSec = GP_MAX_ACTIVE_SEC, 
   return spu;
 }
 
-function encodeLulaoGameplayBank(lulaoFiles, force = false) {
-  const order = GP_LULAO_ORDER.filter(idx => idx < lulaoFiles.length);
-  for (let i = 0; i < lulaoFiles.length; i++) {
-    if (!order.includes(i)) order.push(i);
+function encodeCompactGameplayBank(label, srcDir, files, keyPrefix, preferredOrder = null, force = false) {
+  let order;
+  if (preferredOrder && preferredOrder.length) {
+    order = preferredOrder.filter(idx => idx < files.length);
+    for (let i = 0; i < files.length; i++) if (!order.includes(i)) order.push(i);
+  } else {
+    // Interleave shortest-first & medium clips so slot 0 is ALWAYS the smallest guaranteed-fit fallback!
+    const sizes = files.map((fn, idx) => ({ idx, sz: fs.statSync(path.join(srcDir, fn)).size }));
+    sizes.sort((a, b) => a.sz - b.sz);
+    order = [];
+    let lo = 0, hi = sizes.length - 1;
+    // Put shortest clip at slot 0, then alternate short/long for max variety in any contiguous slice!
+    if (lo <= hi) order.push(sizes[lo++].idx);
+    while (lo <= hi) {
+      if (lo <= hi) order.push(sizes[hi--].idx);
+      if (lo <= hi) order.push(sizes[lo++].idx);
+    }
   }
   const singleClips = [];
   const singleChunks = [];
   let offset = 0;
 
-  console.log(`\n=== Codificando Sub-Banco Compacto de Gameplay LULAO_GPBANK (${GP_EXACT_RATE_HZ} Hz, pitch 0x0280, cap <= ${GP_MAX_ACTIVE_SEC.toFixed(2)}s, -10 LUFS) ===`);
+  console.log(`\n=== Codificando Sub-Banco Compacto de Gameplay ${label} (${GP_EXACT_RATE_HZ} Hz, pitch 0x0280, cap <= ${GP_MAX_ACTIVE_SEC.toFixed(2)}s, -10 LUFS) ===`);
   for (let slot = 0; slot < order.length; slot++) {
     const origIdx = order[slot];
-    const fn = lulaoFiles[origIdx];
+    const fn = files[origIdx];
     const maxSec = GP_MAX_ACTIVE_SEC;
-    const key = `gp2_${GP_SAMPLE_RATE}_${String(origIdx).padStart(2, '0')}_${maxSec.toFixed(2)}s_${fn.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const spu = encodeGameplayClipToSpu(path.join(lulaoDir, fn), key, maxSec, force);
+    const key = `${keyPrefix}_${GP_SAMPLE_RATE}_${String(origIdx).padStart(2, '0')}_${maxSec.toFixed(2)}s_${fn.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const spu = encodeGameplayClipToSpu(path.join(srcDir, fn), key, maxSec, force);
     const durSec = ((spu.length / 16) * 28) / GP_EXACT_RATE_HZ;
     singleClips.push({
       slot,
@@ -310,12 +324,12 @@ function encodeLulaoGameplayBank(lulaoFiles, force = false) {
     singleChunks.push(spu);
     offset += spu.length;
     console.log(
-      `  [GP #${String(slot).padStart(2, '0')} <- orig #${String(origIdx).padStart(2, '0')}] ${fn.padEnd(38)} ` +
+      `  [${label} #${String(slot).padStart(2, '0')} <- orig #${String(origIdx).padStart(2, '0')}] ${fn.padEnd(40)} ` +
       `${durSec.toFixed(2).padStart(5)}s | ${String(spu.length).padStart(5)} B @ +0x${singleClips[slot].byteOffsetInBank.toString(16).padStart(5, '0')}`
     );
   }
 
-  // Ring-double (2x = 28 contiguous entries) so ANY random startClip (0..13) loads in 1 SINGLE contiguous CdRead!
+  // Ring-double (2x = 28 contiguous entries) so ANY random startClip loads in 1 SINGLE contiguous CdRead!
   const singleBytes = offset;
   const ringEntries = [];
   for (let copy = 0; copy < 2; copy++) {
@@ -337,8 +351,8 @@ function encodeLulaoGameplayBank(lulaoFiles, force = false) {
   rawRing.copy(bankBuf, 0);
 
   console.log(
-    `  [GPBANK] 1x = ${singleBytes} B (${(singleBytes / 1024).toFixed(1)} KB) | ` +
-    `2x Anel = ${bankBuf.length} B (${totalSectors} setores, ${(bankBuf.length / 1024).toFixed(1)} KB) | 14 clipes x 2 = 28 entradas`
+    `  [${label}] 1x = ${singleBytes} B (${(singleBytes / 1024).toFixed(1)} KB) | ` +
+    `2x Anel = ${bankBuf.length} B (${totalSectors} setores, ${(bankBuf.length / 1024).toFixed(1)} KB) | ${singleClips.length} clipes x 2 = ${ringEntries.length} entradas`
   );
   return {
     clipCount: singleClips.length,
@@ -351,6 +365,14 @@ function encodeLulaoGameplayBank(lulaoFiles, force = false) {
     ringEntries,
     bankBuf,
   };
+}
+
+function encodeLulaoGameplayBank(lulaoFiles, force = false) {
+  return encodeCompactGameplayBank('LULAO_GPBANK', lulaoDir, lulaoFiles, 'gp2', GP_LULAO_ORDER, force);
+}
+
+function encodeBolsoGameplayBank(bolsoFiles, force = false) {
+  return encodeCompactGameplayBank('BOLSO_GPBANK', bolsoDir, bolsoFiles, 'gp2_bolso', null, force);
 }
 
 function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null, extraResidentSectors = null) {
@@ -385,13 +407,13 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     if (prev.length >= 2048) prev.copy(sec0, 0, 0, 2048);
   }
 
-  // Resident Sectors 2..5 (8192 B = LULAO_CODE @ 0x800E3800 [4096 B] + LULAO_STRDATA @ 0x800E4800 [4096 B])
-  const RESIDENT_EXTRA_SECTORS = 4;
+  // Resident Sectors 2..6 (10240 B = LULAO_CODE @ 0x800E3800 [6144 B] + LULAO_STRDATA @ 0x800E5000 [4096 B])
+  const RESIDENT_EXTRA_SECTORS = 5;
   const RESIDENT_EXTRA_BYTES = RESIDENT_EXTRA_SECTORS * 2048;
 
   const allEntries = [];
   const payloads = [];
-  let curSector = 2 + RESIDENT_EXTRA_SECTORS; // Sector 0=MODCODE, 1=VOICETBL+Sec1Code, 2..3=LULAO_CODE, 4..5=LULAO_STRDATA
+  let curSector = 2 + RESIDENT_EXTRA_SECTORS; // Sector 0=MODCODE, 1=VOICETBL+Sec1Code, 2..4=LULAO_CODE, 5..6=LULAO_STRDATA
 
   const groups = [
     { skater: 'Lulao',         skaterIdx: 2, dir: lulaoDir,  files: lulaoFiles,  prefix: 'lulao' },
@@ -438,6 +460,27 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
   payloads.push(gpBank.bankBuf);
   curSector += gpBank.totalSectors;
 
+  // Append ring-doubled BOLSO_GPBANK (6890.625 Hz / pitch 0x0280) for School II Golf Cart run-over!
+  const bolsoGpStartSec = curSector;
+  const bolsoGpBank = encodeBolsoGameplayBank(bolsoFiles, force);
+  payloads.push(bolsoGpBank.bankBuf);
+  curSector += bolsoGpBank.totalSectors;
+
+  // Append LULAO_CASHART (3 sectors = 6,144 B) for dynamic per-skater Lulao engraved cash bills ($100/$50/$250)!
+  let cashArtStartSec = 0;
+  let cashArtSectors = 0;
+  if (fs.existsSync(cashArtPath)) {
+    const cashBuf = fs.readFileSync(cashArtPath);
+    if (cashBuf.length !== 3 * 2048 || cashBuf.readUInt32LE(0) !== 0x43415348) {
+      throw new Error(`lulao_cash_art.bin invalido (${cashBuf.length} B)! Execute mod_lulao_world_assets.js primeiro.`);
+    }
+    cashArtStartSec = curSector;
+    cashArtSectors = 3;
+    payloads.push(cashBuf);
+    curSector += cashArtSectors;
+    console.log(`  [CASHART] Empacotado em VOICES.DAT setor +${cashArtStartSec} (${cashArtSectors} setores, ${cashBuf.length} B)`);
+  }
+
   const gpMeta = {
     startSector: gpBankStartSec,
     clipCount: gpBank.clipCount,
@@ -448,6 +491,21 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     spuPitch: gpBank.spuPitch,
     spuPitchHex: '0x' + gpBank.spuPitch.toString(16).padStart(4, '0'),
     ringEntries: gpBank.ringEntries,
+    bolso: {
+      startSector: bolsoGpStartSec,
+      clipCount: bolsoGpBank.clipCount,
+      singleBytes: bolsoGpBank.singleBytes,
+      totalBytes: bolsoGpBank.totalBytes,
+      totalSectors: bolsoGpBank.totalSectors,
+      sampleRateHz: bolsoGpBank.sampleRateHz,
+      spuPitch: bolsoGpBank.spuPitch,
+      spuPitchHex: '0x' + bolsoGpBank.spuPitch.toString(16).padStart(4, '0'),
+      ringEntries: bolsoGpBank.ringEntries,
+    },
+    cashArt: {
+      startSector: cashArtStartSec,
+      sectors: cashArtSectors,
+    },
   };
 
   let secExtra = Buffer.alloc(RESIDENT_EXTRA_BYTES, 0);
@@ -531,6 +589,19 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
       entries: gpBank.singleClips,
       ringEntries: gpMeta.ringEntries,
     },
+    bolsoGameplayBank: {
+      startSector: gpMeta.bolso.startSector,
+      clipCount: gpMeta.bolso.clipCount,
+      singleBytes: gpMeta.bolso.singleBytes,
+      totalBytes: gpMeta.bolso.totalBytes,
+      totalSectors: gpMeta.bolso.totalSectors,
+      sampleRateHz: gpMeta.bolso.sampleRateHz,
+      spuPitch: gpMeta.bolso.spuPitch,
+      spuPitchHex: gpMeta.bolso.spuPitchHex,
+      entries: bolsoGpBank.singleClips,
+      ringEntries: gpMeta.bolso.ringEntries,
+    },
+    cashArt: gpMeta.cashArt,
   };
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));

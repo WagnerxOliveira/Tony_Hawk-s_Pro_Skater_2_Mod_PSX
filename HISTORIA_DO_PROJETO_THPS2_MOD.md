@@ -241,18 +241,60 @@ O teste ao vivo no DuckStation GDB pagou seu peso em ouro duas vezes seguidas ne
 
 ---
 
-## Capítulo 11 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 11 — A Grande Virada 3D & Áudio Dual Zero-Stall: Barril 51 + Lulão, Notas Dinâmicas, Garrafa 51 com Aura Aditiva PS1, Vento Estocado 3D e Bolsonaro no Carrinho de Golfe
+
+Depois do Haddad e da Dilma no Barril, elevamos o nível de engenharia 3D, GPU e áudio residente com **cinco novos sistemas integrados** em [`Scripts/mod_lulao_collectibles_v2.js`](Scripts/mod_lulao_collectibles_v2.js), [`Scripts/build_skater_voices.js`](Scripts/build_skater_voices.js) e [`Scripts/patch_random_videos_and_voices.js`](Scripts/patch_random_videos_and_voices.js) — cada um resolvendo um quebra-cabeça diferente do hardware do PS1:
+
+### 1. The Hangar (`LV 0`) — Barril de Pinga 51 na Frente & Cara do Lulão Atrás (`skhan_o.psx` & `skhan_o2.psx`, `M[9]`)
+- **O desafio de VRAM:** o barril original (`M[9]`, `0x4EB2C689`) usava uma única textura `ti=26` (`64×64` 8-bit de 256 cores = `4.096 B` + `512 B` de paleta) repetida duas vezes ao redor do cilindro (`180°` frente + `180°` verso). Como colocar **duas artes completamente diferentes** (o rótulo autêntico **Pirassununga 51** na frente e a **caricatura do Lulão** atrás) **sem aumentar 1 único pixel na VRAM**?
+- **O truque cirúrgico de 4-bit:** dividimos aquela única textura 8-bit (`4.096 B`) em **duas texturas 4-bit de 16 cores de `64×64`** (`2.048 B` cada = **exatamente os mesmos `2.048` halfwords na VRAM**, e o arquivo ainda ficou **`316 bytes` menor**!):
+  - **`ti=26` (Frente 180°):** rótulo autêntico **Pirassununga 51** (amarelo, círculo preto com `"51"`, faixa vermelha e base branca) integrado ao tambor de aço;
+  - **`ti=39` (`0x51101A51`, Verso 180°):** caricatura do Lulão (`lulao_no_dinheiro.png`) recortada automaticamente por maior componente conexo (removendo 100% do fundo branco e da assinatura `"William"`) aplicada na parte traseira do barril, preservando o estêncil `"51"` na tampa (`ti=25`) e o 3D Haddad (`M[8]`) nos mesmos setores!
+
+### 2. Dinheiro Dinâmico Exclusivo do Lulão em Todas as Fases (`Hook_PsxUpload` + `LULAO_CASHART`)
+- **O desafio:** as notas de dinheiro (`$100`, `$50` e `$250` em `items.psx WAD[8]`, texturas `T[0..2]`) são compartilhadas por **todos** os skatistas do jogo. Se desenhássemos o rosto do Lulão diretamente dentro de `items.psx`, o Tony Hawk e o Silvio Santos também veriam o Lulão nas notas!
+- **A solução 100% dinâmica em tempo de carregamento (`Hook_PsxUpload @ 0x800E3858`):**
+  - Em tempo de build, gravamos a caricatura recortada do Lulão no medalhão central das 3 notas usando a **paleta monocromática exata de cada cédula** (`$100` sépia-dourado, `$50` azul-aço e `$250` verde-dólar) com *dithering* Floyd-Steinberg serpentino e preservação cirúrgica das bordas e dos algarismos (`100`, `50`, `250`), empacotando os 3 *strips* no final de `VOICES.DAT` (`LULAO_CASHART`, `3` setores @ `+1161`).
+  - Interceptamos os 4 chamadores do carregador de `.PSX` (`0x8006833C`, `0x80068394`, `0x80068944`, `0x80068AA0` → `0x80066C5C`): para qualquer banco diferente de `"items"`, o código retorna imediatamente em 4 instruções; quando `"items"` é carregado em RAM **e o skatista ativo é o Lulão (`Slot 2`)**, o hook lê os 3 setores de `LULAO_CASHART`, estampa o rosto do Lulão nos 3 offsets exatos (`+0x3998`, `+0x49AC`, `+0x59C0`) **antes** do upload para a VRAM e libera o buffer temporário. Comprovado ao vivo no DuckStation: **Lulão vê notas gravadas com o próprio rosto na cor de cada nota**, enquanto **Tony Hawk (`Slot 0`) continua vendo as cédulas originais!**
+
+### 3. School II `"100% Diploma no Buteco!"` & Fitas Secretas em Todas as Fases → Garrafa 3D de 51 + Aura Dourada Aditiva PS1 (`ABR=1`)
+- Renomeamos o objetivo `G9` de School II (`"100% Bolsa Shape!"`) para **`"100% Diploma no Buteco!"`** em `LULAO_STRDATA`.
+- Substituímos a Fita Secreta (`items.psx M[8]`, hash `0x7C1B2C4A`) — presente em **todas as fases do jogo** — por uma **Garrafa 3D octogonal esculpida de Cachaça 51 (`56v / 46n / 50f`, `2.244 B`, `drawDist = 0xFFFF7FFF`)** reutilizando **as 5 texturas exclusivas de `M[8]`** (`5.248 B` exatos = **0 B de crescimento de textura** e **80 cores independentes**!):
+  - `ti=5` (`64×64` 16c): rótulo **Pirassununga 51** com junção cilíndrica contínua;
+  - `ti=6` (`16×16` 16c): tampa alta amarela com `"51"`;
+  - `ti=7` (`64×16` 16c): gargalo e ombro de vidro transparente com linha de líquido;
+  - `ti=8` (`64×16` 16c): base de vidro espessa;
+  - `ti=9` (`64×64` 16c): **aura dourada discreta + estrelinhas cintilantes de 4 pontas** com chave de transparência `0x7C1F`.
+- **A Descoberta de Hardware da GPU PS1 (`SLUS_010.66 @ 0x8009627C`):** desmontando o emissor de pacotes GPU do THPS2, provamos que os bits `(fl & 0x0180) << 14` gravam diretamente o modo de mistura **`ABR`** no `tpage` do PS1 (`0x0080` = **`ABR=1`: Aditivo `Fundo + Frente`!**) e `0x0040` liga a semi-transparência. Combinando `fl = 0x10C3` com `pal15[0] = 0x7C1F` (que faz o carregador `0x80052090` marcar automaticamente o bit `STP 0x8000` em todas as cores brilhantes da aura), construímos 2 planos cruzados dupla-face ao redor da garrafa que emitem **luz dourada aditiva real por hardware**, sem nenhum quadrado escuro visível!
+
+### 4. School II (`LV 1`, `G5`) — *"5 Pacotes Vento Estocado"* (`sksl2_o.psx M[4]` + `sksl2_l/l2.psx`)
+- Substituímos os *Hall Passes* de School II (`M[4]`, `0x12F6063F`, `"5 Passes pro Sitio VIP"`) por um **Pacote 3D Inflado de Vento Estocado (`12v / 5n / 10f`, `444 B`)** com bordas metálicas prensadas em `Z = 0` e barriga estufada (`Z = ±28`), legível da esquerda para a direita em **ambos os lados**!
+- **Recorte sem bordas tracejadas + Upgrade de textura grátis (`-240 B` líquidos!):** removemos 100% da moldura ciano tracejada de `vento_estocado.png` por amostragem adaptativa linha-a-linha, expandimos a textura exclusiva `0xAADFEA6C` de `48×32` para **`48×64` 16 cores** (nitidez impecável no texto `"VENTO ESTOCADO"` e na Dilma girando no tornado!) e encolhemos a textura exclusiva da chave antiga não mais usada (`0xCF459305`, `16×64 256c → 4×4`), deixando `sksl2_l.psx` e `sksl2_l2.psx` **`240 bytes` menores** nos mesmos 167 setores!
+- Atualizados objetivo `G5` para **`"5 Pacotes Vento Estocado"`** e HUD para **`"VENTO ESTOCADO"`** (`"3 OF 5 VENTO ESTOCADO"`).
+
+### 5. School II (`LV 1`) — Carrinho de Golfe Pilotado pelo Bolsonaro Doidão 3D + Áudio Aleatório Zero-Stall (`c_kart.psx` + `BOLSO_GPBANK` + `Hook_CarHitVoice`)
+- **Escultura 3D na Cabine (`c_kart.psx WAD[1100]`, `M[0]`, `20.436 / 20.480 B`):** recortamos `bolsonaro_doidao.png` (removendo o fundo vermelho sólido, suprimindo o halo avermelhado e apagando a assinatura no canto), elevamos a textura do rosto do motorista (`ti=10`, `0x3DD20AE8`) de `32×32` para **`48×52` 16 cores**, sintetizamos cabelo grisalho-castanho penteado puro em `ti=11` (`8×16`) e substituímos os 18 polígonos originais da cabeça/boné do segurança por uma **cabeça 3D estanque de caricatura** conectada perfeitamente aos vértices compartilhados do pescoço (`V[65..68]`), reaproveitando os slots de normais liberados (`0 B` de crescimento de normais!).
+- **Motor Dual Zero-Stall (`BOLSO_GPBANK` + `Hook_CarHitVoice @ 0x800E3850`):**
+  - Codificamos **todos os 14 MP3s de `bolsonaro_audios/`** em anel duplicado `2×` (`BOLSO_GPBANK`, `6.890,625 Hz`, pitch `0x0280`, `-10 LUFS`, `≤ 2,85s`, `137` setores @ `+1024` de `VOICES.DAT`).
+  - Expandimos a arena residente para **7 setores (`0x800E2800..0x800E5FFF`, `NewHeapStart = 0x800E6000`)**, dando `6 KB` confortáveis para `LULAO_CODE` (`5.380 / 6.144 B`).
+  - **Descoberta ao vivo no DuckStation GDB (`14976($gp)` vs `14980($gp)`):** no primeiro teste ao vivo, a telemetria revelou imediatamente que `14976($gp)` era `g_GameMode` e o índice real da fase (`g_CurrentLevel`) fica em **`14980($gp)`** (`0 = Hangar`, `1 = School II`)! Corrigida essa única palavra MIPS, **Hangar e demais fases voltaram a dedicar 100% da RAM de áudio ao Lulão (`14/14` clipes no Hangar com `112,4 KB` livres!)**, enquanto **School II (`14980($gp) == 1`) divide o bloco único `g_CacheBuf` entre Lulão e Bolsonaro** mantendo a reserva de segurança de `48 KB` intocável (`54,0 KB` livres na Heap!).
+  - **`Hook_CarHitVoice @ 0x800623B8` (`CCar::CheckHitSkater`):** intercepta toda colisão de atropelamento com `car->type == 217` (`c_kart`), silencia o grito original do segurança em inglês (`SFX 261..264`), estende o *cooldown* do grito genérico de queda (`+45` frames) para evitar sobreposição e aciona `g_PendingVoiceMode = 3` — disparando na hora uma frase aleatória sem repetição do Bolsonaro direto de `g_BolsoDataPtr` via Voz 23 / DMA4!
+  - **Comprovado ao vivo no DuckStation em 2 atropelamentos consecutivos:** `Hook_CarHitVoice` disparou em ambos (`car->type=217`), streaming ping-pong ativo (`+1.024 B` em `422 ms`), **`~60 FPS` travados (0 frames congelados)** e 2 clipes distintos sorteados em sequência!
+
+---
+
+## Capítulo 12 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
     subgraph RAM["🧠 Mapa da Main RAM do PS1 (2 MB: 0x80000000..0x801FFFFF)"]
         K["0x80000000..0x8000FFFF — Kernel BIOS PS1"]
-        E["0x80010000..0x800E267F — SLUS_010.66<br/>35 Hooks MIPS + 217 Strings + 5 Words PT-BR Font"]
+        E["0x80010000..0x800E267F — SLUS_010.66<br/>40 Hooks MIPS + 217 Strings + 5 Words PT-BR Font"]
         B["0x800E2680..0x800E27FF — Mod_BootInit & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
-        L["0x800E3800..0x800E47FF — LULAO_CODE (Zero-Stall Cache + Streamer SPU 2 KB + Hook_SpawnLetter)"]
-        S["0x800E4800..0x800E57FF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Roubei)"]
-        H["0x800E5800..0x801FFFFF — Heap Dinâmica THPS2 + Pré-Cache LULAO_GPBANK (48 KB reserva)"]
+        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache + Streamer SPU 2 KB + SpawnLetter + CarHitVoice + PsxUpload)"]
+        S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Vento Estocado + Diploma no Buteco + Roubei)"]
+        H["0x800E6000..0x801FFFFF — Heap Dinâmica THPS2 + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK (48 KB reserva)"]
     end
     K --> E --> B --> M --> L --> S --> H
 ```
@@ -261,13 +303,13 @@ flowchart TB
 
 | Dimensão | Quantidade / Métrica Verificada |
 | :--- | :--- |
-| **Integridade da ISO Compilada** | **319.066 / 319.066 setores** (`715,7 MB`) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
+| **Integridade da ISO Compilada** | **319.207 / 319.207 setores** (`716,0 MB`) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
 | **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.531 entradas** |
-| **Hooks MIPS R3000A Cirúrgicos** | **35 hooks** em `SLUS_010.66` + **2 hooks** em `playsel.bin` + **6 setores residentes** em `VOICES.DAT` |
+| **Hooks MIPS R3000A Cirúrgicos** | **40 hooks** em `SLUS_010.66` + **2 hooks** em `playsel.bin` + **7 setores residentes** em `VOICES.DAT` (`1.164` setores) |
 | **Skatistas Personalizados** | **7 skatistas** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan*) = **28 modelos `.PSX` + 7 retratos `s2face*.bmp`** |
-| **Mundo 3D & Coletáveis Customizados** | Letra 3D **`X`** (`T-A-X-A-S` dinâmico) + **Barris Pinga 51** + **5 Garrafas 3D de Pitú** + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D** (*School II*) |
-| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` Zero-Stall (`0 ms`)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
+| **Mundo 3D & Coletáveis Customizados** | Letra 3D **`X`** (`T-A-X-A-S` dinâmico) + **Barris 51 Frente / Lulão Atrás** + **Notas Dinâmicas do Lulão (`$50/$100/$250`)** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D** & **5 Pacotes Vento Estocado 3D** & **Carrinho de Golfe com Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) |
+| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall (`0 ms` / 60 FPS)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
 | **Idioma & Fonte** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Modo Carreira do Lulão |
 
 ---
@@ -276,10 +318,11 @@ flowchart TB
 
 - **`.PSX`**: formato proprietário da Neversoft que guarda modelos 3D (vértices, normais, polígonos) e/ou texturas BGR555 com suas paletas (CLUT).
 - **`CD.HED` / `CD.WAD`**: arquivo índice (`HED`, hashes + posições) e contêiner gigante (`WAD`) com os 1.531 ativos internos do jogo.
-- **CLUT (Color Look-Up Table)**: paleta de 16 cores (4-bit) ou 256 cores (8-bit) usada pelo chip gráfico do PS1. No THPS2, `0x7C1F` (magenta) vira transparência por hardware (`0x0000`).
-- **SPU-ADPCM / Voz 23**: formato de compressão de áudio nativo do chip de som do PS1 (taxa 3,5:1). O PS1 tem 24 vozes simultâneas; reservamos a de número 23 só para falas.
+- **CLUT (Color Look-Up Table)**: paleta de 16 cores (4-bit) ou 256 cores (8-bit) usada pelo chip gráfico do PS1. No THPS2, `0x7C1F` (magenta) vira transparência por hardware (`0x0000`) e ativa automaticamente o bit `STP 0x8000` para semi-transparência.
+- **Semi-Transparência Aditiva (`ABR=1`, `fl = 0x10C3`)**: modo da GPU do PS1 em que a cor do polígono é **somada** diretamente ao fundo (`Fundo + Frente`), produzindo brilhos e auras luminosas reais sem custo extra de CPU.
+- **SPU-ADPCM / Voz 23**: formato de compressão de áudio nativo do chip de som do PS1 (taxa 3,5:1). O PS1 tem 24 vozes simultâneas; reservamos a de número 23 só para falas (Lulão, Silvio Santos e Bolsonaro no carrinho).
 - **GTE (*Geometry Transformation Engine*)**: coprocessador 3D do PS1 que projeta triângulos e quads na tela e descarta faces viradas para trás (*back-face culling* via `NCLIP`).
-- **Hook MIPS**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
+- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo (como estampar o rosto do Lulão nas notas ou tocar uma fala do Bolsonaro ao atropelar) e devolve o controle perfeitamente ao jogo original.
 - **Patch `.xdelta`**: arquivo de diferença binária que transforma legalmente a cópia original do usuário no mod completo sem distribuir arquivos comerciais protegidos.
 
 ---

@@ -33,6 +33,7 @@ const fs = require('fs');
 const path = require('path');
 const psxLib = require('./psx_skater_lib');
 const haddadDilma = require('./mod_collectibles_haddad_dilma');
+const collectiblesV2 = require('./mod_lulao_collectibles_v2');
 
 const ROOT = psxLib.rootDir;
 const BACKUP_DIR = psxLib.backupDir;
@@ -1226,27 +1227,45 @@ function main() {
     ? previewDirArg.slice('--preview-dir='.length)
     : path.join(ROOT, 'build', 'qa_world_assets');
 
-  console.log('=== THPS2 Lulao World Assets Builder (3D X + Pinga 51 + 3D Pitu + 3D Haddad + 3D Dilma) ===');
+  console.log('=== THPS2 Lulao World Assets Builder (3D X + 51 Bottle/Aura + Cash Art + Barril 51/Lulao + 3D Haddad + 3D Pitu + 3D Dilma + 3D Vento Estocado + 3D Bolsonaro Kart) ===');
 
-  // 1. items.psx (WAD[8]) with 3D uppercase 'X' (M[13])
-  const itemsPsx = buildItemsPsxWithX();
+  // Pre-compute surgical cutouts for all v2 photo assets
+  const lulaoCut  = collectiblesV2.cutoutLulaoHead();
+  const bottleCut = collectiblesV2.cutoutFitas51();
+  const ventoCut  = collectiblesV2.cutoutVentoEstocado();
+  const bolsoCut  = collectiblesV2.cutoutBolsonaroDoidao();
 
-  // 2. skhan_o.psx (WAD[14]) + skhan_o2.psx (WAD[1109]) with Pinga 51 barrels + 3D Haddad (M[8])
+  // 1. items.psx (WAD[8]): 3D uppercase 'X' (M[13]) + 3D Garrafa de 51 with Discrete Golden Aura (M[8])
+  //    + build/lulao_cash_art.bin (dynamic per-skater Lulao engraved portraits on $100/$50/$250!)
+  let itemsPsx = buildItemsPsxWithX();
+  const tapeRes = collectiblesV2.patchSecretTape51InItemsPsx(itemsPsx, bottleCut);
+  itemsPsx = tapeRes.buf;
+  console.log(`  [PSX] items.psx:    ${itemsPsx.length} / 40960 B -> M[8] 3D Garrafa 51 + Aura Dourada Aditiva (${tapeRes.stats.nV}v/${tapeRes.stats.nF}f, 5 texturas 5248 B)`);
+
+  const cashArt = collectiblesV2.buildLulaoCashBillArt(itemsPsx, lulaoCut);
+  const cashArtPath = path.join(ROOT, 'build', 'lulao_cash_art.bin');
+  fs.mkdirSync(path.dirname(cashArtPath), { recursive: true });
+  fs.writeFileSync(cashArtPath, cashArt.payload);
+  console.log(`  [ART] lulao_cash_art.bin: ${cashArt.payload.length} B (3 setores VOICES.DAT) | offsets T[0..2]=[${cashArt.dataOffs.map(x => '0x' + x.toString(16)).join(', ')}]`);
+
+  // 2. skhan_o.psx (WAD[14]) + skhan_o2.psx (WAD[1109]):
+  //    Barril Pinga 51 Front (ti=26) + Cara do Lulao Back (ti=39) + Lid "51" (ti=25) + 3D Haddad (M[8])
+  const barrelArts = collectiblesV2.buildHangarBarrelArts(lulaoCut, bottleCut);
   let skhanO = getOrigEntry(14).buf;
-  const barrelArts = paintPinga51BarrelTextures(skhanO);
-  console.log(`  [PSX] skhan_o.psx:  Barril Pinga 51 aplicado (ti=26 64x64 256c + ti=25 64x64 16c)`);
+  paintPinga51BarrelTextures(skhanO); // paints steel lid "51" stencil (ti=25)
+  skhanO = collectiblesV2.patchHangarBarrelFrontBack(skhanO, barrelArts);
 
   let skhanO2 = getOrigEntry(1109).buf;
   paintPinga51BarrelTextures(skhanO2);
-  console.log(`  [PSX] skhan_o2.psx: Barril Pinga 51 (2P) aplicado`);
+  skhanO2 = collectiblesV2.patchHangarBarrelFrontBack(skhanO2, barrelArts);
 
   const hadTex = haddadDilma.buildHaddadTexture64();
   const hadRes1 = haddadDilma.patchHangarHaddadInPsx(skhanO, 'skhan_o.psx', hadTex);
   const hadRes2 = haddadDilma.patchHangarHaddadInPsx(skhanO2, 'skhan_o2.psx', hadTex);
   skhanO = hadRes1.buf;
   skhanO2 = hadRes2.buf;
-  console.log(`  [PSX] skhan_o.psx:  ${hadRes1.origSize} -> ${hadRes1.newSize} / ${hadRes1.maxBytes} B -> 3D Haddad M[8] (${hadRes1.stats.nV}v/${hadRes1.stats.nF}f, 64x64 16c)`);
-  console.log(`  [PSX] skhan_o2.psx: ${hadRes2.origSize} -> ${hadRes2.newSize} / ${hadRes2.maxBytes} B -> 3D Haddad M[8] (2P)`);
+  console.log(`  [PSX] skhan_o.psx:  ${skhanO.length} / ${hadRes1.maxBytes} B -> Barril 51 Frente + Lulao Atras + 3D Haddad M[8] (${hadRes1.stats.nV}v/${hadRes1.stats.nF}f)`);
+  console.log(`  [PSX] skhan_o2.psx: ${skhanO2.length} / ${hadRes2.maxBytes} B -> Barril 51 Frente + Lulao Atras + 3D Haddad M[8] (2P)`);
 
   // 3. skven_o.psx (WAD[1103]) + skven_l.psx (WAD[1102]) with 3D Garrafa de Pitú
   const skvenO = buildSkvenOPsxWithPitu();
@@ -1254,7 +1273,8 @@ function main() {
   const pituArts = paintPituBottleTextures(skvenL);
   console.log(`  [PSX] skven_l.psx:  ${skvenL.length} B (exato, 0 B shift) -> Rotulo PITU + Camarao (48x48 256c) + base vidro + tampa vermelha`);
 
-  // 4. sksl2_o.psx (WAD[1095]) + sksl2_l.psx (WAD[1094]) + sksl2_l2.psx (WAD[1096]) with 3D Dilma no Barril (M[5])
+  // 4. sksl2_o.psx (WAD[1095]) + sksl2_l.psx (WAD[1094]) + sksl2_l2.psx (WAD[1096]):
+  //    3D Dilma no Barril (M[5]) + 3D Pacote de Vento Estocado (M[4])
   const dilTex = haddadDilma.buildDilmaTexture40x64();
   const dilRes = haddadDilma.patchSchool2Dilma(
     getOrigEntry(1095).buf,
@@ -1262,10 +1282,16 @@ function main() {
     getOrigEntry(1096).buf,
     dilTex
   );
-  const sksl2O = dilRes.newO, sksl2L = dilRes.newL, sksl2L2 = dilRes.newL2;
-  console.log(`  [PSX] sksl2_o.psx:  ${dilRes.sizes.o[0]} -> ${dilRes.sizes.o[1]} / ${dilRes.sizes.o[2]} B -> 3D Dilma no Barril M[5] (${dilRes.stats.nV}v/${dilRes.stats.nF}f)`);
-  console.log(`  [PSX] sksl2_l.psx:  ${dilRes.sizes.l[0]} -> ${dilRes.sizes.l[1]} / ${dilRes.sizes.l[2]} B -> Textura 0xfc079202 (40x64 16c)`);
-  console.log(`  [PSX] sksl2_l2.psx: ${dilRes.sizes.l2[0]} -> ${dilRes.sizes.l2[1]} / ${dilRes.sizes.l2[2]} B -> Textura 0xfc079202 (2P, 40x64 16c)`);
+  const ventoRes = collectiblesV2.patchSchool2VentoEstocado(dilRes.newO, dilRes.newL, dilRes.newL2, ventoCut);
+  const sksl2O = ventoRes.newO, sksl2L = ventoRes.newL, sksl2L2 = ventoRes.newL2;
+  console.log(`  [PSX] sksl2_o.psx:  ${sksl2O.length} / 6144 B -> 3D Dilma M[5] + 3D Vento Estocado M[4] (${ventoRes.ventoMesh.stats.nV}v/${ventoRes.ventoMesh.stats.nF}f)`);
+  console.log(`  [PSX] sksl2_l.psx:  ${sksl2L.length} / 342016 B -> Dilma 40x64 + Vento Estocado 48x64`);
+  console.log(`  [PSX] sksl2_l2.psx: ${sksl2L2.length} / 342016 B -> Dilma 40x64 + Vento Estocado 48x64 (2P)`);
+
+  // 5. c_kart.psx (WAD[1100]): School II Golf Cart Driver -> Sculpted 3D Bolsonaro Doidao Head!
+  const kartRes = collectiblesV2.patchSchool2KartBolsonaro(getOrigEntry(1100).buf, bolsoCut);
+  const cKart = kartRes.buf;
+  console.log(`  [PSX] c_kart.psx:   ${kartRes.stats.origSize} -> ${kartRes.stats.newSize} / ${kartRes.stats.maxBytes} B -> Cabeca 3D Bolsonaro Doidao (${kartRes.stats.headFaces} faces, 48x52 16c)`);
 
   if (doPreview) {
     fs.mkdirSync(previewDir, { recursive: true });
@@ -1277,23 +1303,37 @@ function main() {
       { yaw: 0, pitch: 0 }, { yaw: 35, pitch: 12 }, { yaw: -35, pitch: -10 }, { yaw: 180, pitch: 0 },
     ], 160, 160, 1.05, path.join(previewDir, 'letter_X_angles_ps1.png'));
 
-    // Render Hangar Pinga 51 barrel (texture + lid + 3D multi-angle!)
-    psxLib.writePng(path.join(previewDir, 'hangar_barrel_51_body.png'), 64, 64, barrelArts.bodyRgba);
-    psxLib.writePng(path.join(previewDir, 'hangar_barrel_51_lid.png'), 64, 64, barrelArts.lidRgba);
-    renderPs1MeshPreview(skhanO, skhanO, [9], [
-      { yaw: 0, pitch: 10 }, { yaw: 35, pitch: 12 }, { yaw: 90, pitch: 15 }, { yaw: 180, pitch: 10 },
-    ], 160, 160, 0.92, path.join(previewDir, 'hangar_barrel_51_3d.png'));
+    // Render Hangar Barril 51 Front + Lulao Back!
+    psxLib.writePng(path.join(previewDir, 'hangar_barrel_51_front.png'), 64, 64, barrelArts.qFront.previewRgba);
+    psxLib.writePng(path.join(previewDir, 'hangar_barrel_lulao_back.png'), 64, 64, barrelArts.qBack.previewRgba);
+    collectiblesV2.renderPs1Qa(skhanO, skhanO, 9, [
+      { yaw: 0, pitch: 10 }, { yaw: 90, pitch: 10 }, { yaw: 180, pitch: 10 }, { yaw: 270, pitch: 10 },
+    ], 160, 160, 0.92, path.join(previewDir, 'hangar_barrel_51_lulao_3d.png'));
 
-    // Render Venice 3D Garrafa de Pitú (textures + 3D multi-angle, centered on front label yaw=90!)
+    // Render 3D Garrafa 51 + Discrete Golden Aura + Lulao Cash Bills!
+    collectiblesV2.renderPs1Qa(itemsPsx, itemsPsx, 8, [
+      { yaw: 90, pitch: 6 }, { yaw: 135, pitch: 8 }, { yaw: 180, pitch: 6 }, { yaw: 270, pitch: 6 },
+    ], 170, 210, 0.80, path.join(previewDir, 'secret_tape_bottle51_aura_3d.png'));
+    psxLib.writePng(path.join(previewDir, 'cash_100_lulao.png'), 128, 64, cashArt.previews[0]);
+    psxLib.writePng(path.join(previewDir, 'cash_50_lulao.png'),  128, 64, cashArt.previews[1]);
+    psxLib.writePng(path.join(previewDir, 'cash_250_lulao.png'), 128, 64, cashArt.previews[2]);
+
+    // Render Venice 3D Garrafa de Pitú
     psxLib.writePng(path.join(previewDir, 'venice_pitu_label_48x48.png'), 48, 48, pituArts.bodyRgba);
     psxLib.writePng(path.join(previewDir, 'venice_pitu_cap_16x16.png'), 16, 16, pituArts.capRgba);
     renderPs1MeshPreview(skvenO, skvenL, [4], [
       { yaw: 90, pitch: 8 }, { yaw: 135, pitch: 10 }, { yaw: 270, pitch: 8 }, { yaw: 0, pitch: 10 },
     ], 160, 180, 0.85, path.join(previewDir, 'venice_pitu_bottle_3d.png'));
 
-    // Render Hangar 3D Haddad + School II 3D Dilma no Barril multi-angle QA!
+    // Render Hangar 3D Haddad + School II 3D Dilma + 3D Vento Estocado + 3D Bolsonaro Driver!
     haddadDilma.renderPs1MeshPreview(hadRes1.geometry, hadTex, path.join(previewDir, 'hangar_haddad_3d.png'), [0, 35, 75, 180], [44, 54, 70]);
     haddadDilma.renderPs1MeshPreview(dilRes.geometry, dilTex, path.join(previewDir, 'school2_dilma_3d.png'), [0, 30, -30, 62], [68, 62, 56]);
+    collectiblesV2.renderPs1Qa(sksl2O, sksl2L, 4, [
+      { yaw: 0, pitch: 6 }, { yaw: 35, pitch: 8 }, { yaw: 75, pitch: 8 }, { yaw: 180, pitch: 6 },
+    ], 160, 210, 0.72, path.join(previewDir, 'school2_vento_estocado_3d.png'));
+    collectiblesV2.renderPs1Qa(cKart, cKart, 0, [
+      { yaw: 0, pitch: 4 }, { yaw: 35, pitch: 6 }, { yaw: -35, pitch: 6 }, { yaw: 90, pitch: 6 }, { yaw: 180, pitch: 6 },
+    ], 160, 180, 0.18, path.join(previewDir, 'school2_kart_bolsonaro_3d.png'), [528, -560, 340], [9, 10, 11]);
 
     console.log(`  [QA] Previews 3D PS1 gerados em: ${previewDir}`);
   }
@@ -1317,6 +1357,7 @@ function main() {
     { idx: 1095, name: 'sksl2_o.psx',  buf: sksl2O,   allowGrowWithinSectors: true },
     { idx: 1094, name: 'sksl2_l.psx',  buf: sksl2L,   allowGrowWithinSectors: true },
     { idx: 1096, name: 'sksl2_l2.psx', buf: sksl2L2,  allowGrowWithinSectors: true },
+    { idx: 1100, name: 'c_kart.psx',   buf: cKart,    allowGrowWithinSectors: true },
   ];
 
   for (const u of updates) {

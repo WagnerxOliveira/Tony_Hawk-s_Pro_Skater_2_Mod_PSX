@@ -95,6 +95,7 @@ const scriptsToSync = [
   'mod_hangar_walls.js',
   'mod_lulao_world_assets.js',
   'mod_collectibles_haddad_dilma.js',
+  'mod_lulao_collectibles_v2.js',
   'build_skater_voices.js',
   'patch_random_videos_and_voices.js',
   'fix_game_errors.js',

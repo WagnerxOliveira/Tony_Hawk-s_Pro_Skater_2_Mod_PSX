@@ -6,6 +6,22 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 
 ## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório & Enciclopédia v2
 
+### 🥃 Barril 51 + Lulão, Notas Dinâmicas do Lulão, Garrafa 3D de 51 + Aura Dourada Aditiva, Vento Estocado 3D & Carrinho de Golfe Bolsonaro + Áudio Zero-Stall (`Scripts/mod_lulao_collectibles_v2.js` & `patch_random_videos_and_voices.js`)
+- **The Hangar (`LV 0`, `skhan_o.psx WAD[14]` & `skhan_o2.psx WAD[1109]`, `M[9]`):**
+  - Barris convertidos de `ti=26` (`64×64 256c`) para **duas texturas dedicadas `64×64` 4-bit 16 cores (`ti=26` frente 180° = rótulo autêntico Pirassununga 51; `ti=39` `0x51101A51` verso 180° = caricatura recortada do Lulão sem assinatura)** com exatamente o mesmo orçamento de VRAM (`2.048` halfwords) e **`-316 B` líquidos** (`121.920 / 122.880 B`), preservando tampa `"51"` (`ti=25`) e 3D Haddad (`M[8]`).
+- **Notas de Dinheiro Dinâmicas do Lulão em Todas as Fases (`Hook_PsxUpload @ 0x800E3858` + `LULAO_CASHART`):**
+  - Rosto do Lulão gravado no medalhão central das 3 cédulas (`$100` sépia-dourado, `$50` azul-aço, `$250` verde-dólar) preservando bordas e dígitos, empacotado em `VOICES.DAT` (`3` setores @ `+1161`).
+  - Intercepta os 4 chamadores de upload `.PSX` (`0x8006833C/394/944/AA0 → 0x80066C5C`) para estampar Lulão exclusivamente quando `skater == 2` (Lulão), mantendo as notas originais do Tony Hawk intactas para todos os demais skatistas (comprovado ao vivo no DuckStation!).
+- **School II `"100% Diploma no Buteco!"` & Fitas Secretas em Todas as Fases → Garrafa 3D de 51 + Aura Dourada Aditiva PS1 (`items.psx WAD[8] M[8]`):**
+  - Renomeado objetivo `G9` de School II (`"100% Bolsa Shape!"` → `"100% Diploma no Buteco!"`).
+  - Substituídas todas as Fitas Secretas (`0x7C1B2C4A`) por uma **Garrafa 3D octogonal esculpida de Cachaça 51 (`56v/46n/50f`, `2.244 B`, `40.784 / 40.960 B`)** reutilizando as 5 texturas exclusivas (`0 B` de crescimento = 80 cores independentes) + **aura dourada discreta e estrelinhas em 2 planos cruzados dupla-face usando semi-transparência aditiva real da GPU PS1 (`fl = 0x10C3`, `ABR=1` + `0x7C1F`)**.
+- **School II (`LV 1`, `G5`) — *"5 Pacotes Vento Estocado"* (`sksl2_o.psx M[4]` + `sksl2_l/l2.psx`):**
+  - Recorte adaptativo de `vento_estocado.png` removendo 100% das bordas tracejadas, geometria 3D verdadeira de pacote inflado (`12v/5n/10f`, `444 B`, legível esquerda→direita em ambos os lados), upgrade de `0xAADFEA6C` (`48×32 → 48×64` 16c) + encolhimento de `0xCF459305` (`-240 B` líquidos nos mesmos 167 setores) e HUD `"VENTO ESTOCADO"`.
+- **School II (`LV 1`) — Carrinho de Golfe com Cabeça 3D do Bolsonaro Doidão & Áudio Aleatório Zero-Stall (`c_kart.psx WAD[1100]` + `BOLSO_GPBANK` + `Hook_CarHitVoice`):**
+  - Substituída a cabeça + boné do segurança em `c_kart.psx` (`20.436 / 20.480 B`) por uma **cabeça 3D estanque de caricatura do Bolsonaro Doidão (`48×52` 16c rosto + `8×16` cabelo puro, conectada a `V[65..68]`)**.
+  - Arena residente expandida para **7 setores (`0x800E2800..0x800E5FFF`, `NewHeapStart = 0x800E6000`)**, adicionando **`BOLSO_GPBANK`** (todos os 14 MP3s de `bolsonaro_audios/` em anel `2×`, `6.890,625 Hz / 0x0280`, `-10 LUFS`, `137` setores @ `+1024` de `VOICES.DAT`, total `1.164` setores).
+  - `LulaoCache_Load` corrigido para `g_CurrentLevel @ 14980($gp)` (100% Lulão nas demais fases — `14/14` clipes no Hangar — e split dual Lulão + Bolsonaro em School II mantendo `>= 48 KB` de reserva livre na Heap) + **`Hook_CarHitVoice @ 0x800623B8`** interceptando `car->type == 217` (`c_kart`), silenciando `SFX 261..264` e tocando clipes aleatórios distintos do Bolsonaro a **60 FPS travados (0 ms stall)** — validado ao vivo no DuckStation + **10/10 PASS na auditoria forense (`319.207` setores, `40/40` hooks MIPS)**!
+
 ### 🗿 Coletáveis 3D Recortados: Haddad no Hangar, Dilma no Barril em School II & História Completa do Projeto (`Scripts/mod_collectibles_haddad_dilma.js`)
 - **The Hangar (`LV 0`, `G5` — `"5 Haddads Ajuste Fiscal"` / `"HADDAD TAXA"`):**
   - Recorte cirúrgico automatizado de `haddad_hangar.jpg` (`469×426`): barreira de tinta + *flood-fill* multi-bolso removendo 100% do fundo branco, silhuetas cinzas da plateia, chão bege e assinatura `"CLAYTON"` preservando Fernando Haddad, cartola, toalha azul e o coelho `"AJUSTE FISCAL"`.
