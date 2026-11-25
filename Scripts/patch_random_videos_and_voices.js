@@ -2162,18 +2162,25 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
 
+  // Mute Voice 23 volume first & key off cleanly (zero pop!)
+  a.lui(R.t0, 0x1F80);
+  a.sh(R.zero, 0x1D70, R.t0);
+  a.sh(R.zero, 0x1D72, R.t0);
   a.move(R.a0, R.zero);
   a.jal(SYM.SpuSetKey);
   a.lui(R.a1, 0x0080);                   // Voice 23 OFF
 
   a.swSym(R.zero, R.t0, 'g_StreamActive');
 
-  // Restore SPUCNT bit 7 (Reverb Master Enable @ 0x1F801DAA) if we paused reverb
-  a.lwSym(R.t0, 'g_SavedRevBit');
+  // If SPU Reverb output (vLOUT/vROUT) & writes (SPUCNT bit 7) were muted for 0x7F400..0x7FBFF:
+  //   1. Zero 0x7F400..0x7FBFF COMPLETELY via 1 KB g_StageBuf WHILE vLOUT=vROUT=0
+  //   2. Restore SPUCNT bit 7 (Reverb Master Write Enable) if originally active
+  //   3. Restore original vLOUT (0x1F801D84) & vROUT (0x1F801D86) from g_SavedRevVol!
+  a.lwSym(R.t0, 'g_RevMuted');
   a.nop();
   a.beq(R.t0, R.zero, 'lss_rev_ok');
   a.nop();
-  a.swSym(R.zero, R.t1, 'g_SavedRevBit');
+  a.swSym(R.zero, R.t1, 'g_RevMuted');
   // Clear 0x7F400..0x7FBFF using dedicated 1 KB g_StageBuf (g_CacheBuf + 0..1023) in 2x 1024 B DMAs — NEVER mutates clips!
   a.lwSym(R.t2, 'g_CacheBuf');
   a.nop();
@@ -2205,10 +2212,23 @@ function assembleLulaoEngine(gpMeta) {
 
   a.label('lss_rev_en');
   a.lui(R.t0, 0x1F80);
+  a.lwSym(R.t2, 'g_SavedRevBit');
+  a.nop();
+  a.beq(R.t2, R.zero, 'lss_rev_vol');
+  a.nop();
+  a.swSym(R.zero, R.t3, 'g_SavedRevBit');
   a.lhu(R.t1, 0x1DAA, R.t0);
   a.nop();
-  a.ori(R.t1, R.t1, 0x0080);             // Re-enable SPU Reverb Master Enable!
+  a.ori(R.t1, R.t1, 0x0080);             // Re-enable SPU Reverb Master Write Enable!
   a.sh(R.t1, 0x1DAA, R.t0);
+
+  a.label('lss_rev_vol');
+  a.lwSym(R.t2, 'g_SavedRevVol');
+  a.nop();
+  a.sh(R.t2, 0x1D84, R.t0);              // Restore original vLOUT!
+  a.srl(R.t2, R.t2, 16);
+  a.sh(R.t2, 0x1D86, R.t0);              // Restore original vROUT!
+  a.swSym(R.zero, R.t3, 'g_SavedRevVol');
 
   a.label('lss_rev_ok');
   // Clear bit 1 of g_InPlaySel (0x800E27DC) & restore XA volume if it was ducked!
@@ -2433,8 +2453,34 @@ function assembleLulaoEngine(gpMeta) {
   a.beq(R.s1, R.zero, 'lsf_done');
   a.nop();
 
-  // Silence Voice 23 cleanly (mute + KOFF + ~36 us SPU settle > 1 hardware 44.1 kHz tick -> zero click!)
-  a.lui(R.t0, 0x1F80);
+  // CRITICAL PS1 SPU ANTI-CHIADO HARDWARE MUTE (BEFORE ANY DMA4 INTO 0x7F400..0x7FBFF!):
+  // On real PS1 hardware & DuckStation, clearing SPUCNT bit 7 ONLY stops Reverb writes — the Reverb DSP STILL READS
+  // the Reverb Work Area (mBASE..0x7FFFF, which overlaps 0x7F400..0x7FBFF!) and mixes raw 4-bit ADPCM bytes as
+  // 16-bit PCM white noise through vLOUT (0x1F801D84) & vROUT (0x1F801D86)! Zeroing vLOUT & vROUT eliminates 100% of static!
+  a.lwSym(R.t2, 'g_RevMuted');
+  a.nop();
+  a.bne(R.t2, R.zero, 'lsf_rev_force');
+  a.lui(R.t0, 0x1F80);                   // delay slot: t0 = 0x1F800000 on BOTH paths!
+  a.lhu(R.t1, 0x1DAA, R.t0);             // SPUCNT
+  a.lhu(R.t2, 0x1D84, R.t0);             // vLOUT (e.g. 0x2000 in Hangar!)
+  a.lhu(R.t3, 0x1D86, R.t0);             // vROUT (e.g. 0x2000 in Hangar!)
+  a.andi(R.t1, R.t1, 0x0080);
+  a.swSym(R.t1, R.t4, 'g_SavedRevBit');
+  a.sll(R.t3, R.t3, 16);
+  a.or(R.t2, R.t2, R.t3);
+  a.swSym(R.t2, R.t4, 'g_SavedRevVol');
+  a.addiu(R.t1, R.zero, 1);
+  a.swSym(R.t1, R.t4, 'g_RevMuted');
+
+  a.label('lsf_rev_force');
+  a.sh(R.zero, 0x1D84, R.t0);            // vLOUT = 0 (-inf dB Reverb output mute!)
+  a.sh(R.zero, 0x1D86, R.t0);            // vROUT = 0 (-inf dB Reverb output mute!)
+  a.lhu(R.t1, 0x1DAA, R.t0);
+  a.nop();
+  a.andi(R.t1, R.t1, 0xFF7F);            // SPUCNT bit 7 = 0 (Reverb RAM writes OFF!)
+  a.sh(R.t1, 0x1DAA, R.t0);
+
+  // Silence Voice 23 cleanly (mute + KOFF + ~36 us SPU settle > 1.5 hardware 44.1 kHz ticks -> zero click AND reverb fully muted!)
   a.sh(R.zero, 0x1D70, R.t0);
   a.sh(R.zero, 0x1D72, R.t0);
   a.move(R.a0, R.zero);
@@ -2518,21 +2564,6 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
 
   a.label('lsf_duck_ok');
-  // Pause SPU Reverb Master Enable (SPUCNT bit 7 @ 0x1F801DAA) once if active
-  a.lwSym(R.t2, 'g_SavedRevBit');
-  a.nop();
-  a.bne(R.t2, R.zero, 'lsf_rev_ok');     // already paused!
-  a.lui(R.t0, 0x1F80);
-  a.lhu(R.t1, 0x1DAA, R.t0);
-  a.nop();
-  a.andi(R.t2, R.t1, 0x0080);
-  a.beq(R.t2, R.zero, 'lsf_rev_ok');
-  a.nop();
-  a.swSym(R.t2, R.t3, 'g_SavedRevBit');
-  a.andi(R.t1, R.t1, 0xFF7F);
-  a.sh(R.t1, 0x1DAA, R.t0);
-
-  a.label('lsf_rev_ok');
   a.swSym(R.zero, R.t0, 'g_StreamCurPos');
   a.addiu(R.t1, R.zero, 1);
   a.swSym(R.t1, R.t0, 'g_StreamActive');
@@ -2618,6 +2649,16 @@ function assembleLulaoEngine(gpMeta) {
   a.sw(R.ra, 20, R.sp);
   a.sw(R.s0, 16, R.sp);
   a.move(R.s0, R.t0);                    // s0 = g_StreamActive (1 or 2)
+
+  // Continuous 60 Hz PS1 SPU Anti-Chiado Guard: keep vLOUT=0, vROUT=0 & SPUCNT bit 7=0 while ADPCM occupies 0x7F400..0x7FBFF
+  // (immune to any mid-speech .TRG reverb zone trigger re-opening reverb output!)
+  a.lui(R.t0, 0x1F80);
+  a.sh(R.zero, 0x1D84, R.t0);
+  a.sh(R.zero, 0x1D86, R.t0);
+  a.lhu(R.t1, 0x1DAA, R.t0);
+  a.nop();
+  a.andi(R.t1, R.t1, 0xFF7F);
+  a.sh(R.t1, 0x1DAA, R.t0);
 
   a.jal(SYM.VSync);
   a.addiu(R.a0, R.zero, -1);
@@ -2964,6 +3005,8 @@ function assembleLulaoEngine(gpMeta) {
   a.label('g_BolsoBankStartSec');  a.word(gpMeta.bolso.startSector >>> 0);
   a.label('g_BolsoBankClipCount'); a.word(gpMeta.bolso.clipCount >>> 0);
   a.label('g_CashArtStartSec');    a.word((gpMeta.cashArt?.startSector || 0) >>> 0);
+  a.label('g_RevMuted');           a.word(0);
+  a.label('g_SavedRevVol');        a.word(0);
 
   a.label('g_GpRingTable');
   for (const e of gpMeta.ringEntries) {

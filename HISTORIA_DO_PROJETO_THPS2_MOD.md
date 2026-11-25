@@ -283,7 +283,51 @@ Depois do Haddad e da Dilma no Barril, elevamos o nível de engenharia 3D, GPU e
 
 ---
 
-## Capítulo 12 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 12 — O Mistério do "Chiado" no Fundo das Falas do Lulão (A Pegadinha Lendária do Reverb da SPU do PS1!)
+
+Depois de tudo rodando liso a 60 FPS travados, os testes práticos revelaram um detalhe sonoro intrigante: **toda vez que o Lulão pegava dinheiro na fase, a fala dele tocava sem nenhum travamento — mas com um "chiado" contínuo no fundo (tipo estática de rádio `SHHHHHH`)**, que curiosamente **nunca** aparecia na tela de Seleção de Skatistas!
+
+### 1. A Perícia Forense Ao Vivo (Silenciando a Música e Fazendo um Raio-X no FFT)
+Em vez de chutar a causa, montamos uma captura forense ao vivo no DuckStation silenciando temporariamente a trilha CD-XA (`MuteCDAudio = true`) para isolar 100% do áudio puro da SPU do PS1 e gravando a saída real em estéreo `48 kHz` via WASAPI Loopback. O analisador de espectro (FFT) entregou uma pista física irrefutável:
+- A voz do Lulão na Voz 23 é **100% mono (`VOL_L == VOL_R`)** e amostrada a `6.890,625 Hz`, o que significa que sua frequência máxima física (*limite de Nyquist*) é **`3.445 Hz`**. É fisicamente impossível a Voz 23 emitir qualquer som entre `6.000 Hz` e `12.000 Hz` ou criar diferença entre o canal esquerdo e o direito (`L - R`)!
+- Mesmo assim, no instante exato em que o Lulão começava a falar, o espectro de **`6.000–12.000 Hz` explodia em `+24,2 dB` (`-85,2 dB → -61,0 dB`)** com energia **idêntica** em `Mono` (`-60,9 dB`) e `Side (L - R)` (`-61,0 dB`) — a assinatura matemática exata de **ruído branco estéreo descorrelacionado** — e desaparecia no milissegundo exato em que a fala acabava!
+
+### 2. A Causa Raiz no Silício do PlayStation 1 (`SPUCNT bit 7` vs `vLOUT/vROUT`)
+Ao inspecionar ao vivo na memória RAM as variáveis internas de reverb da biblioteca oficial Sony Psy-Q (`SLUS_010.66 @ 0x800D1D38..0x800D1D92`), o enigma inteiro se abriu diante dos nossos olhos:
+- Em fases como *The Hangar*, o THPS2 liga o **Reverb por Hardware da SPU** (`_spu_rev_flag = 1`), cuja área de trabalho ocupa **`0x7D940..0x7FFFF`** na SPU RAM — **engolindo diretamente o nosso *ring buffer* de 2 KB em `0x7F400..0x7FBFF`** — com volume de saída do reverb configurado em **`vLOUT = 0x2000` e `vROUT = 0x2000`** (`25%` de escala total via `SFX_SetReverbDepth(32, 32) @ 0x8004E744`)!
+- **A pegadinha lendária do chip SPU do PS1:** na versão anterior, o nosso streamer limpava apenas o **bit 7 de `SPUCNT` (`0x1F801DAA`)** achando que isso desligava o reverb por completo. **Mas no hardware real do PS1 (e no emulador preciso DuckStation), limpar `SPUCNT bit 7` desliga apenas as *escritas* na memória de reverb — o motor DSP de reverb continua *lendo* `0x7F400..0x7FBFF` a `22.050 Hz` e jogando na saída `vLOUT/vROUT`!**
+- Resultado: enquanto o Lulão falava, o filtro de reverb da SPU lia os nossos **bytes comprimidos SPU-ADPCM 4-bit** como se fossem amostras de áudio PCM 16-bit aleatórias e mixava estática pura (`SHHHHHH`) direto no fundo da voz!
+
+```mermaid
+flowchart LR
+    A["📦 Bytes SPU-ADPCM 4-bit<br/>gravados em 0x7F400..0x7FBFF"] -->|"Voz 23 (Decodificador ADPCM)"| V["🗣️ Voz limpa do Lulão<br/>(Mono, <= 3,44 kHz)"]
+    A -->|"ANTES: Reverb lia como PCM 16-bit<br/>com vLOUT/vROUT = 0x2000"| N["❌ Ruído Branco Estéreo<br/>(+25 dB de chiado em 6–12 kHz!)"]
+    A -.->|"AGORA: vLOUT=0, vROUT=0<br/>+ Guarda 60 Hz + Zero antes de restaurar"| Z["✅ Silêncio Digital Absoluto<br/>(-180 dB StereoDiff / -26,5 dB em 6–12 kHz!)"]
+```
+
+### 3. A Correção Cirúrgica em Duas Camadas (Hardware SPU + Masterização DSP)
+Para garantir perfeição de estúdio (e imunidade total em todas as fases, inclusive ao atravessar zonas de reverb no meio de uma frase!), atacamos o problema simultaneamente no **hardware MIPS/SPU** e na **engenharia de áudio DSP**:
+
+1. **Camada 1 — Silenciamento de Hardware de `vLOUT/vROUT` + Guarda 60 Hz ([`Scripts/patch_random_videos_and_voices.js`](Scripts/patch_random_videos_and_voices.js)):**
+   - **`LulaoStream_StartFromCache`:** antes de transferir um único byte via DMA4 para `0x7F400..0x7FBFF`, salva os volumes reais de reverb `vLOUT` (`0x1F801D84`) e `vROUT` (`0x1F801D86`) em `g_SavedRevVol`, zera ambos imediatamente (`0x0000` = `-∞ dB` na saída de reverb!) e desliga `SPUCNT bit 7` (`0x1F801DAA &= ~0x0080`), aguardando `~36 µs` (> 1,5 amostra SPU) para garantia de silêncio absoluto.
+   - **`LulaoStream_Tick` (Guarda Contínua a 60 Hz):** enquanto `g_StreamActive != 0`, reforça `vLOUT = 0`, `vROUT = 0` e `SPUCNT bit 7 = 0` em 7 instruções (`0,25 µs`/frame), impedindo que qualquer gatilho `.TRG` de zona de reverb reabra o chiado no meio da fala.
+   - **`LulaoStream_Stop` (Restauração Limpa em Ordem Estrita):** silencia a Voz 23, **zera integralmente os `2.048 B` de `0x7F400..0x7FBFF` enquanto `vLOUT = vROUT = 0`**, e **só então** restaura `SPUCNT bit 7` e os volumes originais `vLOUT/vROUT` de `g_SavedRevVol`.
+   - **Trava Forense Permanente:** adicionada verificação estática no Estágio 6 de [`Scripts/audit_game.js`](Scripts/audit_game.js) exigindo as instruções `sh zero, 0x1D84(t0)` (`0xA5001D84`) e `sh zero, 0x1D86(t0)` (`0xA5001D86`) tanto em `StartFromCache` quanto em `Tick`.
+2. **Camada 2 — Cadeia DSP Masterizada Zero-Chiado ([`Scripts/build_skater_voices.js`](Scripts/build_skater_voices.js)):**
+   - Re-codificados todos os 28 clipes de gameplay (`14` Lulão + `14` Bolsonaro, cache `gp3`) com redução espectral de ruído de fundo (`afftdn=nr=10:nf=-32:tn=1`) **antes** da normalização, presença vocal quente em `1,8 kHz` (`+2 dB`, sem amplificar chiado agudo), filtro anti-aliasing passa-baixa de 4 polos (`3.050 Hz`, `-24 dB/oitava`), resampler linear-phase **Kaiser-sinc de 64 taps** e normalização limpa (`-11,5 LUFS`, teto `-1,5 dBTP` para zero *overshoot* no preditor ADPCM 4-bit).
+
+### 4. A Prova Empírica Antes × Depois (Medição Ao Vivo no DuckStation)
+
+| Faixa de Frequência (Áudio Real SPU — *The Hangar*) | Antes da Correção (`Mono` / `Side L-R`) | Depois da Correção (`Mono` / `Side L-R`) | Redução Medida |
+| :--- | :---: | :---: | :---: |
+| **`6.000 – 12.000 Hz`** *(Banda do chiado de reverb)* | `-60,5 dB` / `-60,6 dB` | **`-85,9 dB` / `-87,1 dB`** | **`-25,4 dB` / `-26,5 dB`** *(> 99,7% eliminado!)* |
+| **`12.000 – 22.000 Hz`** *(Estática aguda)* | `-83,2 dB` / `-83,1 dB` | **`-100,9 dB` / `-101,1 dB`** | **`-17,7 dB` / `-18,0 dB`** |
+| **`3.450 – 6.000 Hz`** *(Acima do Nyquist vocal)* | `-61,9 dB` / `-61,9 dB` | **`-73,3 dB` / `-74,7 dB`** | **`-11,3 dB` / `-12,7 dB`** |
+| **Vazamento Estéreo Inicial (`t = 0,0..0,5s`)** | `-48,0 dB` | **`-180,0 dB`** *(Zero digital exato!)* | **Silêncio total de fundo!** |
+
+---
+
+## Capítulo 13 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
@@ -292,7 +336,7 @@ flowchart TB
         E["0x80010000..0x800E267F — SLUS_010.66<br/>40 Hooks MIPS + 217 Strings + 5 Words PT-BR Font"]
         B["0x800E2680..0x800E27FF — Mod_BootInit & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
-        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache + Streamer SPU 2 KB + SpawnLetter + CarHitVoice + PsxUpload)"]
+        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache + Streamer SPU 2 KB Anti-Chiado vLOUT/vROUT + SpawnLetter + CarHitVoice + PsxUpload)"]
         S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Vento Estocado + Diploma no Buteco + Roubei)"]
         H["0x800E6000..0x801FFFFF — Heap Dinâmica THPS2 + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK (48 KB reserva)"]
     end
@@ -309,7 +353,7 @@ flowchart TB
 | **Hooks MIPS R3000A Cirúrgicos** | **40 hooks** em `SLUS_010.66` + **2 hooks** em `playsel.bin` + **7 setores residentes** em `VOICES.DAT` (`1.164` setores) |
 | **Skatistas Personalizados** | **7 skatistas** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan*) = **28 modelos `.PSX` + 7 retratos `s2face*.bmp`** |
 | **Mundo 3D & Coletáveis Customizados** | Letra 3D **`X`** (`T-A-X-A-S` dinâmico) + **Barris 51 Frente / Lulão Atrás** + **Notas Dinâmicas do Lulão (`$50/$100/$250`)** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D** & **5 Pacotes Vento Estocado 3D** & **Carrinho de Golfe com Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) |
-| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall (`0 ms` / 60 FPS)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
+| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
 | **Idioma & Fonte** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Modo Carreira do Lulão |
 
 ---
@@ -321,6 +365,8 @@ flowchart TB
 - **CLUT (Color Look-Up Table)**: paleta de 16 cores (4-bit) ou 256 cores (8-bit) usada pelo chip gráfico do PS1. No THPS2, `0x7C1F` (magenta) vira transparência por hardware (`0x0000`) e ativa automaticamente o bit `STP 0x8000` para semi-transparência.
 - **Semi-Transparência Aditiva (`ABR=1`, `fl = 0x10C3`)**: modo da GPU do PS1 em que a cor do polígono é **somada** diretamente ao fundo (`Fundo + Frente`), produzindo brilhos e auras luminosas reais sem custo extra de CPU.
 - **SPU-ADPCM / Voz 23**: formato de compressão de áudio nativo do chip de som do PS1 (taxa 3,5:1). O PS1 tem 24 vozes simultâneas; reservamos a de número 23 só para falas (Lulão, Silvio Santos e Bolsonaro no carrinho).
+- **Registradores `vLOUT` / `vROUT` (`0x1F801D84` / `0x1F801D86`)**: volumes de saída esquerdo e direito do motor de Reverb da SPU do PS1. Zerar esses dois registradores é indispensável sempre que se reutiliza temporariamente a área de trabalho de reverb (`mBASE..0x7FFFF`), pois desligar apenas `SPUCNT bit 7` não interrompe a leitura do reverb.
+- **Frequência de Nyquist & Anti-Aliasing**: a maior frequência representável sem distorção equivale à metade da taxa de amostragem (`3.445 Hz` em `6.890,625 Hz`). Filtrar o áudio antes da reamostragem (*anti-aliasing*) impede que frequências agudas "dobrem" para dentro da voz em forma de chiado metálico.
 - **GTE (*Geometry Transformation Engine*)**: coprocessador 3D do PS1 que projeta triângulos e quads na tela e descarta faces viradas para trás (*back-face culling* via `NCLIP`).
 - **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo (como estampar o rosto do Lulão nas notas ou tocar uma fala do Bolsonaro ao atropelar) e devolve o controle perfeitamente ao jogo original.
 - **Patch `.xdelta`**: arquivo de diferença binária que transforma legalmente a cópia original do usuário no mod completo sem distribuir arquivos comerciais protegidos.

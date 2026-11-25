@@ -784,25 +784,39 @@ try {
       ]);
       const startFnPc = lulaoLabels.get('LulaoStream_StartFromCache');
       const tickFnPc  = lulaoLabels.get('LulaoStream_Tick');
+      const spawnFnPc = lulaoLabels.get('Hook_SpawnLetter');
       let mipsInvErr = 0;
+      let startMutesL = false, startMutesR = false, tickMutesL = false, tickMutesR = false;
       for (let pc = startFnPc; pc < tickFnPc; pc += 4) {
         const w = voicesBuf.readUInt32LE(4096 + (pc - ADDR.LulaoCodeBase));
+        if (w === 0xA5001D84) startMutesL = true; // sh zero, 0x1D84(t0) -> vLOUT = 0
+        if (w === 0xA5001D86) startMutesR = true; // sh zero, 0x1D86(t0) -> vROUT = 0
         if (forbiddenInStart.has(w)) {
           fail('VOICES', `Violacao Zero-Stall: LulaoStream_StartFromCache @ 0x${pc.toString(16)} chama ${forbiddenInStart.get(w)}!`);
           mipsInvErr++;
         }
       }
+      for (let pc = tickFnPc; pc < spawnFnPc; pc += 4) {
+        const w = voicesBuf.readUInt32LE(4096 + (pc - ADDR.LulaoCodeBase));
+        if (w === 0xA5001D84) tickMutesL = true;
+        if (w === 0xA5001D86) tickMutesR = true;
+      }
+      if (!startMutesL || !startMutesR || !tickMutesL || !tickMutesR) {
+        fail('VOICES', `Violacao Anti-Chiado SPU Reverb: vLOUT/vROUT mute ausente (start=${startMutesL}/${startMutesR}, tick=${tickMutesL}/${tickMutesR})!`);
+        mipsInvErr++;
+      }
       const cacheLoadPc = lulaoLabels.get('LulaoCache_Load');
       const cacheFreePc = lulaoLabels.get('LulaoCache_Free');
-      let seenFreeListWalk = false, allocBeforeWalk = false;
+      let seenFreeListWalk = false, allocBeforeWalk = false, seenLevel14980 = false;
       const jalMemAlloc = jalWord(SYM.Mem_Alloc);
       for (let pc = cacheLoadPc; pc < cacheFreePc; pc += 4) {
         const w = voicesBuf.readUInt32LE(4096 + (pc - ADDR.LulaoCodeBase));
         if (w === 0x8F884AA8) seenFreeListWalk = true; // lw t0, 19112(gp)
+        if (w === 0x8F883A84) seenLevel14980 = true;   // lw t0, 14980(gp) (g_CurrentLevel)
         if (w === jalMemAlloc && !seenFreeListWalk) allocBeforeWalk = true;
       }
-      if (!seenFreeListWalk || allocBeforeWalk) {
-        fail('VOICES', `Violacao OOM Guard: LulaoCache_Load sem walk freeList[1] antes de Mem_Alloc (seen=${seenFreeListWalk}, before=${allocBeforeWalk})!`);
+      if (!seenFreeListWalk || allocBeforeWalk || !seenLevel14980) {
+        fail('VOICES', `Violacao OOM/Level Guard: LulaoCache_Load (walk=${seenFreeListWalk}, before=${allocBeforeWalk}, lv14980=${seenLevel14980})!`);
         mipsInvErr++;
       }
 

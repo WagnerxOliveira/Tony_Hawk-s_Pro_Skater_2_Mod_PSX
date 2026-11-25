@@ -6,6 +6,15 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 
 ## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório & Enciclopédia v2
 
+### 🔇 Eliminação Definitiva do "Chiado" no Fundo das Falas em Gameplay (`vLOUT/vROUT` Hardware SPU Mute + Cadeia DSP `afftdn`/Kaiser-Sinc)
+- **Causa Raiz Hardware PS1 Provada ao Vivo no DuckStation (WASAPI Loopback 48 kHz + FFT):**
+  - Em fases com reverb ativo (*The Hangar* usa `mBASE = 0x7D940..0x7FFFF` com `vLOUT = vROUT = 0x2000`), limpar apenas `SPUCNT bit 7` (`0x1F801DAA`) interrompia somente as *escritas* na memória de reverb — **o motor DSP de reverb continuava lendo `0x7F400..0x7FBFF` a `22.050 Hz`** e interpretando os bytes comprimidos SPU-ADPCM 4-bit como PCM 16-bit aleatório, injetando `+24,2 dB` de ruído branco estéreo (`6–12 kHz`, `Mono == Side`).
+- **Correção Cirúrgica MIPS/SPU (`Scripts/patch_random_videos_and_voices.js` + Estágio 6 de `audit_game.js`):**
+  - `LulaoStream_StartFromCache` salva `vLOUT` (`0x1F801D84`) / `vROUT` (`0x1F801D86`) em `g_SavedRevVol` e zera ambos (`-∞ dB`) + `SPUCNT bit 7 = 0` antes de qualquer DMA4 em `0x7F400..0x7FBFF`; `LulaoStream_Tick` aplica guarda contínua a 60 Hz contra gatilhos `.TRG` de zona de reverb; `LulaoStream_Stop` zera os 2 KB de `0x7F400..0x7FBFF` enquanto `vLOUT = vROUT = 0` antes de restaurar `SPUCNT` e `vLOUT/vROUT` originais. Trava permanente adicionada ao Estágio 6 de `audit_game.js` (`0xA5001D84` / `0xA5001D86`).
+- **Masterização DSP Zero-Chiado (`Scripts/build_skater_voices.js`):**
+  - Re-codificados todos os 28 clipes de gameplay (`14` Lulão + `14` Bolsonaro, cache `gp3`) com `highpass=110 Hz`, redução espectral de ruído (`afftdn=nr=10:nf=-32:tn=1`), presença vocal quente (`+2 dB @ 1,8 kHz`), passa-baixa anti-aliasing 4 polos (`3.050 Hz`, `-24 dB/oitava`), resampler Kaiser-sinc 64-tap e `loudnorm` limpo (`-11,5 LUFS`, `-1,5 dBTP`).
+- **Resultado Empírico Medido Ao Vivo no DuckStation:** redução de **`-25,4 dB` (Mono) / `-26,5 dB` (Side Estéreo) na faixa `6–12 kHz`** (`> 99,7%` da potência do chiado eliminada!) e `StereoDiff = -180,0 dB` (silêncio digital exato) + Capítulo 12 adicionado a [`HISTORIA_DO_PROJETO_THPS2_MOD.md`](HISTORIA_DO_PROJETO_THPS2_MOD.md).
+
 ### 🥃 Barril 51 + Lulão, Notas Dinâmicas do Lulão, Garrafa 3D de 51 + Aura Dourada Aditiva, Vento Estocado 3D & Carrinho de Golfe Bolsonaro + Áudio Zero-Stall (`Scripts/mod_lulao_collectibles_v2.js` & `patch_random_videos_and_voices.js`)
 - **The Hangar (`LV 0`, `skhan_o.psx WAD[14]` & `skhan_o2.psx WAD[1109]`, `M[9]`):**
   - Barris convertidos de `ti=26` (`64×64 256c`) para **duas texturas dedicadas `64×64` 4-bit 16 cores (`ti=26` frente 180° = rótulo autêntico Pirassununga 51; `ti=39` `0x51101A51` verso 180° = caricatura recortada do Lulão sem assinatura)** com exatamente o mesmo orçamento de VRAM (`2.048` halfwords) e **`-316 B` líquidos** (`121.920 / 122.880 B`), preservando tampa `"51"` (`ti=25`) e 3D Haddad (`M[8]`).

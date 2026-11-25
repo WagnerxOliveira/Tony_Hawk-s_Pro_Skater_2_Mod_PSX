@@ -228,13 +228,20 @@ function encodeGameplayClipToSpu(mp3Path, cacheKey, maxSec = GP_MAX_ACTIVE_SEC, 
   }
   writePcm16MonoWav(trimWavPath, trimmed, WORK_SR);
 
-  // Step 2: Punchy arcade vocal EQ (+3 dB presence @ 2.2 kHz), -10 LUFS loudnorm & clean 6890.625 Hz resampling
+  // Step 2: Mastering-grade zero-hiss vocal DSP chain:
+  //   - highpass=110 Hz (removes low rumble/DC)
+  //   - afftdn (removes broadband mic/MP3 background hiss BEFORE loudness normalization)
+  //   - warm 1.8 kHz vocal presence (+2 dB, avoiding 2.5-3.4 kHz sibilant hiss band)
+  //   - cascaded 4-pole (-24 dB/oct) 3050 Hz brickwall lowpass + 64-tap Kaiser-sinc resampler (ZERO Nyquist aliasing!)
+  //   - clean EBU R128 loudnorm (-11.5 LUFS, -1.5 dBTP headroom -> prevents 4-bit ADPCM predictor overshoot!)
   const afParts = [
-    'highpass=f=110',
-    'equalizer=f=2200:t=q:w=1.2:g=3',
-    'lowpass=f=3200',
-    'loudnorm=I=-10:TP=-0.5:LRA=7',
-    `aresample=${GP_SAMPLE_RATE}`,
+    'highpass=f=110:p=2',
+    'afftdn=nr=10:nf=-32:tn=1',
+    'equalizer=f=1800:t=q:w=1.1:g=2.0',
+    'lowpass=f=3050:p=2',
+    'lowpass=f=3050:p=2',
+    'loudnorm=I=-11.5:TP=-1.5:LRA=8',
+    `aresample=${GP_SAMPLE_RATE}:filter_size=64:phase_shift=10:cutoff=0.90:kaiser_beta=9`,
   ];
   const ff = spawnSync(ffmpegExe, [
     '-y', '-v', 'error',
@@ -368,11 +375,11 @@ function encodeCompactGameplayBank(label, srcDir, files, keyPrefix, preferredOrd
 }
 
 function encodeLulaoGameplayBank(lulaoFiles, force = false) {
-  return encodeCompactGameplayBank('LULAO_GPBANK', lulaoDir, lulaoFiles, 'gp2', GP_LULAO_ORDER, force);
+  return encodeCompactGameplayBank('LULAO_GPBANK', lulaoDir, lulaoFiles, 'gp3', GP_LULAO_ORDER, force);
 }
 
 function encodeBolsoGameplayBank(bolsoFiles, force = false) {
-  return encodeCompactGameplayBank('BOLSO_GPBANK', bolsoDir, bolsoFiles, 'gp2_bolso', null, force);
+  return encodeCompactGameplayBank('BOLSO_GPBANK', bolsoDir, bolsoFiles, 'gp3_bolso', null, force);
 }
 
 function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null, extraResidentSectors = null) {
