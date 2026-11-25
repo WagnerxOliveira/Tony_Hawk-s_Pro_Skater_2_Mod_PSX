@@ -29,12 +29,24 @@ if (!fs.existsSync(origDir)) {
   console.error('Pasta bin_cue_originais_do_jogo/ nao encontrada!');
   process.exit(1);
 }
+const EXPECTED_ORIG_SIZE = 748037136; // Exact Redump NTSC-U SLUS-01066 (318,043 sectors)
 const origBins = fs.readdirSync(origDir).filter(f => /\.bin$/i.test(f));
 if (origBins.length === 0) {
   console.error('Nenhum arquivo .bin original encontrado em:', origDir);
   process.exit(1);
 }
-const origBin = path.join(origDir, origBins[0]);
+const matchedBin =
+  origBins.find(f => fs.statSync(path.join(origDir, f)).size === EXPECTED_ORIG_SIZE) ||
+  origBins.find(f => /pro skater 2/i.test(f));
+if (!matchedBin) {
+  console.error(`THPS2 NTSC-U Redump BIN (${EXPECTED_ORIG_SIZE} B) nao encontrado em ${origDir}! Encontrados:`, origBins);
+  process.exit(1);
+}
+const origBin = path.join(origDir, matchedBin);
+if (fs.statSync(origBin).size !== EXPECTED_ORIG_SIZE) {
+  console.error(`Tamanho inesperado para ${matchedBin}: ${fs.statSync(origBin).size} B (esperado ${EXPECTED_ORIG_SIZE} B Redump SLUS-01066)!`);
+  process.exit(1);
+}
 if (!fs.existsSync(modBin)) {
   console.error('build/THPS2_MOD.bin nao encontrado! Rode primeiro: node tools/build_iso.js');
   process.exit(1);
