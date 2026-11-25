@@ -1,0 +1,1961 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * THPS1-in-THPS2 Complete Interleaved 19-Level Engine Mod (SLUS-01066)
+ *
+ * Resident Memory Map (loaded into RAM 0x800E6000..0x800EBFFF from VOICES.DAT Sectors 7..18 = 24,576 B):
+ *   - 0x800E6000..0x800E7D0F (7,440 B): g_ExtLevelTable[20] (0..10 = THPS2 intact, 11..19 = ALL 9 THPS1 levels!)
+ *   - 0x800E7D20..0x800E7D6F (   80 B): g_DisplayOrderWords[20] (interleaved THPS2 <-> THPS1 order)
+ *   - 0x800E7D70..0x800E7D83 (   20 B): g_SlotOfLevel[20] (inverse map levelId -> displaySlot)
+ *   - 0x800E8000..0x800E840F (1,040 B): g_ExtLightTable[20]  (expanded 0x800B961C, stride 52)
+ *   - 0x800E8410..0x800E854F (  320 B): g_ExtShadowTable[20] (expanded 0x800B9824, stride 16)
+ *   - 0x800E8550..0x800E8A4F (1,280 B): g_ExtSkyTable[20]    (expanded 0x800BB95C, stride 64)
+ *   - 0x800E8A50..0x800E8F5F (1,296 B): g_Thps1Hed[]         (76+1 entries for THPS1.WAD fallback loader)
+ *   - 0x800E9000..0x800E96DF (1,760 B): g_Thps1Strings       (level names, cities, TRGs, BMPs, THPS1 goals, "\THPS1.WAD;1")
+ *   - 0x800E96E0..0x800E96FF (   32 B): Runtime state (g_Thps1BaseLba, g_Thps1Inited, g_Thps1ScratchOff, g_Thps1ScratchSz)
+ *   - 0x800E9700..0x800E9ECF (2,000 B): g_ExtCareer[20]      (per-skater progress for THPS1 levels 11..19)
+ *   - 0x800EA000..0x800EBFFF (8,192 B): THPS1_CODE           (MIPS R3000A runtime hooks)
+ *
+ * Interleaved Progression Order (19 playable levels + Custom Park sked):
+ *   Slot  0: [ 0] The Hangar       (THPS2 #1)       -> Unlocked at start ($0)
+ *   Slot  1: [11] Warehouse        (THPS1 #1)       -> Unlocks at $1,000
+ *   Slot  2: [ 1] School II        (THPS2 #2)       -> Unlocks at $2,000
+ *   Slot  3: [12] School           (THPS1 #2)       -> Unlocks at $3,500
+ *   Slot  4: [ 2] Marseille        (THPS2 #3 Comp)  -> Unlocks at $5,500
+ *   Slot  5: [13] Mall             (THPS1 #3)       -> Unlocks with 1 Medal
+ *   Slot  6: [ 3] NY City          (THPS2 #4)       -> Unlocks at $9,500
+ *   Slot  7: [14] Skate Park       (THPS1 #4 Comp)  -> Unlocks at $13,500
+ *   Slot  8: [ 4] Venice Beach     (THPS2 #5)       -> Unlocks with 2 Medals
+ *   Slot  9: [15] Downtown         (THPS1 #5)       -> Unlocks at $21,000
+ *   Slot 10: [ 5] SkateStreet      (THPS2 #6 Comp)  -> Unlocks at $25,000
+ *   Slot 11: [16] Downhill Jam     (THPS1 #6)       -> Unlocks with 3 Medals
+ *   Slot 12: [ 6] Philadelphia     (THPS2 #7)       -> Unlocks at $34,000
+ *   Slot 13: [17] Burnside         (THPS1 #7 Comp)  -> Unlocks at $42,000
+ *   Slot 14: [ 7] The Bullring     (THPS2 #8 Comp)  -> Unlocks with 4 Medals
+ *   Slot 15: [18] Streets          (THPS1 #8)       -> Unlocks with 5 Medals
+ *   Slot 16: [ 8] Chopper Drop     (THPS2 Bonus 1)  -> Unlocks at $55,000
+ *   Slot 17: [19] Roswell          (THPS1 #9 Comp)  -> Unlocks at $60,000
+ *   Slot 18: [ 9] Skate Heaven     (THPS2 Bonus 2)  -> Unlocks with 6 Medals
+ *   Slot 19: [10] Custom Park      (THPS2 sked)     -> Free Skate / Single Session
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const MANIFEST_PATH = path.join(ROOT, 'build', 'thps1_manifest.json');
+const ORIG_SLUS_PATH = path.join(ROOT, 'originals_backup', 'SLUS_010.66');
+const ORIG_WAD_PATH = path.join(ROOT, 'originals_backup', 'CD.WAD');
+const ORIG_HED_PATH = path.join(ROOT, 'originals_backup', 'CD.HED');
+
+const SLUS_BASE = 0x80010000;
+const SLUS_HDR = 0x800;
+
+const THPS1_ADDR = {
+  Base:              0x800E6000,
+  TotalBytes:        10 * 2048, // 20,480 B (0x800E6000..0x800EAFFF)
+  NewHeapStart:      0x800EB000,
+
+  ExtLevelTable:     0x800E6000, // 20 * 0x174 = 7,440 B -> 0x800E7D10
+  DisplayOrderWords: 0x800E7D20, // 20 * 4 = 80 B -> 0x800E7D70 (interleaved carousel order)
+  SlotOfLevel:       0x800E7D70, // 20 B -> 0x800E7D84
+  LoadOrderWords:    0x800E7D90, // 20 * 4 = 80 B -> 0x800E7DE0 (disc-LBA sequential 0..19 for 2-seek fast Level Select!)
+
+  ExtLightTable:     0x800E8000, // 20 * 52 = 1,040 B -> 0x800E8410
+  ExtShadowTable:    0x800E8410, // 20 * 16 = 320 B   -> 0x800E8550
+  ExtSkyTable:       0x800E8550, // 20 * 64 = 1,280 B -> 0x800E8A50
+  Thps1Hed:          0x800E8A50, // up to 108 * 12 = 1,296 B -> 0x800E8F60
+
+  Thps1Strings:      0x800E9000, // ~1,760 B -> 0x800E96DF
+  g_Thps1BaseLba:    0x800E96E0,
+  g_Thps1Inited:     0x800E96E4,
+  g_Thps1ScratchOff: 0x800E96E8,
+  g_Thps1ScratchSz:  0x800E96EC,
+  g_Thps1StrPathPtr: 0x800E96F0,
+
+  ExtCareer:         0x800E9700, // 20 skaters * 100 B = 2,000 B -> 0x800E9ED0
+
+  CodeBase:          0x800EA000, // 8,192 B -> 0x800EBFFF
+  Entry_CdWadFallback:        0x800EA000,
+  Entry_CareerCountMedals:    0x800EA008,
+  Entry_CareerLevelIsOpenIn:  0x800EA010,
+  Entry_CareerLevelIsOpenMod: 0x800EA018,
+  Entry_CareerHasGoal:        0x800EA020,
+  Entry_CareerCountLvlGoals:  0x800EA028,
+  Entry_CareerCountCash:      0x800EA030,
+  Entry_CareerHasCashNode:    0x800EA038,
+  Entry_CareerCollectCashBit: 0x800EA040,
+  Entry_CareerGiveGoalBit:    0x800EA048,
+  Entry_CareerSetMedal:       0x800EA050,
+  Entry_CareerSetAllGoals:    0x800EA058,
+  Entry_GetLevelFlags:        0x800EA060,
+  Entry_GoalListLoopCheck:    0x800EA068,
+  Entry_ShowGoalsBtn:         0x800EA070,
+  Entry_LevelSelMoveCursor:   0x800EA078,
+  Entry_LevelSelPct:          0x800EA080,
+  Entry_LevelSelShowPct:      0x800EA088,
+  Entry_SecretFlagSet:        0x800EA090,
+  Entry_SecretFlagGet:        0x800EA098,
+  Entry_TrigHasGoal:          0x800EA0A0,
+  Entry_CompInitPodium:       0x800EA0A8,
+  Entry_CompPrizeAB:          0x800EA0B0,
+  Entry_CompPrizeC:           0x800EA0B8,
+  Entry_CareerCountGolds:     0x800EA0C0,
+  Entry_CareerResetExt:       0x800EA0C8,
+  Entry_HiScore_s7_s2:        0x800EA0D0,
+  Entry_HiScore_v1_s2:        0x800EA0D8,
+  Entry_HiScore_t3_v0:        0x800EA0E0,
+  Entry_HiScore_a0_s1:        0x800EA0E8,
+  Entry_HiScore_v1_a0:        0x800EA0F0,
+  Entry_Car215_SetModel:      0x800EA0F8,
+  Entry_Car216_SetModel:      0x800EA100,
+};
+
+// Display/Progression Order: THPS2 <-> THPS1 strictly interleaved (0..18) + Custom Park (10) at slot 19
+const DISPLAY_ORDER = [0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 10];
+const SLOT_OF_LEVEL = new Array(20).fill(0);
+for (let s = 0; s < DISPLAY_ORDER.length; s++) SLOT_OF_LEVEL[DISPLAY_ORDER[s]] = s;
+
+// Interleaved unlock requirements (cashRequired @ +0x44, medalsRequired @ +0x48) keyed by internal levelId (0..19)
+const UNLOCK_REQS = {
+  0:  { cash: 0,     medals: 0 }, // Slot  0: THPS2 Hangar (UNLOCKED AT START!)
+  11: { cash: 1000,  medals: 0 }, // Slot  1: THPS1 Warehouse
+  1:  { cash: 2000,  medals: 0 }, // Slot  2: THPS2 School II
+  12: { cash: 3500,  medals: 0 }, // Slot  3: THPS1 School
+  2:  { cash: 5500,  medals: 0 }, // Slot  4: THPS2 Marseille (Comp)
+  13: { cash: 0,     medals: 1 }, // Slot  5: THPS1 Mall
+  3:  { cash: 9500,  medals: 0 }, // Slot  6: THPS2 NY City
+  14: { cash: 13500, medals: 0 }, // Slot  7: THPS1 Skate Park Chicago (Comp)
+  4:  { cash: 0,     medals: 2 }, // Slot  8: THPS2 Venice Beach
+  15: { cash: 21000, medals: 0 }, // Slot  9: THPS1 Downtown
+  5:  { cash: 25000, medals: 0 }, // Slot 10: THPS2 SkateStreet (Comp)
+  16: { cash: 0,     medals: 3 }, // Slot 11: THPS1 Downhill Jam
+  6:  { cash: 34000, medals: 0 }, // Slot 12: THPS2 Philadelphia
+  17: { cash: 42000, medals: 0 }, // Slot 13: THPS1 Burnside (Comp)
+  7:  { cash: 0,     medals: 4 }, // Slot 14: THPS2 The Bullring (Comp)
+  18: { cash: 0,     medals: 5 }, // Slot 15: THPS1 Streets SF
+  8:  { cash: 55000, medals: 0 }, // Slot 16: THPS2 Chopper Drop
+  19: { cash: 60000, medals: 0 }, // Slot 17: THPS1 Roswell (Comp)
+  9:  { cash: 0,     medals: 6 }, // Slot 18: THPS2 Skate Heaven
+  10: { cash: 0,     medals: 0 }, // Slot 19: Custom Park (Free Skate)
+};
+
+// All 9 THPS1 Level Definitions (exact original THPS1 objectives, scores, globe coords, VAB, BMPs, native +0x50 PrimBuf delta)
+const THPS1_DEFS = [
+  {
+    id: 11, name: 'Warehouse', loc: 'Woodland Hills', vab: 'hangar', isComp: 0, trg: 'SkWare_T',
+    rend: 't1rend00.bmp', levl: 't1levl00.bmp', globeLon: 2668, globeLat: -6, lightFrom: 0, primBufDelta: 0,
+    scores: [5000, 15000, 30000], par: [20000, 7000, 3000],
+    goals: [
+      { type: 0, p1: 5000,  p2: 0, text: 'High Score - 5,000',   cash: 150 },
+      { type: 0, p1: 15000, p2: 0, text: 'Pro Score - 15,000',   cash: 250 },
+      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 200 },
+      { type: 4, p1: 5,     p2: 'BOXES', text: 'Smash the Boxes', cash: 200 },
+      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 200 },
+    ],
+  },
+  {
+    id: 12, name: 'School', loc: 'Miami', vab: 'school2', isComp: 0, trg: 'SkSchl_T',
+    rend: 't1rend01.bmp', levl: 't1levl01.bmp', globeLon: 3160, globeLat: -16, lightFrom: 1, primBufDelta: -36000,
+    scores: [7500, 25000, 50000], par: [20000, 7000, 3000],
+    goals: [
+      { type: 0, p1: 7500,  p2: 0, text: 'High Score - 7,500',   cash: 200 },
+      { type: 0, p1: 25000, p2: 0, text: 'Pro Score - 25,000',   cash: 350 },
+      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 250 },
+      { type: 4, p1: 5,     p2: 'LUNCH TABLES', text: 'Grind 5 Lunch Tables', cash: 300 },
+      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 300 },
+    ],
+  },
+  {
+    id: 13, name: 'Mall', loc: 'New York', vab: 'ny', isComp: 0, trg: 'SkMall_T',
+    rend: 't1rend02.bmp', levl: 't1levl02.bmp', globeLon: 3238, globeLat: -24, lightFrom: 3, primBufDelta: -28000,
+    scores: [10000, 30000, 60000], par: [20000, 7000, 3000],
+    goals: [
+      { type: 0, p1: 10000, p2: 0, text: 'High Score - 10,000',  cash: 300 },
+      { type: 0, p1: 30000, p2: 0, text: 'Pro Score - 30,000',   cash: 500 },
+      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 400 },
+      { type: 4, p1: 5,     p2: 'DIRECTORIES', text: 'Smash 5 Mall Signs', cash: 400 },
+      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 400 },
+    ],
+  },
+  {
+    id: 14, name: 'Skate Park', loc: 'Chicago', vab: 'ss', isComp: 1, trg: 'skvans_t',
+    rend: 't1rend03.bmp', levl: 't1levl03.bmp', globeLon: 3040, globeLat: -25, lightFrom: 5, primBufDelta: -8000,
+    scores: [35000, 22000, 12000], par: [3000, 2250, 1500],
+    goals: [],
+  },
+  {
+    id: 15, name: 'Downtown', loc: 'Minneapolis', vab: 'ny', isComp: 0, trg: 'SkDown_T',
+    rend: 't1rend04.bmp', levl: 't1levl04.bmp', globeLon: 2960, globeLat: -27, lightFrom: 3, primBufDelta: -36000,
+    scores: [15000, 40000, 80000], par: [20000, 7000, 3000],
+    goals: [
+      { type: 0, p1: 15000, p2: 0, text: 'High Score - 15,000',  cash: 500 },
+      { type: 0, p1: 40000, p2: 0, text: 'Pro Score - 40,000',   cash: 800 },
+      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 600 },
+      { type: 4, p1: 5,     p2: 'SIGNS', text: 'Smash 5 Signs',  cash: 600 },
+      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 700 },
+    ],
+  },
+  {
+    id: 16, name: 'Downhill Jam', loc: 'Phoenix', vab: 'venice', isComp: 0, trg: 'SkJam_T',
+    rend: 't1rend05.bmp', levl: 't1levl05.bmp', globeLon: 2740, globeLat: -10, lightFrom: 4, primBufDelta: -34000,
+    scores: [20000, 40000, 85000], par: [20000, 7000, 3000],
+    goals: [
+      { type: 0, p1: 20000, p2: 0, text: 'High Score - 20,000',  cash: 600 },
+      { type: 0, p1: 40000, p2: 0, text: 'Pro Score - 40,000',   cash: 900 },
+      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 700 },
+      { type: 4, p1: 5,     p2: 'VALVES', text: 'Open 5 Valves', cash: 700 },
+      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 800 },
+    ],
+  },
+  {
+    id: 17, name: 'Burnside', loc: 'Portland', vab: 'mar', isComp: 1, trg: 'SkBurn_T',
+    rend: 't1rend06.bmp', levl: 't1levl06.bmp', globeLon: 2560, globeLat: -28, lightFrom: 2, primBufDelta: -8000,
+    scores: [55000, 40000, 25000], par: [4000, 3000, 2000],
+    goals: [],
+  },
+  {
+    id: 18, name: 'Streets', loc: 'San Francisco', vab: 'philly', isComp: 0, trg: 'SkSF_T',
+    rend: 't1rend07.bmp', levl: 't1levl07.bmp', globeLon: 2580, globeLat: -14, lightFrom: 6, primBufDelta: -34000,
+    scores: [25000, 50000, 100000], par: [20000, 7000, 3000],
+    goals: [
+      { type: 0, p1: 25000, p2: 0, text: 'High Score - 25,000',  cash: 800 },
+      { type: 0, p1: 50000, p2: 0, text: 'Pro Score - 50,000',   cash: 1200 },
+      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 900 },
+      { type: 4, p1: 5,     p2: 'COP CARS', text: 'Ollie 5 Cop Cars', cash: 900 },
+      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 1000 },
+    ],
+  },
+  {
+    id: 19, name: 'Roswell', loc: 'New Mexico', vab: 'bullring', isComp: 1, trg: 'SkRos_T',
+    rend: 't1rend08.bmp', levl: 't1levl08.bmp', globeLon: 2800, globeLat: -8, lightFrom: 7, primBufDelta: -20000,
+    scores: [75000, 55000, 35000], par: [5000, 3500, 2000],
+    goals: [],
+  },
+];
+
+// ============================================================================
+// Self-Verifying MIPS I (R3000A) Assembler
+// ============================================================================
+const R = {
+  zero: 0, at: 1, v0: 2, v1: 3,
+  a0: 4, a1: 5, a2: 6, a3: 7,
+  t0: 8, t1: 9, t2: 10, t3: 11, t4: 12, t5: 13, t6: 14, t7: 15,
+  s0: 16, s1: 17, s2: 18, s3: 19, s4: 20, s5: 21, s6: 22, s7: 23,
+  t8: 24, t9: 25, k0: 26, k1: 27, gp: 28, sp: 29, fp: 30, ra: 31,
+};
+
+function splitHiLo(addr) {
+  const hi = ((addr + 0x8000) >>> 16) & 0xFFFF;
+  const lo = addr & 0xFFFF;
+  return { hi, lo };
+}
+
+class MipsAsm {
+  constructor(baseAddr) {
+    this.base = baseAddr >>> 0;
+    this.bytesList = [];
+    this.labels = new Map();
+    this.fixups = [];
+  }
+  pc() { return (this.base + this.bytesList.length) >>> 0; }
+  label(name) {
+    if (this.labels.has(name)) throw new Error(`Duplicate label: ${name}`);
+    this.labels.set(name, this.pc());
+  }
+  align(n) { while (this.bytesList.length % n !== 0) this.bytesList.push(0); }
+  padTo(addr) {
+    const need = (addr >>> 0) - this.base;
+    if (need < this.bytesList.length) throw new Error(`padTo(0x${addr.toString(16)}) overflow (cur=0x${this.pc().toString(16)})`);
+    while (this.bytesList.length < need) this.bytesList.push(0);
+  }
+  word(w) {
+    const v = w >>> 0;
+    this.bytesList.push(v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF);
+  }
+  bytes(buf) { for (let i = 0; i < buf.length; i++) this.bytesList.push(buf[i]); }
+  r(fn, rs, rt, rd, sh = 0) { this.word(((rs & 31) << 21) | ((rt & 31) << 16) | ((rd & 31) << 11) | ((sh & 31) << 6) | (fn & 63)); }
+  i(op, rs, rt, imm) { this.word(((op & 63) << 26) | ((rs & 31) << 21) | ((rt & 31) << 16) | (imm & 0xFFFF)); }
+  jOp(op, target) {
+    if (typeof target === 'string') {
+      this.fixups.push({ type: 'J', off: this.bytesList.length, op, target });
+      this.word(0);
+    } else {
+      this.word(((op & 63) << 26) | (((target >>> 2) & 0x03FFFFFF)));
+    }
+  }
+  br(op, rs, rt, target) {
+    if (typeof target === 'string') {
+      this.fixups.push({ type: 'B', off: this.bytesList.length, op, rs, rt, target });
+      this.word(0);
+    } else {
+      const rel = (((target >>> 0) - (this.pc() + 4)) >> 2) & 0xFFFF;
+      this.i(op, rs, rt, rel);
+    }
+  }
+  nop() { this.word(0); }
+  sll(rd, rt, sh) { this.r(0x00, 0, rt, rd, sh); }
+  srl(rd, rt, sh) { this.r(0x02, 0, rt, rd, sh); }
+  sra(rd, rt, sh) { this.r(0x03, 0, rt, rd, sh); }
+  sllv(rd, rt, rs) { this.r(0x04, rs, rt, rd); }
+  srav(rd, rt, rs) { this.r(0x07, rs, rt, rd); }
+  jr(rs) { this.r(0x08, rs, 0, 0); }
+  jalr(rd, rs) { this.r(0x09, rs, 0, rd); }
+  mfhi(rd) { this.r(0x10, 0, 0, rd); }
+  mflo(rd) { this.r(0x12, 0, 0, rd); }
+  mult(rs, rt) { this.r(0x18, rs, rt, 0); }
+  divu(rs, rt) { this.r(0x1B, rs, rt, 0); }
+  addu(rd, rs, rt) { this.r(0x21, rs, rt, rd); }
+  subu(rd, rs, rt) { this.r(0x23, rs, rt, rd); }
+  and(rd, rs, rt) { this.r(0x24, rs, rt, rd); }
+  or(rd, rs, rt) { this.r(0x25, rs, rt, rd); }
+  slt(rd, rs, rt) { this.r(0x2A, rs, rt, rd); }
+  sltu(rd, rs, rt) { this.r(0x2B, rs, rt, rd); }
+  move(rd, rs) { this.addu(rd, rs, R.zero); }
+  bltz(rs, t) { this.br(0x01, rs, 0, t); }
+  bgez(rs, t) { this.br(0x01, rs, 1, t); }
+  j(t) { this.jOp(0x02, t); }
+  jal(t) { this.jOp(0x03, t); }
+  beq(rs, rt, t) { this.br(0x04, rs, rt, t); }
+  bne(rs, rt, t) { this.br(0x05, rs, rt, t); }
+  blez(rs, t) { this.br(0x06, rs, 0, t); }
+  bgtz(rs, t) { this.br(0x07, rs, 0, t); }
+  addiu(rt, rs, imm) { this.i(0x09, rs, rt, imm); }
+  slti(rt, rs, imm) { this.i(0x0A, rs, rt, imm); }
+  sltiu(rt, rs, imm) { this.i(0x0B, rs, rt, imm); }
+  andi(rt, rs, imm) { this.i(0x0C, rs, rt, imm); }
+  ori(rt, rs, imm) { this.i(0x0D, rs, rt, imm); }
+  lui(rt, imm) { this.i(0x0F, 0, rt, imm); }
+  lb(rt, imm, rs) { this.i(0x20, rs, rt, imm); }
+  lh(rt, imm, rs) { this.i(0x21, rs, rt, imm); }
+  lw(rt, imm, rs) { this.i(0x23, rs, rt, imm); }
+  lbu(rt, imm, rs) { this.i(0x24, rs, rt, imm); }
+  lhu(rt, imm, rs) { this.i(0x25, rs, rt, imm); }
+  sb(rt, imm, rs) { this.i(0x28, rs, rt, imm); }
+  sh(rt, imm, rs) { this.i(0x29, rs, rt, imm); }
+  sw(rt, imm, rs) { this.i(0x2B, rs, rt, imm); }
+  li(rt, val) {
+    const u = val >>> 0;
+    if (u <= 0xFFFF) { this.ori(rt, R.zero, u); }
+    else { this.lui(rt, (u >>> 16) & 0xFFFF); if (u & 0xFFFF) this.ori(rt, rt, u & 0xFFFF); }
+  }
+  la(rt, addrOrLabel) {
+    if (typeof addrOrLabel === 'string') {
+      this.fixups.push({ type: 'LA', off: this.bytesList.length, rt, target: addrOrLabel });
+      this.word(0); this.word(0);
+    } else {
+      const { hi, lo } = splitHiLo(addrOrLabel >>> 0);
+      this.lui(rt, hi);
+      this.addiu(rt, rt, lo);
+    }
+  }
+  emit() {
+    const buf = Buffer.from(this.bytesList);
+    for (const f of this.fixups) {
+      if (!this.labels.has(f.target)) throw new Error(`Unresolved label: ${f.target}`);
+      const tgt = this.labels.get(f.target);
+      const curPc = (this.base + f.off) >>> 0;
+      if (f.type === 'J') {
+        buf.writeUInt32LE((((f.op & 63) << 26) | ((tgt >>> 2) & 0x03FFFFFF)) >>> 0, f.off);
+      } else if (f.type === 'B') {
+        const rel = (tgt - (curPc + 4)) >> 2;
+        if (rel < -32768 || rel > 32767) throw new Error(`Branch out of range to ${f.target}`);
+        buf.writeUInt32LE((((f.op & 63) << 26) | ((f.rs & 31) << 21) | ((f.rt & 31) << 16) | (rel & 0xFFFF)) >>> 0, f.off);
+      } else if (f.type === 'LA') {
+        const { hi, lo } = splitHiLo(tgt);
+        buf.writeUInt32LE(((0x0F << 26) | ((f.rt & 31) << 16) | hi) >>> 0, f.off);
+        buf.writeUInt32LE(((0x09 << 26) | ((f.rt & 31) << 21) | ((f.rt & 31) << 16) | lo) >>> 0, f.off + 4);
+      }
+    }
+    return buf;
+  }
+}
+
+// ============================================================================
+// 1. Build Resident 24 KB THPS1 Engine Block (RAM 0x800E6000..0x800EBFFF)
+// ============================================================================
+function buildThps1ResidentBlock() {
+  if (!fs.existsSync(MANIFEST_PATH)) {
+    throw new Error(`Manifesto THPS1 ausente em ${MANIFEST_PATH}. Execute node tools/port_thps1_levels.js primeiro.`);
+  }
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+  const origSlus = fs.readFileSync(ORIG_SLUS_PATH);
+  const ramToFile = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
+
+  const block = Buffer.alloc(THPS1_ADDR.TotalBytes, 0);
+  const putAt = (ram, buf) => buf.copy(block, ram - THPS1_ADDR.Base);
+
+  // --- A. Build THPS1 String Pool @ 0x800E9000 ---
+  let strCursor = THPS1_ADDR.Thps1Strings;
+  const strMap = new Map();
+  function internStr(s) {
+    if (strMap.has(s)) return strMap.get(s);
+    const addr = strCursor;
+    const raw = Buffer.from(s + '\0', 'ascii');
+    putAt(addr, raw);
+    strCursor += (raw.length + 3) & ~3;
+    if (strCursor > THPS1_ADDR.g_Thps1BaseLba) {
+      throw new Error(`Thps1Strings overflow: 0x${strCursor.toString(16)} > 0x${THPS1_ADDR.g_Thps1BaseLba.toString(16)}`);
+    }
+    strMap.set(s, addr);
+    return addr;
+  }
+  const strEmpty = internStr('');
+  const strThps1WadPath = internStr('\\THPS1.WAD;1');
+  const strCVan = internStr('c_van');
+  const strCCab1 = internStr('c_cabl1');
+  block.writeUInt32LE(strThps1WadPath >>> 0, THPS1_ADDR.g_Thps1StrPathPtr - THPS1_ADDR.Base);
+
+  // --- B. Build g_ExtLevelTable[20] @ 0x800E6000 ---
+  // Copy original THPS2 11 entries [0..10] verbatim (preserving all pointers & goals!)
+  const origLtOff = ramToFile(0x800B8444);
+  origSlus.copy(block, 0, origLtOff, origLtOff + 11 * 0x174);
+  // Apply fixed School II G6 "Kickflip" pointer intact (data in SLUS is patched too)
+  // Update interleaved unlock thresholds (+0x44 cash, +0x48 medals) for [0..10]
+  for (let i = 0; i < 11; i++) {
+    const req = UNLOCK_REQS[i];
+    const baseOff = i * 0x174;
+    block.writeUInt32LE(req.cash >>> 0, baseOff + 0x44);
+    block.writeUInt32LE(req.medals >>> 0, baseOff + 0x48);
+  }
+
+  // Construct entries [11..19] for ALL 9 THPS1 levels!
+  // Start each from a clean template of Hangar [0] (for career) or Marseille [2] (for comp) so
+  // all secondary physics/camera/OOB fields (+0x60..+0x7C, +0x170) are 100% valid!
+  for (const def of THPS1_DEFS) {
+    const dstOff = def.id * 0x174;
+    const tplIdx = def.isComp ? 2 : 0;
+    origSlus.copy(block, dstOff, origLtOff + tplIdx * 0x174, origLtOff + (tplIdx + 1) * 0x174);
+
+    block.writeUInt32LE(internStr(def.name) >>> 0, dstOff + 0x00);
+    block.writeUInt32LE(internStr(def.loc) >>> 0,  dstOff + 0x04);
+    block.writeUInt32LE(internStr(def.vab) >>> 0,  dstOff + 0x08);
+    block.writeUInt32LE(def.isComp >>> 0,          dstOff + 0x0C);
+    block.writeUInt32LE(0,                         dstOff + 0x10);
+    block.writeUInt32LE(internStr(def.trg) >>> 0,  dstOff + 0x14);
+    block.writeUInt32LE(def.scores[0] >>> 0,       dstOff + 0x18);
+    block.writeUInt32LE(def.scores[1] >>> 0,       dstOff + 0x1C);
+    block.writeUInt32LE(def.scores[2] >>> 0,       dstOff + 0x20);
+    block.writeUInt32LE(def.par[0] >>> 0,          dstOff + 0x24);
+    block.writeUInt32LE(def.par[1] >>> 0,          dstOff + 0x28);
+    block.writeUInt32LE(def.par[2] >>> 0,          dstOff + 0x2C);
+    block.writeUInt32LE(internStr(def.rend) >>> 0, dstOff + 0x30);
+    block.writeUInt32LE(0,                         dstOff + 0x34); // videoSlot=0 -> crisp static BMP preview!
+    block.writeUInt32LE(def.globeLon >>> 0,        dstOff + 0x38);
+    block.writeInt32LE(def.globeLat,               dstOff + 0x3C);
+    block.writeUInt32LE(internStr(def.levl) >>> 0, dstOff + 0x40);
+
+    const req = UNLOCK_REQS[def.id];
+    block.writeUInt32LE(req.cash >>> 0,            dstOff + 0x44);
+    block.writeUInt32LE(req.medals >>> 0,          dstOff + 0x48);
+    block.writeUInt32LE(def.isComp ? 1 : 0,        dstOff + 0x4C);
+    block.writeInt32LE(def.primBufDelta || 0,      dstOff + 0x50); // Native Neversoft per-level PrimBuf delta (2x in Heap[1]!)
+    block.writeUInt32LE(0,                         dstOff + 0x54);
+    block.writeUInt32LE(0,                         dstOff + 0x58);
+    block.writeUInt32LE(0,                         dstOff + 0x5C);
+    block.writeInt32LE(-18,                        dstOff + 0x60);
+    block.writeUInt32LE(0x800BA174,                dstOff + 0x170); // OOB bail strings
+
+    // Populate 10 Goal slots (+0x80, stride 24):
+    // Career THPS1 levels get their exact 5 THPS1 objectives in G0..G4, and type=8 (inactive) in G5..G9!
+    for (let g = 0; g < 10; g++) {
+      const gf = dstOff + 0x80 + g * 24;
+      if (!def.isComp && g < def.goals.length) {
+        const gd = def.goals[g];
+        block.writeUInt32LE(gd.type >>> 0, gf + 0);
+        block.writeUInt32LE(gd.p1 >>> 0,   gf + 4);
+        block.writeUInt32LE((typeof gd.p2 === 'string' ? internStr(gd.p2) : gd.p2) >>> 0, gf + 8);
+        block.writeUInt32LE(gd.cash >>> 0, gf + 12);
+        block.writeUInt32LE(internStr(gd.text) >>> 0, gf + 16);
+        block.writeUInt32LE(0, gf + 20);
+      } else if (def.isComp) {
+        // Comp template placeholder (same as Marseille)
+        block.writeUInt32LE(0, gf + 0);
+        block.writeUInt32LE(10000000, gf + 4);
+        block.writeUInt32LE(0, gf + 8);
+        block.writeUInt32LE(1000, gf + 12);
+        block.writeUInt32LE(strEmpty >>> 0, gf + 16);
+        block.writeUInt32LE(0, gf + 20);
+      } else {
+        // Unused goal slots G5..G9 -> type=8 (inactive, empty text)
+        block.writeUInt32LE(8, gf + 0);
+        block.writeUInt32LE(10000000, gf + 4);
+        block.writeUInt32LE(0, gf + 8);
+        block.writeUInt32LE(0, gf + 12);
+        block.writeUInt32LE(strEmpty >>> 0, gf + 16);
+        block.writeUInt32LE(0, gf + 20);
+      }
+    }
+  }
+
+  // --- C. Display Order, Inverse Lookup & Sequential Disc-LBA Load Order Tables ---
+  for (let i = 0; i < 20; i++) {
+    block.writeUInt32LE(DISPLAY_ORDER[i] >>> 0, (THPS1_ADDR.DisplayOrderWords - THPS1_ADDR.Base) + i * 4);
+    block.writeUInt8(SLOT_OF_LEVEL[i] & 0xFF, (THPS1_ADDR.SlotOfLevel - THPS1_ADDR.Base) + i);
+    block.writeUInt32LE(i >>> 0, (THPS1_ADDR.LoadOrderWords - THPS1_ADDR.Base) + i * 4);
+  }
+
+  // --- D. Extended Light (stride 52), Shadow (stride 16), and THPS1 HighScore Table (stride 64 @ 0x800E8550) ---
+  const origLightOff = ramToFile(0x800B961C);
+  const origShadowOff = ramToFile(0x800B9824);
+  origSlus.copy(block, THPS1_ADDR.ExtLightTable - THPS1_ADDR.Base, origLightOff, origLightOff + 11 * 52);
+  origSlus.copy(block, THPS1_ADDR.ExtShadowTable - THPS1_ADDR.Base, origShadowOff, origShadowOff + 11 * 16);
+  for (const def of THPS1_DEFS) {
+    const src = def.lightFrom;
+    origSlus.copy(block, (THPS1_ADDR.ExtLightTable - THPS1_ADDR.Base) + def.id * 52, origLightOff + src * 52, origLightOff + (src + 1) * 52);
+    origSlus.copy(block, (THPS1_ADDR.ExtShadowTable - THPS1_ADDR.Base) + def.id * 16, origShadowOff + src * 16, origShadowOff + (src + 1) * 16);
+    // Initialize THPS1 per-level HighScore leaderboard (8 entries * 8 B = 64 B) at ExtSkyTable + (id - 11) * 64
+    const hsBase = (THPS1_ADDR.ExtSkyTable - THPS1_ADDR.Base) + (def.id - 11) * 64;
+    for (let r = 0; r < 8; r++) {
+      const eOff = hsBase + r * 8;
+      block[eOff + 0] = 0x4E; // 'N'
+      block[eOff + 1] = 0x45; // 'E'
+      block[eOff + 2] = 0x56; // 'V'
+      block[eOff + 3] = 0;    // skaterId 0
+      block.writeUInt32LE((8 - r) * 1000, eOff + 4);
+    }
+  }
+
+  // --- E. THPS1.HED Lookup Table @ 0x800E8A50 ---
+  if (manifest.entries.length > 106) throw new Error(`Too many THPS1.WAD entries (${manifest.entries.length} > 106)`);
+  let hedOff = THPS1_ADDR.Thps1Hed - THPS1_ADDR.Base;
+  for (const e of manifest.entries) {
+    block.writeUInt32LE(e.hash >>> 0, hedOff + 0);
+    block.writeUInt32LE(e.relOffset >>> 0, hedOff + 4);
+    block.writeUInt32LE(e.size >>> 0, hedOff + 8);
+    hedOff += 12;
+  }
+  block.writeUInt32LE(0, hedOff); // null terminator
+
+  // --- F. Assemble THPS1_CODE @ 0x800EA000 (4,096 B) ---
+  const codeBuf = assembleThps1Code(strThps1WadPath, strCVan, strCCab1);
+  putAt(THPS1_ADDR.CodeBase, codeBuf);
+
+  console.log(`  [THPS1] StringPool: 0x${THPS1_ADDR.Thps1Strings.toString(16)}..0x${strCursor.toString(16)} (${strCursor - THPS1_ADDR.Thps1Strings} B)`);
+  console.log(`  [THPS1] THPS1.HED : ${manifest.entries.length} arquivos indexados em 0x${THPS1_ADDR.Thps1Hed.toString(16)}`);
+  return { block, manifest };
+}
+
+// ============================================================================
+// 2. Assemble MIPS R3000A Resident Runtime Hooks (0x800EA000..0x800EAFFF)
+// ============================================================================
+function assembleThps1Code(strThps1WadPath, strCVan, strCCab1) {
+  const a = new MipsAsm(THPS1_ADDR.CodeBase);
+
+  const SYM = {
+    GetSelectedSkaterIdx: 0x8008A3A8,
+    Career_GetSkaterProg: 0x8002600C,
+    Career_IsFreeSkate:   0x8006198C,
+    CdSearchFile:         0x800A0D28,
+    CdPosToInt:           0x800A179C,
+    g_Career:             0x800C2958,
+    g_SkaterProgBase:     0x800BA78C, // stride 228 B (0xE4)
+  };
+
+  // Fixed 8-byte jump table @ 0x800EA000
+  const entries = [
+    [THPS1_ADDR.Entry_CdWadFallback,        'Hook_CdWadFallback'],
+    [THPS1_ADDR.Entry_CareerCountMedals,    'Hook_CareerCountMedals'],
+    [THPS1_ADDR.Entry_CareerLevelIsOpenIn,  'Hook_CareerLevelIsOpenInner'],
+    [THPS1_ADDR.Entry_CareerLevelIsOpenMod, 'Hook_CareerLevelIsOpenMode'],
+    [THPS1_ADDR.Entry_CareerHasGoal,        'Hook_CareerHasGoal'],
+    [THPS1_ADDR.Entry_CareerCountLvlGoals,  'Hook_CareerCountLvlGoals'],
+    [THPS1_ADDR.Entry_CareerCountCash,      'Hook_CareerCountCash'],
+    [THPS1_ADDR.Entry_CareerHasCashNode,    'Hook_CareerHasCashNode'],
+    [THPS1_ADDR.Entry_CareerCollectCashBit, 'Hook_CareerCollectCashBit'],
+    [THPS1_ADDR.Entry_CareerGiveGoalBit,    'Hook_CareerGiveGoalBit'],
+    [THPS1_ADDR.Entry_CareerSetMedal,       'Hook_CareerSetMedal'],
+    [THPS1_ADDR.Entry_CareerSetAllGoals,    'Hook_CareerSetAllGoals'],
+    [THPS1_ADDR.Entry_GetLevelFlags,        'Helper_GetLevelFlags'],
+    [THPS1_ADDR.Entry_GoalListLoopCheck,    'Hook_GoalListLoopCheck'],
+    [THPS1_ADDR.Entry_ShowGoalsBtn,         'Hook_ShowGoalsBtn'],
+    [THPS1_ADDR.Entry_LevelSelMoveCursor,   'Hook_LevelSelMoveCursor'],
+    [THPS1_ADDR.Entry_LevelSelPct,          'Hook_LevelSelPct'],
+    [THPS1_ADDR.Entry_LevelSelShowPct,      'Hook_LevelSelShowPct'],
+    [THPS1_ADDR.Entry_SecretFlagSet,        'Hook_SecretFlagSet'],
+    [THPS1_ADDR.Entry_SecretFlagGet,        'Hook_SecretFlagGet'],
+    [THPS1_ADDR.Entry_TrigHasGoal,          'Hook_TrigHasGoal'],
+    [THPS1_ADDR.Entry_CompInitPodium,       'Hook_CompInitPodium'],
+    [THPS1_ADDR.Entry_CompPrizeAB,          'Hook_CompPrizeAB'],
+    [THPS1_ADDR.Entry_CompPrizeC,           'Hook_CompPrizeC'],
+    [THPS1_ADDR.Entry_CareerCountGolds,     'Hook_CareerCountGolds'],
+    [THPS1_ADDR.Entry_CareerResetExt,       'Hook_CareerResetExt'],
+    [THPS1_ADDR.Entry_HiScore_s7_s2,        'Hook_HiScore_s7_s2'],
+    [THPS1_ADDR.Entry_HiScore_v1_s2,        'Hook_HiScore_v1_s2'],
+    [THPS1_ADDR.Entry_HiScore_t3_v0,        'Hook_HiScore_t3_v0'],
+    [THPS1_ADDR.Entry_HiScore_a0_s1,        'Hook_HiScore_a0_s1'],
+    [THPS1_ADDR.Entry_HiScore_v1_a0,        'Hook_HiScore_v1_a0'],
+    [THPS1_ADDR.Entry_Car215_SetModel,      'Hook_Car215_SetModel'],
+    [THPS1_ADDR.Entry_Car216_SetModel,      'Hook_Car216_SetModel'],
+  ];
+  for (const [addr, lbl] of entries) {
+    a.padTo(addr);
+    a.j(lbl);
+    a.nop();
+  }
+
+  // --------------------------------------------------------------------------
+  // Leaf Helper: Helper_ExtCareerPtr(SCareerSkater* $a0) -> $v0 = &g_ExtCareer[skaterIdx]
+  //   Computes skaterIdx = ($a0 - 0x800BA78C) / 228 (exact integer division, 0..19)
+  //   Clobbers: $v0, $v1, $t8, $t9 (preserves $a0..$a3, $t0..$t7, $s0..$s7, $ra!)
+  // --------------------------------------------------------------------------
+  a.label('Helper_ExtCareerPtr');
+  a.la(R.t8, SYM.g_SkaterProgBase);
+  a.subu(R.v0, R.a0, R.t8);
+  a.addiu(R.t9, R.zero, 228);
+  a.divu(R.v0, R.t9);
+  a.mflo(R.v0);                    // v0 = skaterIdx (0..19)
+  a.sltiu(R.t8, R.v0, 20);
+  a.bne(R.t8, R.zero, 'ecp_ok');
+  a.nop();
+  a.move(R.v0, R.zero);
+  a.label('ecp_ok');
+  // v0 = skaterIdx * 100 = (skaterIdx * 25) * 4
+  a.sll(R.t8, R.v0, 4);            // * 16
+  a.sll(R.t9, R.v0, 3);            // * 8
+  a.addu(R.t8, R.t8, R.t9);        // * 24
+  a.addu(R.t8, R.t8, R.v0);        // * 25
+  a.sll(R.v0, R.t8, 2);            // * 100
+  a.la(R.t8, THPS1_ADDR.ExtCareer);
+  a.jr(R.ra);
+  a.addu(R.v0, R.v0, R.t8);
+
+  // --------------------------------------------------------------------------
+  // Helper_GetLevelFlagsPtr(SCareerSkater* $a0, int levelId in $a1) -> $v0 = uint16*
+  //   For levelId < 10: returns $a0 + 12 + levelId*2
+  //   For levelId >= 11: returns &g_ExtCareer[skaterIdx].levelFlags[levelId - 11]
+  //   Preserves $a0, $a1, $a2, $a3, $t0..$t7, $s0..$s7!
+  // --------------------------------------------------------------------------
+  a.label('Helper_GetLevelFlagsPtr');
+  a.slti(R.t8, R.a1, 11);
+  a.beq(R.t8, R.zero, 'glfp_ext');
+  a.nop();
+  a.sll(R.v0, R.a1, 1);
+  a.addu(R.v0, R.a0, R.v0);
+  a.jr(R.ra);
+  a.addiu(R.v0, R.v0, 12);
+  a.label('glfp_ext');
+  a.addiu(R.sp, R.sp, -8);
+  a.sw(R.ra, 0, R.sp);
+  a.jal('Helper_ExtCareerPtr');
+  a.nop();
+  a.addiu(R.t8, R.a1, -11);
+  a.sll(R.t8, R.t8, 1);
+  a.addu(R.v0, R.v0, R.t8);
+  a.lw(R.ra, 0, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 8);
+
+  // --------------------------------------------------------------------------
+  // Helper_GetLevelFlags(SCareerSkater* $a0, int levelId in $a1) -> $v0 = uint16
+  // --------------------------------------------------------------------------
+  a.label('Helper_GetLevelFlags');
+  a.addiu(R.sp, R.sp, -8);
+  a.sw(R.ra, 0, R.sp);
+  a.jal('Helper_GetLevelFlagsPtr');
+  a.nop();
+  a.lhu(R.v0, 0, R.v0);
+  a.lw(R.ra, 0, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 8);
+
+  // --------------------------------------------------------------------------
+  // Helper_GetCashBitsPtr(SCareerSkater* $a0, int levelId in $a1) -> $v0 = uint32[2]*
+  //   For levelId < 10: returns $a0 + 60 + levelId*8
+  //   For levelId >= 11: returns &g_ExtCareer[skaterIdx].cashBits[levelId - 11] (+28 + (lvl-11)*8)
+  // --------------------------------------------------------------------------
+  a.label('Helper_GetCashBitsPtr');
+  a.slti(R.t8, R.a1, 11);
+  a.beq(R.t8, R.zero, 'gcbp_ext');
+  a.nop();
+  a.sll(R.v0, R.a1, 3);
+  a.addu(R.v0, R.a0, R.v0);
+  a.jr(R.ra);
+  a.addiu(R.v0, R.v0, 60);
+  a.label('gcbp_ext');
+  a.addiu(R.sp, R.sp, -8);
+  a.sw(R.ra, 0, R.sp);
+  a.jal('Helper_ExtCareerPtr');
+  a.nop();
+  a.addiu(R.t8, R.a1, -11);
+  a.sll(R.t8, R.t8, 3);
+  a.addu(R.v0, R.v0, R.t8);
+  a.addiu(R.v0, R.v0, 28);
+  a.lw(R.ra, 0, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 8);
+
+  // --------------------------------------------------------------------------
+  // 1. Hook_CdWadFallback [hooked @ 0x80054190 inside CDWAD_Open]
+  //    On entry: $s1 = entryPtr (from CD.HED, or 0 if absent), $a1 = file hash, $sp untouched!
+  //    PRIORITY OVERRIDE: Scans g_Thps1Hed (33 entries, <2 us!) FIRST so ALL 9 converted THPS1 .TRG
+  //    files (THPS2 rails + $100 Cash coins), retail .PSX deltas, c_cabl1.psx, and 18 Level Select BMPs
+  //    always override Neversoft's unconverted THPS1 leftovers inside retail CD.WAD[1127..1183]!
+  //    ZERO CdSearchFile at runtime: thps1BaseLba = g_VoicesBaseLba + g_VoicesTotalSectors!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CdWadFallback');
+  a.addiu(R.s0, R.sp, 16);        // execute original delay slot unconditionally!
+
+  // Leaf lookup (clobbers only $t0..$t5 — preserves $a0..$a3, $s0..$s3, $ra, $sp!)
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t2, 0x27C4, R.t0);       // t2 = g_VoicesBaseLba (resolved once at boot in Mod_BootInit!)
+  a.la(R.t1, THPS1_ADDR.g_Thps1Inited);
+  a.lw(R.t3, 0, R.t1);            // t3 = g_VoicesTotalSectors (stamped by build_skater_voices.js!)
+  a.beq(R.t2, R.zero, 'cw_not_in_thps1');
+  a.nop();
+  a.beq(R.t3, R.zero, 'cw_not_in_thps1');
+  a.addu(R.t2, R.t2, R.t3);       // t2 = exact THPS1.WAD base LBA!
+  a.la(R.t1, THPS1_ADDR.g_Thps1BaseLba);
+  a.sw(R.t2, 0, R.t1);            // publish for diagnostics
+
+  a.la(R.t0, THPS1_ADDR.Thps1Hed);
+  a.label('cw_loop');
+  a.lw(R.t1, 0, R.t0);            // entry.hash
+  a.nop();
+  a.beq(R.t1, R.zero, 'cw_not_in_thps1');
+  a.nop();
+  a.beq(R.t1, R.a1, 'cw_hit');
+  a.nop();
+  a.j('cw_loop');
+  a.addiu(R.t0, R.t0, 12);
+
+  a.label('cw_hit');
+  // effectiveOffset = ((thps1BaseLba - lw 24440($gp)) << 11) + entry.relOffset
+  a.lw(R.t1, 24440, R.gp);        // CD.WAD start LBA
+  a.lw(R.t4, 4, R.t0);            // entry.relOffset
+  a.subu(R.t2, R.t2, R.t1);       // delta sectors
+  a.sll(R.t2, R.t2, 11);          // delta bytes
+  a.addu(R.t2, R.t2, R.t4);       // effectiveOffset
+  a.lw(R.t5, 8, R.t0);            // entry.size
+  a.la(R.s1, THPS1_ADDR.g_Thps1ScratchOff);
+  a.sw(R.t2, 0, R.s1);
+  a.sw(R.t5, 4, R.s1);
+  a.j(0x800541F4);
+  a.nop();
+
+  a.label('cw_not_in_thps1');
+  a.bne(R.s1, R.zero, 'cw_found_orig');
+  a.nop();
+  a.j(0x80054198);                // original missing-file error handler
+  a.nop();
+
+  a.label('cw_found_orig');
+  a.j(0x800541F4);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 2. Hook_CareerCountMedals(SCareerSkater* $a0) [replaces 0x80025848]
+  //    Counts medals across ALL 6 competition levels: THPS2 (2,5,7) + THPS1 (14,17,19)
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerCountMedals');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.sw(R.s1, 12, R.sp);
+  a.sw(R.s2, 8, R.sp);
+  a.move(R.s0, R.a0);             // s0 = skaterProg
+  a.move(R.s1, R.zero);           // s1 = medalCount
+  a.move(R.s2, R.zero);           // s2 = idx 0..19
+
+  a.label('ccm_loop');
+  // Check g_ExtLevelTable[s2].isComp (+0x0C)
+  a.sll(R.v1, R.s2, 1);
+  a.addu(R.v1, R.v1, R.s2);
+  a.sll(R.v0, R.v1, 5);
+  a.subu(R.v0, R.v0, R.v1);
+  a.sll(R.v0, R.v0, 2);
+  a.la(R.t0, THPS1_ADDR.ExtLevelTable);
+  a.addu(R.t0, R.t0, R.v0);
+  a.lw(R.v0, 12, R.t0);
+  a.nop();
+  a.beq(R.v0, R.zero, 'ccm_next');
+  a.nop();
+  a.move(R.a0, R.s0);
+  a.jal('Helper_GetLevelFlags');
+  a.move(R.a1, R.s2);
+  a.andi(R.v0, R.v0, 0x1C00);     // Gold | Silver | Bronze
+  a.beq(R.v0, R.zero, 'ccm_next');
+  a.nop();
+  a.addiu(R.s1, R.s1, 1);
+
+  a.label('ccm_next');
+  a.addiu(R.s2, R.s2, 1);
+  a.slti(R.v0, R.s2, 20);
+  a.bne(R.v0, R.zero, 'ccm_loop');
+  a.nop();
+
+  a.move(R.v0, R.s1);
+  a.lw(R.s2, 8, R.sp);
+  a.lw(R.s1, 12, R.sp);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 3. Hook_CareerLevelIsOpenInner(int levelId $a0, SCareerSkater* $a1) [replaces 0x800258A0]
+  //    Walks DisplayOrder[0..slot(levelId)] checking cash (+0x44) & medals (+0x48)!
+  //    Only Hangar (slot 0) starts unlocked; every subsequent interleaved level unlocks in order!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerLevelIsOpenInner');
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 28, R.sp);
+  a.sw(R.s0, 24, R.sp);
+  a.sw(R.s1, 20, R.sp);
+  a.sw(R.s2, 16, R.sp);
+  a.sw(R.s3, 12, R.sp);
+
+  // Check g_AllLevelsCheat @ 0x800D6344 (0x800D0000 + 25412)
+  a.lui(R.v0, 0x800D);
+  a.lw(R.v0, 25412, R.v0);
+  a.nop();
+  a.bne(R.v0, R.zero, 'clio_open');
+  a.nop();
+
+  a.bltz(R.a0, 'clio_open');
+  a.slti(R.v0, R.a0, 20);
+  a.beq(R.v0, R.zero, 'clio_closed');
+  a.nop();
+  // Custom park (id=10) is always open when queried here
+  a.addiu(R.v0, R.zero, 10);
+  a.beq(R.a0, R.v0, 'clio_open');
+  a.nop();
+
+  a.move(R.s0, R.a1);             // s0 = skaterProg
+  // targetSlot = SlotOfLevel[levelId]
+  a.la(R.t0, THPS1_ADDR.SlotOfLevel);
+  a.addu(R.t0, R.t0, R.a0);
+  a.lbu(R.s1, 0, R.t0);           // s1 = targetSlot (0..18)
+  a.move(R.s2, R.zero);           // s2 = curSlot (0..targetSlot)
+
+  a.label('clio_loop');
+  a.sll(R.t0, R.s2, 2);
+  a.la(R.t1, THPS1_ADDR.DisplayOrderWords);
+  a.addu(R.t1, R.t1, R.t0);
+  a.lw(R.s3, 0, R.t1);            // s3 = curLevelId = DisplayOrder[curSlot]
+  a.nop();
+
+  // entry = &g_ExtLevelTable[s3]
+  a.sll(R.v1, R.s3, 1);
+  a.addu(R.v1, R.v1, R.s3);
+  a.sll(R.v0, R.v1, 5);
+  a.subu(R.v0, R.v0, R.v1);
+  a.sll(R.v0, R.v0, 2);
+  a.la(R.t0, THPS1_ADDR.ExtLevelTable);
+  a.addu(R.t0, R.t0, R.v0);
+
+  a.lw(R.t1, 0x48, R.t0);         // medalsRequired
+  a.lw(R.t2, 0x44, R.t0);         // cashRequired
+  a.bne(R.t1, R.zero, 'clio_chk_medals');
+  a.nop();
+
+  // Check totalCashEarned (skaterProg+4) >= cashRequired
+  a.lw(R.v0, 4, R.s0);
+  a.nop();
+  a.slt(R.v0, R.v0, R.t2);
+  a.bne(R.v0, R.zero, 'clio_closed');
+  a.nop();
+  a.j('clio_next');
+  a.nop();
+
+  a.label('clio_chk_medals');
+  a.sw(R.t1, 8, R.sp);            // save medalsRequired across jal
+  a.jal('Hook_CareerCountMedals');
+  a.move(R.a0, R.s0);
+  a.lw(R.t1, 8, R.sp);
+  a.nop();
+  a.slt(R.v0, R.v0, R.t1);
+  a.bne(R.v0, R.zero, 'clio_closed');
+  a.nop();
+
+  a.label('clio_next');
+  a.addiu(R.s2, R.s2, 1);
+  a.slt(R.v0, R.s1, R.s2);        // stop once curSlot > targetSlot
+  a.beq(R.v0, R.zero, 'clio_loop');
+  a.nop();
+
+  a.label('clio_open');
+  a.addiu(R.v0, R.zero, 1);
+  a.j('clio_ret');
+  a.nop();
+
+  a.label('clio_closed');
+  a.move(R.v0, R.zero);
+
+  a.label('clio_ret');
+  a.lw(R.s3, 12, R.sp);
+  a.lw(R.s2, 16, R.sp);
+  a.lw(R.s1, 20, R.sp);
+  a.lw(R.s0, 24, R.sp);
+  a.lw(R.ra, 28, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 32);
+
+  // --------------------------------------------------------------------------
+  // 4. Hook_CareerLevelIsOpenMode(int levelId $a0, int mode $a1) [replaces 0x8002597C]
+  //    Mode 1 (Career): check CURRENT skater via Hook_CareerLevelIsOpenInner
+  //    Mode 2..4 (Single/Free/2P): open if ANY skater unlocked it (same as vanilla THPS2!)
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerLevelIsOpenMode');
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 28, R.sp);
+  a.sw(R.s0, 24, R.sp);
+  a.sw(R.s1, 20, R.sp);
+  a.sw(R.s2, 16, R.sp);
+  a.move(R.s1, R.a0);             // s1 = levelId
+  a.move(R.s2, R.a1);             // s2 = mode
+
+  // Cheat all-levels-open check @ 0x800D6344
+  a.lui(R.v0, 0x800D);
+  a.lw(R.v0, 25412, R.v0);
+  a.nop();
+  a.bne(R.v0, R.zero, 'cliom_yes');
+  a.nop();
+
+  // If mode == 1 (Career): check current skater
+  a.addiu(R.v0, R.zero, 1);
+  a.bne(R.s2, R.v0, 'cliom_other_modes');
+  a.nop();
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.jal(SYM.Career_GetSkaterProg);
+  a.move(R.a0, R.v0);
+  a.move(R.a0, R.s1);
+  a.jal('Hook_CareerLevelIsOpenInner');
+  a.move(R.a1, R.v0);
+  a.j('cliom_ret');
+  a.nop();
+
+  // Non-Career modes (Free Skate / Single Session / 2P): open if ANY skater (0..19) has unlocked it!
+  a.label('cliom_other_modes');
+  a.move(R.s0, R.zero);
+  a.label('cliom_any_loop');
+  a.jal(SYM.Career_GetSkaterProg);
+  a.move(R.a0, R.s0);
+  a.move(R.a0, R.s1);
+  a.jal('Hook_CareerLevelIsOpenInner');
+  a.move(R.a1, R.v0);
+  a.bne(R.v0, R.zero, 'cliom_yes');
+  a.addiu(R.s0, R.s0, 1);
+  a.slti(R.v0, R.s0, 20);
+  a.bne(R.v0, R.zero, 'cliom_any_loop');
+  a.nop();
+  a.move(R.v0, R.zero);
+  a.j('cliom_ret');
+  a.nop();
+
+  a.label('cliom_yes');
+  a.addiu(R.v0, R.zero, 1);
+
+  a.label('cliom_ret');
+  a.lw(R.s2, 16, R.sp);
+  a.lw(R.s1, 20, R.sp);
+  a.lw(R.s0, 24, R.sp);
+  a.lw(R.ra, 28, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 32);
+
+  // --------------------------------------------------------------------------
+  // 5. Hook_CareerHasGoal(int goalIdx $a0) [replaces 0x800240D4]
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerHasGoal');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.move(R.s0, R.a0);
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.jal(SYM.Career_GetSkaterProg);
+  a.move(R.a0, R.v0);
+  a.lui(R.a1, 0x800D);
+  a.lw(R.a1, 25200, R.a1);        // g_CurrentLevel
+  a.move(R.a0, R.v0);
+  a.jal('Helper_GetLevelFlags');
+  a.nop();
+  a.srav(R.v0, R.v0, R.s0);
+  a.andi(R.v0, R.v0, 1);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 6. Hook_CareerCountLvlGoals(SCareerSkater* $a0, int levelId $a1) [replaces 0x8002413C]
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerCountLvlGoals');
+  a.addiu(R.sp, R.sp, -16);
+  a.sw(R.ra, 12, R.sp);
+  a.sw(R.a1, 8, R.sp);
+  a.jal('Helper_GetLevelFlags');
+  a.nop();
+  a.lw(R.a1, 8, R.sp);            // levelId
+  a.move(R.a2, R.zero);           // count
+  a.move(R.v1, R.zero);           // bit 0..maxGoals-1
+  // maxGoals = (levelId >= 11) ? 5 : 10
+  a.slti(R.t0, R.a1, 11);
+  a.bne(R.t0, R.zero, 'cclg_10');
+  a.addiu(R.t1, R.zero, 5);
+  a.j('cclg_loop');
+  a.nop();
+  a.label('cclg_10');
+  a.addiu(R.t1, R.zero, 10);
+
+  a.label('cclg_loop');
+  a.srav(R.t0, R.v0, R.v1);
+  a.andi(R.t0, R.t0, 1);
+  a.addu(R.a2, R.a2, R.t0);
+  a.addiu(R.v1, R.v1, 1);
+  a.slt(R.t0, R.v1, R.t1);
+  a.bne(R.t0, R.zero, 'cclg_loop');
+  a.nop();
+
+  a.move(R.v0, R.a2);
+  a.lw(R.ra, 12, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 16);
+
+  // --------------------------------------------------------------------------
+  // 7. Hook_CareerCountCash() [replaces 0x800241BC]
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerCountCash');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 16, R.sp);
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.jal(SYM.Career_GetSkaterProg);
+  a.move(R.a0, R.v0);
+  a.lui(R.a1, 0x800D);
+  a.lw(R.a1, 25200, R.a1);
+  a.move(R.a0, R.v0);
+  a.jal('Helper_GetCashBitsPtr');
+  a.nop();
+  // Count set bits across 2 uint32 words at 0(v0) and 4(v0)
+  a.move(R.v1, R.v0);
+  a.move(R.a2, R.zero);
+  a.move(R.a3, R.zero);
+  a.label('ccc_w');
+  a.lw(R.a1, 0, R.v1);
+  a.move(R.a0, R.zero);
+  a.label('ccc_b');
+  a.srav(R.v0, R.a1, R.a0);
+  a.andi(R.v0, R.v0, 1);
+  a.addu(R.a2, R.a2, R.v0);
+  a.addiu(R.a0, R.a0, 1);
+  a.slti(R.v0, R.a0, 32);
+  a.bne(R.v0, R.zero, 'ccc_b');
+  a.nop();
+  a.addiu(R.a3, R.a3, 1);
+  a.slti(R.v0, R.a3, 2);
+  a.bne(R.v0, R.zero, 'ccc_w');
+  a.addiu(R.v1, R.v1, 4);
+  a.move(R.v0, R.a2);
+  a.lw(R.ra, 16, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 8. Hook_CareerHasCashNode [hooked @ 0x80024EE0 inside Career_HasCashNode]
+  //    On entry: $v0 = skaterProg, $s0 = bitIndex (0..63), returns to 0x80024F04 with $v1 = word, $v0 = bitIndex & 31!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerHasCashNode');
+  a.addiu(R.sp, R.sp, -16);
+  a.sw(R.ra, 12, R.sp);
+  a.lui(R.a1, 0x800D);
+  a.lw(R.a1, 25200, R.a1);
+  a.move(R.a0, R.v0);
+  a.jal('Helper_GetCashBitsPtr');
+  a.nop();
+  a.sra(R.a1, R.s0, 5);
+  a.sll(R.a1, R.a1, 2);
+  a.addu(R.v0, R.v0, R.a1);
+  a.lw(R.v1, 0, R.v0);
+  a.andi(R.v0, R.s0, 0x1F);
+  a.lw(R.ra, 12, R.sp);
+  a.addiu(R.sp, R.sp, 16);
+  a.j(0x80024F04);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 9. Hook_CareerCollectCashBit [hooked @ 0x80024F5C inside Career_CollectCash]
+  //    On entry: $s0 = skaterProg, $v0 = bitIndex (0..63), $s1 = amount ($50/$100/$250)
+  //    Sets the cash bit in skaterProg+60 (<10) or g_ExtCareer (>=11), then jumps to 0x80024F94
+  //    where THPS2 natively adds $s1 to BOTH totalCashEarned (+4) AND currentCashSpendable (+8) for Stats!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerCollectCashBit');
+  a.addiu(R.sp, R.sp, -16);
+  a.sw(R.ra, 12, R.sp);
+  a.sw(R.v0, 8, R.sp);            // save bitIndex
+  a.lui(R.a1, 0x800D);
+  a.lw(R.a1, 25200, R.a1);
+  a.move(R.a0, R.s0);
+  a.jal('Helper_GetCashBitsPtr');
+  a.nop();
+  a.lw(R.t0, 8, R.sp);            // t0 = bitIndex
+  a.nop();
+  a.sra(R.a0, R.t0, 5);
+  a.sll(R.a0, R.a0, 2);
+  a.addu(R.a1, R.v0, R.a0);       // a1 = &word
+  a.andi(R.v0, R.t0, 0x1F);
+  a.addiu(R.v1, R.zero, 1);
+  a.sllv(R.v1, R.v1, R.v0);
+  a.lw(R.a0, 0, R.a1);
+  a.nop();
+  a.or(R.a0, R.a0, R.v1);
+  a.sw(R.a0, 0, R.a1);
+  a.lw(R.ra, 12, R.sp);
+  a.addiu(R.sp, R.sp, 16);
+  a.j(0x80024F94);                // continues natively: totalCash += amount; spendableCash += amount!
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 10. Hook_CareerGiveGoalBit [hooked @ 0x800243A4 inside Career_GiveGoal]
+  //     On entry: $s2 = skaterProg, $s0 = g_CurrentLevel, $s3 = goalIdx, $s1 = g_ExtLevelTable
+  //     Sets goal bit in 1096($gp) AND in levelFlags[g_CurrentLevel] (<10 or >=11),
+  //     then jumps to 0x8002442C (skipping the 0..9 total-goals loop or recounting cleanly!).
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerGiveGoalBit');
+  a.addiu(R.sp, R.sp, -16);
+  a.sw(R.ra, 12, R.sp);
+  a.move(R.a0, R.s2);             // skaterProg
+  a.jal('Helper_GetLevelFlagsPtr');
+  a.move(R.a1, R.s0);             // levelId
+  a.addiu(R.a0, R.zero, 1);
+  a.sllv(R.a0, R.a0, R.s3);       // mask = 1 << goalIdx
+  a.lw(R.t0, 1096, R.gp);
+  a.lhu(R.t1, 0, R.v0);
+  a.or(R.t0, R.t0, R.a0);
+  a.or(R.t1, R.t1, R.a0);
+  a.sw(R.t0, 1096, R.gp);
+  a.sh(R.t1, 0, R.v0);
+
+  // Recount total goals across THPS2 levels 0..9 (matching vanilla a3 -> sb a3, 0(s2))
+  a.move(R.a3, R.zero);
+  a.move(R.t0, R.zero);
+  a.addiu(R.a2, R.s2, 12);
+  a.addiu(R.s1, R.s1, 12);
+  a.lw(R.ra, 12, R.sp);
+  a.addiu(R.sp, R.sp, 16);
+  a.j(0x800243D8);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 11. Hook_CareerSetMedal(int levelId $a0, int medalBit $a1) [replaces 0x8002465C]
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerSetMedal');
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 28, R.sp);
+  a.sw(R.s0, 24, R.sp);
+  a.sw(R.s1, 20, R.sp);
+  a.sw(R.s2, 16, R.sp);
+  a.move(R.s0, R.a0);             // levelId
+  a.move(R.s1, R.a1);             // bit (10=Gold, 11=Silver, 12=Bronze)
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.jal(SYM.Career_GetSkaterProg);
+  a.move(R.a0, R.v0);
+  a.move(R.s2, R.v0);             // s2 = skaterProg
+  a.move(R.a0, R.s2);
+  a.jal('Helper_GetLevelFlagsPtr');
+  a.move(R.a1, R.s0);
+  a.addiu(R.t0, R.zero, 1);
+  a.sllv(R.t0, R.t0, R.s1);
+  a.lhu(R.t1, 0, R.v0);
+  a.nop();
+  a.or(R.t1, R.t1, R.t0);
+  a.sh(R.t1, 0, R.v0);
+
+  // Recount gold medals (bit 0x400) across all 20 levels -> sb t0, 3(s2)
+  a.move(R.s0, R.zero);           // goldCount
+  a.move(R.s1, R.zero);           // idx 0..19
+  a.label('csm_loop');
+  a.sll(R.v1, R.s1, 1);
+  a.addu(R.v1, R.v1, R.s1);
+  a.sll(R.v0, R.v1, 5);
+  a.subu(R.v0, R.v0, R.v1);
+  a.sll(R.v0, R.v0, 2);
+  a.la(R.t0, THPS1_ADDR.ExtLevelTable);
+  a.addu(R.t0, R.t0, R.v0);
+  a.lw(R.v0, 12, R.t0);
+  a.nop();
+  a.beq(R.v0, R.zero, 'csm_next');
+  a.nop();
+  a.move(R.a0, R.s2);
+  a.jal('Helper_GetLevelFlags');
+  a.move(R.a1, R.s1);
+  a.andi(R.v0, R.v0, 0x0400);
+  a.beq(R.v0, R.zero, 'csm_next');
+  a.nop();
+  a.addiu(R.s0, R.s0, 1);
+  a.label('csm_next');
+  a.addiu(R.s1, R.s1, 1);
+  a.slti(R.v0, R.s1, 20);
+  a.bne(R.v0, R.zero, 'csm_loop');
+  a.nop();
+
+  a.sb(R.s0, 3, R.s2);
+  a.lw(R.s2, 16, R.sp);
+  a.lw(R.s1, 20, R.sp);
+  a.lw(R.s0, 24, R.sp);
+  a.lw(R.ra, 28, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 32);
+
+  // --------------------------------------------------------------------------
+  // 12. Hook_CareerSetAllGoals [hooked @ 0x800245B8]
+  //     On entry: $v0 = skaterProg, sets bit 0x8000 on levelFlags[g_CurrentLevel], jumps to 0x8002460C!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerSetAllGoals');
+  a.lui(R.a1, 0x800D);
+  a.lw(R.a1, 25200, R.a1);
+  a.move(R.a0, R.v0);
+  a.jal('Helper_GetLevelFlagsPtr');
+  a.nop();
+  a.lhu(R.v1, 0, R.v0);
+  a.nop();
+  a.ori(R.v1, R.v1, 0x8000);
+  a.sh(R.v1, 0, R.v0);
+  a.j(0x8002460C);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 13. Hook_GoalListLoopCheck [j @ 0x80025EE4 inside Career_PrintGoalList, delay slot: addiu s2, s2, 16]
+  //     Original: `slti v0, s4, 10; bne v0, zero, 0x80025DFC; addiu s2, s2, 16`
+  //     Uses 5-goal cap for THPS1 levels (id >= 11) and 10-goal cap for THPS2 levels (< 11)!
+  // --------------------------------------------------------------------------
+  a.label('Hook_GoalListLoopCheck');
+  a.lui(R.t0, 0x800D);
+  a.lw(R.t0, 25200, R.t0);
+  a.nop();
+  a.slti(R.t1, R.t0, 11);
+  a.bne(R.t1, R.zero, 'gllc_10');
+  a.nop();
+  a.slti(R.v0, R.s4, 5);
+  a.j('gllc_chk');
+  a.nop();
+  a.label('gllc_10');
+  a.slti(R.v0, R.s4, 10);
+  a.label('gllc_chk');
+  a.bne(R.v0, R.zero, 'gllc_cont');
+  a.nop();
+  a.j(0x80025EF0);
+  a.nop();
+  a.label('gllc_cont');
+  a.j(0x80025DFC);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 14. Hook_ShowGoalsBtn [jal @ 0x8002D904 in Pause Menu]
+  //     Original: `slti v0, v0, 8`. Returns v0 = 1 if level < 8 || level >= 11!
+  // --------------------------------------------------------------------------
+  a.label('Hook_ShowGoalsBtn');
+  a.slti(R.t0, R.v0, 8);
+  a.bne(R.t0, R.zero, 'sgb_yes');
+  a.slti(R.t1, R.v0, 11);
+  a.beq(R.t1, R.zero, 'sgb_yes');
+  a.nop();
+  a.jr(R.ra);
+  a.move(R.v0, R.zero);
+  a.label('sgb_yes');
+  a.jr(R.ra);
+  a.addiu(R.v0, R.zero, 1);
+
+  // --------------------------------------------------------------------------
+  // 15. Hook_LevelSelMoveCursor [jal @ levelsel.bin +0x12A8]
+  //     On entry: $s2 = delta (+1 or -1), $s3 = 10
+  //     Advances g_SelectedLevel (0x800D8278) along DisplayOrderWords[0..19]!
+  //     In Career Mode (0x800D839C == 1), wraps 0..18 (19 career/bonus levels: Hangar..Skate Heaven).
+  //     In Free Skate / Single Session / 2P, wraps 0..19 (includes Custom Park id=10!).
+  //     Returns to levelsel.bin +0x1320 (cleanly skipping old 0..10 wrap & 8/9 skip!).
+  // --------------------------------------------------------------------------
+  a.label('Hook_LevelSelMoveCursor');
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t1, -32136, R.t0);       // t1 = current g_SelectedLevel (0..19)
+  a.lw(R.t2, -31844, R.t0);       // t2 = gameMode (1=Career)
+  a.sltiu(R.t3, R.t1, 20);
+  a.bne(R.t3, R.zero, 'lsmc_id_ok');
+  a.nop();
+  a.move(R.t1, R.zero);
+  a.label('lsmc_id_ok');
+  // curSlot = SlotOfLevel[curLevel]
+  a.la(R.t3, THPS1_ADDR.SlotOfLevel);
+  a.addu(R.t3, R.t3, R.t1);
+  a.lbu(R.t4, 0, R.t3);           // t4 = curSlot (0..19)
+  // maxSlots = (gameMode == 1) ? 19 : 20
+  a.addiu(R.t5, R.zero, 1);
+  a.beq(R.t2, R.t5, 'lsmc_19');
+  a.addiu(R.t5, R.zero, 20);
+  a.j('lsmc_step');
+  a.nop();
+  a.label('lsmc_19');
+  a.addiu(R.t5, R.zero, 19);
+
+  a.label('lsmc_step');
+  a.addu(R.t4, R.t4, R.s2);       // curSlot += delta
+  a.bgez(R.t4, 'lsmc_hi');
+  a.nop();
+  a.addiu(R.t4, R.t5, -1);        // wrap to last slot
+  a.label('lsmc_hi');
+  a.slt(R.t3, R.t4, R.t5);
+  a.bne(R.t3, R.zero, 'lsmc_store');
+  a.nop();
+  a.move(R.t4, R.zero);           // wrap to 0
+
+  a.label('lsmc_store');
+  a.sll(R.t4, R.t4, 2);
+  a.la(R.t3, THPS1_ADDR.DisplayOrderWords);
+  a.addu(R.t3, R.t3, R.t4);
+  a.lw(R.v0, 0, R.t3);            // newLevelId = DisplayOrderWords[curSlot]
+  a.nop();
+  a.sw(R.v0, -32136, R.t0);       // store new g_SelectedLevel!
+  // Set s0 = 0 (not hidden bonus) so levelsel +0x1320 shows Career Goal panel cleanly!
+  a.jr(R.ra);
+  a.move(R.s0, R.zero);
+
+  // --------------------------------------------------------------------------
+  // 16. Hook_LevelSelPct(SCareerSkater* $a0, int levelId $a1, int isComp $a2) -> $v0 = pct (0..100)
+  //     Called from levelsel.bin +0x13F8!
+  // --------------------------------------------------------------------------
+  a.label('Hook_LevelSelPct');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.sw(R.s1, 12, R.sp);
+  a.move(R.s0, R.a0);             // skaterProg
+  a.move(R.s1, R.a1);             // levelId
+  a.beq(R.a2, R.zero, 'lsp_normal');
+  a.nop();
+
+  // Competition level: Gold=90, Silver=60, Bronze=30, +10 if 0x8000 (All Cash)
+  a.jal('Helper_GetLevelFlags');
+  a.nop();
+  a.move(R.t0, R.zero);
+  a.andi(R.t1, R.v0, 0x0400);
+  a.bne(R.t1, R.zero, 'lsp_g');
+  a.andi(R.t1, R.v0, 0x0800);
+  a.bne(R.t1, R.zero, 'lsp_s');
+  a.andi(R.t1, R.v0, 0x1000);
+  a.bne(R.t1, R.zero, 'lsp_b');
+  a.nop();
+  a.j('lsp_cash10');
+  a.nop();
+  a.label('lsp_g'); a.addiu(R.t0, R.zero, 90); a.j('lsp_cash10'); a.nop();
+  a.label('lsp_s'); a.addiu(R.t0, R.zero, 60); a.j('lsp_cash10'); a.nop();
+  a.label('lsp_b'); a.addiu(R.t0, R.zero, 30);
+  a.label('lsp_cash10');
+  a.andi(R.t1, R.v0, 0x8000);
+  a.beq(R.t1, R.zero, 'lsp_done_comp');
+  a.nop();
+  a.addiu(R.t0, R.t0, 10);
+  a.label('lsp_done_comp');
+  a.j('lsp_ret');
+  a.move(R.v0, R.t0);
+
+  a.label('lsp_normal');
+  a.jal('Hook_CareerCountLvlGoals');
+  a.nop();
+  // THPS1 levels (id >= 11): 5 goals * 20% = 100%; THPS2 levels (< 11): 10 goals * 10% = 100%!
+  a.slti(R.t0, R.s1, 11);
+  a.bne(R.t0, R.zero, 'lsp_x10');
+  a.nop();
+  // v0 * 20 = (v0 * 5) << 2
+  a.sll(R.t1, R.v0, 2);
+  a.addu(R.t1, R.t1, R.v0);
+  a.j('lsp_ret');
+  a.sll(R.v0, R.t1, 2);
+  a.label('lsp_x10');
+  a.sll(R.t1, R.v0, 2);
+  a.addu(R.t1, R.t1, R.v0);
+  a.sll(R.v0, R.t1, 1);
+
+  a.label('lsp_ret');
+  a.lw(R.s1, 12, R.sp);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // --------------------------------------------------------------------------
+  // 17. Hook_LevelSelShowPct [jal @ levelsel.bin +0x121C, nop @ +0x1220]
+  //     Original: `slti v0, v0, 8; xori v0, v0, 1; sw v0, 16(v1)` where 16(v1) = isHidden (0=SHOW %, 1=HIDE %)!
+  //     Show % (return 0) for ALL 19 career/bonus levels (0..9 and 11..19), hide (return 1) ONLY for Custom Park (10)!
+  // --------------------------------------------------------------------------
+  a.label('Hook_LevelSelShowPct');
+  a.addiu(R.t0, R.zero, 10);
+  a.beq(R.v0, R.t0, 'lssp_hide');
+  a.nop();
+  a.jr(R.ra);
+  a.move(R.v0, R.zero);            // 0 = SHOW %
+  a.label('lssp_hide');
+  a.jr(R.ra);
+  a.addiu(R.v0, R.zero, 1);        // 1 = HIDE %
+
+  // --------------------------------------------------------------------------
+  // 18. SecretFlagSet / SecretFlagGet (SCareerSkater+32 + levelId for op 0xCB / 0xCC)
+  //     Helper_GetSecretFlagPtr($a0 = skaterProg, $a1 = levelId) -> $v0 = uint8*
+  // --------------------------------------------------------------------------
+  a.label('Hook_SecretFlagSet');
+  a.slti(R.t8, R.a1, 11);
+  a.beq(R.t8, R.zero, 'sfs_ext');
+  a.nop();
+  a.addu(R.v0, R.a0, R.a1);
+  a.jr(R.ra);
+  a.addiu(R.v0, R.v0, 32);
+  a.label('sfs_ext');
+  a.addiu(R.sp, R.sp, -8);
+  a.sw(R.ra, 0, R.sp);
+  a.jal('Helper_ExtCareerPtr');
+  a.nop();
+  a.addiu(R.t8, R.a1, -11);
+  a.addu(R.v0, R.v0, R.t8);
+  a.addiu(R.v0, R.v0, 18);        // secretFlags @ ExtCareer + 18
+  a.lw(R.ra, 0, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 8);
+
+  a.label('Hook_SecretFlagGet');
+  a.j('Hook_SecretFlagSet');
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 19. Hook_TrigHasGoal(SCareerSkater* $a0 = v0, int levelId $a1 = v1) -> $v0 = uint16 levelFlags
+  // --------------------------------------------------------------------------
+  a.label('Hook_TrigHasGoal');
+  a.j('Helper_GetLevelFlags');
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 20. Hook_CompInitPodium [jal @ 0x8007E58C]
+  //     On entry: $v0 = skaterProg, $a1 = g_CurrentLevel (unshifted!), returns $v1 = uint16 levelFlags
+  // --------------------------------------------------------------------------
+  a.label('Hook_CompInitPodium');
+  a.addiu(R.sp, R.sp, -8);
+  a.sw(R.ra, 0, R.sp);
+  a.jal('Helper_GetLevelFlags');
+  a.move(R.a0, R.v0);
+  a.move(R.v1, R.v0);
+  a.lw(R.ra, 0, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 8);
+
+  // --------------------------------------------------------------------------
+  // 21. Hook_CompPrizeAB [jal @ 0x8007D628 and 0x8007D674]
+  //     Preserves $t0, $a0, $a1, $a2, $s0, $s1; returns $v0 = levelFlags(t0, a2)
+  // --------------------------------------------------------------------------
+  a.label('Hook_CompPrizeAB');
+  a.addiu(R.sp, R.sp, -16);
+  a.sw(R.ra, 12, R.sp);
+  a.sw(R.a0, 8, R.sp);
+  a.sw(R.a1, 4, R.sp);
+  a.move(R.a0, R.t0);
+  a.jal('Helper_GetLevelFlags');
+  a.move(R.a1, R.a2);
+  a.lw(R.a1, 4, R.sp);
+  a.lw(R.a0, 8, R.sp);
+  a.lw(R.ra, 12, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 16);
+
+  // --------------------------------------------------------------------------
+  // 22. Hook_CompPrizeC [jal @ 0x8007D6D4]
+  //     Preserves $t0, $a1, $a2, $a3, $s0, $s1; returns $a0 = levelFlags(t0, a3)
+  // --------------------------------------------------------------------------
+  a.label('Hook_CompPrizeC');
+  a.addiu(R.sp, R.sp, -16);
+  a.sw(R.ra, 12, R.sp);
+  a.sw(R.a1, 4, R.sp);
+  a.move(R.a0, R.t0);
+  a.jal('Helper_GetLevelFlags');
+  a.move(R.a1, R.a3);
+  a.move(R.a0, R.v0);
+  a.lw(R.a1, 4, R.sp);
+  a.lw(R.ra, 12, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 16);
+
+  // --------------------------------------------------------------------------
+  // 23. Hook_CareerCountGolds($a0 = skaterProg) -> $v0 = count of Gold medals (0x400) across levels 0..19
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerCountGolds');
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 28, R.sp);
+  a.sw(R.s0, 24, R.sp);
+  a.sw(R.s1, 20, R.sp);
+  a.sw(R.s2, 16, R.sp);
+  a.sw(R.s3, 12, R.sp);
+  a.move(R.s0, R.a0);              // skaterProg
+  a.move(R.s1, R.zero);            // levelId = 0..19
+  a.move(R.s2, R.zero);            // count = 0
+  a.la(R.s3, THPS1_ADDR.ExtLevelTable + 12); // &entry[0].isComp
+  a.label('ccg_loop');
+  a.lw(R.t0, 0, R.s3);
+  a.nop();
+  a.beq(R.t0, R.zero, 'ccg_next');
+  a.nop();
+  a.move(R.a0, R.s0);
+  a.jal('Helper_GetLevelFlags');
+  a.move(R.a1, R.s1);
+  a.andi(R.t0, R.v0, 0x0400);      // Gold medal bit only
+  a.beq(R.t0, R.zero, 'ccg_next');
+  a.nop();
+  a.addiu(R.s2, R.s2, 1);
+  a.label('ccg_next');
+  a.addiu(R.s3, R.s3, 0x174);
+  a.addiu(R.s1, R.s1, 1);
+  a.slti(R.t0, R.s1, 20);
+  a.bne(R.t0, R.zero, 'ccg_loop');
+  a.nop();
+  a.move(R.v0, R.s2);
+  a.lw(R.s3, 12, R.sp);
+  a.lw(R.s2, 16, R.sp);
+  a.lw(R.s1, 20, R.sp);
+  a.lw(R.s0, 24, R.sp);
+  a.lw(R.ra, 28, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 32);
+
+  // --------------------------------------------------------------------------
+  // 24. Hook_CareerResetExt [jal @ 0x80023988 inside Career_InitAll]
+  //     Zeroes g_ExtCareer[2000 B] and tail-jumps to original 0x8002C4D8!
+  // --------------------------------------------------------------------------
+  a.label('Hook_CareerResetExt');
+  a.la(R.t8, THPS1_ADDR.ExtCareer);
+  a.addiu(R.t9, R.t8, 2000);
+  a.label('cre_loop');
+  a.sw(R.zero, 0, R.t8);
+  a.addiu(R.t8, R.t8, 4);
+  a.bne(R.t8, R.t9, 'cre_loop');
+  a.nop();
+  a.j(0x8002C4D8);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 25. High Score Table Safe Offset Helpers (levels 0..10 -> 0x800BB95C, levels 11..19 -> 0x800E8550)
+  //     Leaf stubs clobbering ONLY $t8, $t9 + target register, with delay-slot instructions absorbed cleanly!
+  //     Delta = 0x800E8550 - 0x800BB95C = 0x0002CBF4 (works identically across +4564 and +4568 base adds!)
+  // --------------------------------------------------------------------------
+  const HS_DELTA = (THPS1_ADDR.ExtSkyTable - 0x800BB95C) >>> 0;
+  function emitHiScoreStub(lbl, dstReg, srcReg, epilogueFn = null) {
+    a.label(lbl);
+    a.sltiu(R.t8, srcReg, 11);
+    a.bne(R.t8, R.zero, lbl + '_orig');
+    a.sll(dstReg, srcReg, 6);
+    a.addiu(R.t8, srcReg, -11);
+    a.sll(R.t8, R.t8, 6);
+    a.li(R.t9, HS_DELTA);
+    a.addu(dstReg, R.t8, R.t9);
+    a.label(lbl + '_orig');
+    if (epilogueFn) {
+      a.jr(R.ra);
+      epilogueFn();
+    } else {
+      a.jr(R.ra);
+      a.nop();
+    }
+  }
+  emitHiScoreStub('Hook_HiScore_s7_s2', R.s7, R.s2);
+  emitHiScoreStub('Hook_HiScore_v1_s2', R.v1, R.s2, () => a.addu(R.v0, R.v0, R.v1)); // absorbs 0x8002F09C
+  emitHiScoreStub('Hook_HiScore_t3_v0', R.t3, R.v0, () => a.addu(R.v0, R.t6, R.t3)); // absorbs 0x8003003C
+  emitHiScoreStub('Hook_HiScore_a0_s1', R.a0, R.s1);
+  emitHiScoreStub('Hook_HiScore_v1_a0', R.v1, R.a0, () => a.lui(R.a0, 0x800C));      // absorbs 0x80033070
+
+  // --------------------------------------------------------------------------
+  // 26. Hook_Car215_SetModel [jal @ 0x80061A58] & Hook_Car216_SetModel [jal @ 0x80061A70]
+  //     THPS1 Streets SF uses Baddy subtype 215 = c_van (THPS2 reused 215 for c_bus!)
+  //     and Baddy subtype 216 = c_cable (renamed c_cabl1 in sksf_t.trg to preserve NY City subway!).
+  //     For THPS2 levels (g_CurrentLevel < 11), leaves $a1 untouched ("c_bus" / "c_cable") -> 0 impact!
+  //     For THPS1 levels (g_CurrentLevel >= 11), redirects 215 -> "c_van" and 216 -> "c_cabl1"!
+  // --------------------------------------------------------------------------
+  a.label('Hook_Car215_SetModel');
+  a.lui(R.t8, 0x800D);
+  a.lw(R.t8, 25200, R.t8);         // t8 = g_CurrentLevel (0x800D6270)
+  a.nop();
+  a.sltiu(R.t9, R.t8, 11);
+  a.bne(R.t9, R.zero, 'car215_orig');
+  a.nop();
+  a.la(R.a1, strCVan);             // THPS1: subtype 215 -> "c_van" (c_van.psx in CD.WAD!)
+  a.label('car215_orig');
+  a.j(0x80049EA4);                 // tail-call CBody::SetModel(this, modelName)
+  a.nop();
+
+  a.label('Hook_Car216_SetModel');
+  a.lui(R.t8, 0x800D);
+  a.lw(R.t8, 25200, R.t8);         // t8 = g_CurrentLevel (0x800D6270)
+  a.nop();
+  a.sltiu(R.t9, R.t8, 11);
+  a.bne(R.t9, R.zero, 'car216_orig');
+  a.nop();
+  a.la(R.a1, strCCab1);            // THPS1: subtype 216 -> "c_cabl1" (full 11-tex SF Cable Car in THPS1.WAD!)
+  a.label('car216_orig');
+  a.j(0x80049EA4);                 // tail-call CBody::SetModel(this, modelName)
+  a.nop();
+
+  const used = a.pc() - THPS1_ADDR.CodeBase;
+  if (used > 4096) throw new Error(`THPS1_CODE exceeds 4096 B (${used} B)!`);
+  console.log(`  [ASM] THPS1_CODE  : 0x${THPS1_ADDR.CodeBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / 4096 B, livre: ${4096 - used} B)`);
+  a.padTo(THPS1_ADDR.CodeBase + 4096);
+  return a.emit();
+}
+
+// ============================================================================
+// 3. Patch Helper with Strict Verification + .REL Guard
+// ============================================================================
+function jalW(tgt) { return (0x0C000000 | ((tgt >>> 2) & 0x03FFFFFF)) >>> 0; }
+function jW(tgt) { return (0x08000000 | ((tgt >>> 2) & 0x03FFFFFF)) >>> 0; }
+
+function parseRelOffsets(relBuf) {
+  // THPS2 .rel stores relocation entries starting after header — collect all u32 offsets that appear < overlay size
+  // so we never accidentally overwrite a relocated instruction without checking!
+  const set = new Set();
+  for (let off = 0; off + 4 <= relBuf.length; off += 4) {
+    const v = relBuf.readUInt32LE(off);
+    if (v > 0 && v < 0x10000 && (v & 3) === 0) set.add(v);
+  }
+  return set;
+}
+
+function patchExact(buf, off, origVal, newVal, label, altOrigs = []) {
+  const cur = buf.readUInt32LE(off);
+  if (cur !== origVal && cur !== newVal && !altOrigs.includes(cur)) {
+    throw new Error(`Patch mismatch [${label}] @ 0x${off.toString(16)}: cur=0x${cur.toString(16)} exp=0x${origVal.toString(16)}`);
+  }
+  buf.writeUInt32LE(newVal >>> 0, off);
+}
+
+/**
+ * Automatically relocates ALL `lui reg, 0x800c` + `addiu/lw ..., reg, imm` pairs referencing
+ * g_LevelTable (0x800B8444..0x800B9437) -> g_ExtLevelTable (0x800E6000..0x800E6FF3)!
+ * Works backwards from every instruction whose (0x800C0000 + simm) falls in g_LevelTable to its
+ * defining `lui rs, 0x800C`, catching ALL long-lived saved registers (`$s5` @ 0x80024430, 0x80034370, 0x80034558)!
+ */
+function relocateLevelTableRefs(buf, origBuf, startOff, endOff, tag) {
+  let count = 0;
+  const updatedLuis = new Set();
+  for (let off = startOff; off < endOff; off += 4) {
+    const i2 = origBuf.readUInt32LE(off);
+    const o2 = (i2 >>> 26) & 0x3F;
+    const rs2 = (i2 >>> 21) & 0x1F;
+    const simm2 = ((i2 & 0xFFFF) << 16) >> 16;
+    if (![0x09, 0x20, 0x21, 0x23, 0x24, 0x25, 0x28, 0x29, 0x2B].includes(o2)) continue;
+    const oldAddr = (0x800C0000 + simm2) >>> 0;
+    if (oldAddr < 0x800B8444 || oldAddr >= 0x800B9438) continue;
+
+    // Scan backwards up to 300 instructions for the closest `lui rs2, ...`
+    let luiOff = -1, luiVal = 0;
+    for (let k = 1; k <= 300 && off - k * 4 >= startOff; k++) {
+      const pi = origBuf.readUInt32LE(off - k * 4);
+      const pop = (pi >>> 26) & 0x3F;
+      const prt = (pi >>> 16) & 0x1F;
+      if (pop === 0x0F && prt === rs2) {
+        luiOff = off - k * 4;
+        luiVal = pi & 0xFFFF;
+        break;
+      }
+    }
+    if (luiOff < 0 || luiVal !== 0x800C) continue;
+
+    const delta = oldAddr - 0x800B8444;
+    const newAddr = (THPS1_ADDR.ExtLevelTable + delta) >>> 0;
+    const { hi, lo } = splitHiLo(newAddr);
+    const newLui = ((0x0F << 26) | (rs2 << 16) | hi) >>> 0;
+    const newUse = ((i2 & 0xFFFF0000) | lo) >>> 0;
+    if (!updatedLuis.has(luiOff)) {
+      buf.writeUInt32LE(newLui, luiOff);
+      updatedLuis.add(luiOff);
+    }
+    buf.writeUInt32LE(newUse, off);
+    count++;
+  }
+  console.log(`  [RELOC] ${tag.padEnd(18)}: ${count} referencias g_LevelTable (${updatedLuis.size} lui) -> 0x${THPS1_ADDR.ExtLevelTable.toString(16)}`);
+  return count;
+}
+
+// ============================================================================
+// 4. Apply All THPS1 Engine Patches to SLUS_010.66 & CD.WAD (levelsel + options)
+// ============================================================================
+function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
+  console.log('\n=== Aplicando Hooks do Motor THPS1-in-THPS2 (19 Fases Intercaladas) ===');
+  const origSlus = fs.readFileSync(ORIG_SLUS_PATH);
+  const origWad = fs.readFileSync(ORIG_WAD_PATH);
+  const r2f = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
+
+  // --- A. SLUS_010.66 Patches ---
+  // 1. Relocate ALL 70 g_LevelTable references in code section (0x800..0xA0000) -> 0x800E6000
+  //    (Explicitly verify long-range $s5 uses @ 0x80024430, 0x80034370, 0x80034558!)
+  const slusRelocs = relocateLevelTableRefs(slusBuf, origSlus, SLUS_HDR, 0xA0000, 'SLUS_010.66');
+  if (slusRelocs !== 70) throw new Error(`Expected 70 g_LevelTable relocs in SLUS_010.66, got ${slusRelocs}`);
+  for (const checkPc of [0x80024430, 0x80034370, 0x80034558]) {
+    if ((slusBuf.readUInt32LE(r2f(checkPc)) & 0xFFFF) !== 0x6000) {
+      throw new Error(`Long-range g_LevelTable reloc FAILED at 0x${checkPc.toString(16)}!`);
+    }
+  }
+
+  // 2. Relocate ExtLightTable (0x800B961C -> 0x800E8000) @ 0x800484AC / 0x800484B8
+  {
+    const { hi, lo } = splitHiLo(THPS1_ADDR.ExtLightTable);
+    patchExact(slusBuf, r2f(0x800484AC), 0x3C04800C, (0x3C040000 | hi) >>> 0, 'ExtLightTable lui @ 0x800484AC');
+    patchExact(slusBuf, r2f(0x800484B8), 0x2484961C, (0x24840000 | lo) >>> 0, 'ExtLightTable lo  @ 0x800484B8');
+  }
+  // 3. Relocate ExtShadowTable (0x800B9824 -> 0x800E8410) @ 0x8004907C / 0x80049088 / 0x800490E0
+  {
+    const { hi, lo } = splitHiLo(THPS1_ADDR.ExtShadowTable);
+    patchExact(slusBuf, r2f(0x8004907C), 0x3C09800C, (0x3C090000 | hi) >>> 0, 'ExtShadowTable lui @ 0x8004907C');
+    patchExact(slusBuf, r2f(0x80049088), 0x25239824, (0x25230000 | lo) >>> 0, 'ExtShadowTable lo1 @ 0x80049088');
+    patchExact(slusBuf, r2f(0x800490E0), 0x25249824, (0x25240000 | lo) >>> 0, 'ExtShadowTable lo2 @ 0x800490E0');
+  }
+  // 4. High Score Table Safe Redirection (6 sites: 0..10 -> 0x800BB95C, 11..19 -> 0x800E8550, ZERO memory corruption & ZERO delay-slot hazards!)
+  patchExact(slusBuf, r2f(0x8002E988), 0x0012B980, jalW(THPS1_ADDR.Entry_HiScore_s7_s2), 'HiScoreDisplay1 sll s7,s2,6 @ 0x8002E988');
+  patchExact(slusBuf, r2f(0x8002F098), 0x00121980, jalW(THPS1_ADDR.Entry_HiScore_v1_s2), 'HiScoreDisplay2 sll v1,s2,6 @ 0x8002F098');
+  patchExact(slusBuf, r2f(0x8002F09C), 0x00431021, 0x00000000,                           'HiScoreDisplay2 delay nop (absorbed!)');
+  patchExact(slusBuf, r2f(0x80030038), 0x00025980, jalW(THPS1_ADDR.Entry_HiScore_t3_v0), 'HiScoreInsert   sll t3,v0,6 @ 0x80030038');
+  patchExact(slusBuf, r2f(0x8003003C), 0x01CB1021, 0x00000000,                           'HiScoreInsert   delay nop (absorbed!)');
+  patchExact(slusBuf, r2f(0x80032E78), 0x00112180, jalW(THPS1_ADDR.Entry_HiScore_a0_s1), 'HiScoreEdit1    sll a0,s1,6 @ 0x80032E78');
+  patchExact(slusBuf, r2f(0x80032F08), 0x00112180, jalW(THPS1_ADDR.Entry_HiScore_a0_s1), 'HiScoreEdit2    sll a0,s1,6 @ 0x80032F08');
+  patchExact(slusBuf, r2f(0x8003306C), 0x00041980, jalW(THPS1_ADDR.Entry_HiScore_v1_a0), 'HiScoreCommit   sll v1,a0,6 @ 0x8003306C');
+  patchExact(slusBuf, r2f(0x80033070), 0x3C04800C, 0x00000000,                           'HiScoreCommit   delay nop (absorbed!)');
+  // Restore original 0x8003307C (in case a previous run patched it as ExtSkyTable)
+  slusBuf.writeUInt32LE(0x2505FB98, r2f(0x8003307C));
+  // Career_InitAll @ 0x80023988 -> also clear g_ExtCareer on New Career!
+  patchExact(slusBuf, r2f(0x80023988), 0x0C00B136, jalW(THPS1_ADDR.Entry_CareerResetExt), 'Career_InitAll clear ExtCareer @ 0x80023988');
+
+  // 5. Hook CDWAD_Open fallback @ 0x80054190 (`bne s1, zero, 0x800541F4` + delay slot `addiu s0, sp, 16`)
+  patchExact(slusBuf, r2f(0x80054190), 0x16200018, jW(THPS1_ADDR.Entry_CdWadFallback), 'CDWAD_Open THPS1.WAD fallback @ 0x80054190');
+  patchExact(slusBuf, r2f(0x80054194), 0x27B00010, 0x00000000, 'CDWAD_Open delay nop @ 0x80054194');
+
+  // 6. Hook Career Functions (interleaved progression + ExtCareer for levels 11..19)
+  patchExact(slusBuf, r2f(0x80025848), 0x00003021, jW(THPS1_ADDR.Entry_CareerCountMedals),    'Career_CountMedals @ 0x80025848');
+  patchExact(slusBuf, r2f(0x8002584C), 0x00002821, 0x00000000,                                 'Career_CountMedals nop');
+  patchExact(slusBuf, r2f(0x800258A0), 0x3C02800D, jW(THPS1_ADDR.Entry_CareerLevelIsOpenIn),  'Career_LevelIsOpen_Inner @ 0x800258A0');
+  patchExact(slusBuf, r2f(0x800258A4), 0x8C426344, 0x00000000,                                 'Career_LevelIsOpen_Inner nop');
+  patchExact(slusBuf, r2f(0x8002597C), 0x3C02800D, jW(THPS1_ADDR.Entry_CareerLevelIsOpenMod), 'Career_LevelIsOpen @ 0x8002597C');
+  patchExact(slusBuf, r2f(0x80025980), 0x8C426344, 0x00000000,                                 'Career_LevelIsOpen nop');
+  patchExact(slusBuf, r2f(0x800240D4), 0x27BDFFE8, jW(THPS1_ADDR.Entry_CareerHasGoal),        'Career_HasGoal @ 0x800240D4');
+  patchExact(slusBuf, r2f(0x800240D8), 0xAFB00010, 0x00000000,                                 'Career_HasGoal nop');
+  patchExact(slusBuf, r2f(0x8002413C), 0x00003021, jW(THPS1_ADDR.Entry_CareerCountLvlGoals),  'Career_CountLevelGoals @ 0x8002413C');
+  patchExact(slusBuf, r2f(0x80024140), 0x00001821, 0x00000000,                                 'Career_CountLevelGoals nop');
+  patchExact(slusBuf, r2f(0x800241BC), 0x27BDFFE8, jW(THPS1_ADDR.Entry_CareerCountCash),      'Career_CountCash @ 0x800241BC');
+  patchExact(slusBuf, r2f(0x800241C0), 0x3C04800C, 0x00000000,                                 'Career_CountCash nop');
+  patchExact(slusBuf, r2f(0x8002465C), 0x27BDFFE0, jW(THPS1_ADDR.Entry_CareerSetMedal),       'Career_SetMedal @ 0x8002465C');
+  patchExact(slusBuf, r2f(0x80024660), 0xAFB00010, 0x00000000,                                 'Career_SetMedal nop');
+
+  // Career_HasCashNode @ 0x80024EE0..0x80024EE4
+  patchExact(slusBuf, r2f(0x80024EE0), 0x00102943, jW(THPS1_ADDR.Entry_CareerHasCashNode),    'Career_HasCashNode @ 0x80024EE0');
+  patchExact(slusBuf, r2f(0x80024EE4), 0x3C03800D, 0x00000000,                                 'Career_HasCashNode nop');
+
+  // Career_CollectCash bit set @ 0x80024F5C..0x80024F60
+  patchExact(slusBuf, r2f(0x80024F5C), 0x00022143, jW(THPS1_ADDR.Entry_CareerCollectCashBit), 'Career_CollectCashBit @ 0x80024F5C');
+  patchExact(slusBuf, r2f(0x80024F60), 0x00042080, 0x00000000,                                 'Career_CollectCashBit nop');
+
+  // Career_GiveGoal bit set @ 0x800243A4..0x800243A8
+  patchExact(slusBuf, r2f(0x800243A4), 0x2645000C, jW(THPS1_ADDR.Entry_CareerGiveGoalBit),    'Career_GiveGoalBit @ 0x800243A4');
+  patchExact(slusBuf, r2f(0x800243A8), 0x00A03021, 0x00000000,                                 'Career_GiveGoalBit nop');
+
+  // Career_SetAllGoalsBit @ 0x800245B8..0x800245BC
+  patchExact(slusBuf, r2f(0x800245B8), 0x3C05800D, jW(THPS1_ADDR.Entry_CareerSetAllGoals),    'Career_SetAllGoals @ 0x800245B8');
+  patchExact(slusBuf, r2f(0x800245BC), 0x8CA56270, 0x00000000,                                 'Career_SetAllGoals nop');
+
+  // Goal List 5-goal cap for THPS1 levels @ 0x80025EE4 (j Entry_GoalListLoopCheck; delay: addiu s2,s2,16; nop)
+  patchExact(slusBuf, r2f(0x80025EE4), 0x2A82000A, jW(THPS1_ADDR.Entry_GoalListLoopCheck),     'GoalList 5-goal cap j @ 0x80025EE4', [jalW(THPS1_ADDR.Entry_GoalListLoopCheck)]);
+  patchExact(slusBuf, r2f(0x80025EE8), 0x1440FFC4, 0x26520010,                                 'GoalList delay addiu s2,s2,16 @ 0x80025EE8');
+  patchExact(slusBuf, r2f(0x80025EEC), 0x26520010, 0x00000000,                                 'GoalList nop @ 0x80025EEC');
+
+  // Pause Menu "View Goals" button visibility for THPS1 levels @ 0x8002D900 (jal in nop slot; nop @ 0x8002D904; original bne @ 0x8002D908 untouched!)
+  patchExact(slusBuf, r2f(0x8002D900), 0x00000000, jalW(THPS1_ADDR.Entry_ShowGoalsBtn),        'PauseMenu ShowGoalsBtn jal @ 0x8002D900');
+  patchExact(slusBuf, r2f(0x8002D904), 0x28420008, 0x00000000,                                 'PauseMenu ShowGoalsBtn delay nop @ 0x8002D904', [jalW(THPS1_ADDR.Entry_ShowGoalsBtn)]);
+
+  // XA_GetLevelTrack @ 0x80038C98: clamp levelId to 0..15 so all 9 THPS1 levels play real COMPILED.XA songs!
+  patchExact(slusBuf, r2f(0x80038C98), 0x04610002, 0x3063000F,                                 'XA_GetLevelTrack andi v1,v1,0xF @ 0x80038C98');
+  patchExact(slusBuf, r2f(0x80038CA0), 0x24620007, 0x00000000,                                 'XA_GetLevelTrack nop @ 0x80038CA0');
+
+  // Comp_CountMedals1 @ 0x8007C9BC -> unified Hook_CareerCountMedals & >= 3 check!
+  patchExact(slusBuf, r2f(0x8007C9BC), 0x00003021, 0x00402021,                                 'Comp_CountMedals1 move a0,v0 @ 0x8007C9BC');
+  patchExact(slusBuf, r2f(0x8007C9C0), 0x00002821, jalW(THPS1_ADDR.Entry_CareerCountMedals),   'Comp_CountMedals1 jal @ 0x8007C9C0');
+  patchExact(slusBuf, r2f(0x8007C9C4), 0x2444000C, 0x00000000,                                 'Comp_CountMedals1 nop');
+  patchExact(slusBuf, r2f(0x8007C9C8), 0x3C03800E, jW(0x8007CA0C),                             'Comp_CountMedals1 skip loop');
+  patchExact(slusBuf, r2f(0x8007C9CC), 0x2463600C, 0x00403021,                                 'Comp_CountMedals1 move a2,v0 (delay)');
+  patchExact(slusBuf, r2f(0x8007CA0C), 0x38C20003, 0x28C20003,                                 'Comp_CountMedals1 slti v0,a2,3 (>=3)');
+  patchExact(slusBuf, r2f(0x8007CA14), 0x2C420001, 0x38420001,                                 'Comp_CountMedals1 xori v0,v0,1 (>=3)');
+
+  // Comp_CountMedals2 @ 0x8007CA3C -> unified Hook_CareerCountGolds & >= 3 check!
+  patchExact(slusBuf, r2f(0x8007CA3C), 0x00003021, 0x00402021,                                 'Comp_CountMedals2 move a0,v0 @ 0x8007CA3C');
+  patchExact(slusBuf, r2f(0x8007CA40), 0x00002821, jalW(THPS1_ADDR.Entry_CareerCountGolds),    'Comp_CountMedals2 jal @ 0x8007CA40');
+  patchExact(slusBuf, r2f(0x8007CA44), 0x2444000C, 0x00000000,                                 'Comp_CountMedals2 nop');
+  patchExact(slusBuf, r2f(0x8007CA48), 0x3C03800E, jW(0x8007CA8C),                             'Comp_CountMedals2 skip loop');
+  patchExact(slusBuf, r2f(0x8007CA4C), 0x2463600C, 0x00403021,                                 'Comp_CountMedals2 move a2,v0 (delay)');
+  patchExact(slusBuf, r2f(0x8007CA8C), 0x38C20003, 0x28C20003,                                 'Comp_CountMedals2 slti v0,a2,3 (>=3)');
+  patchExact(slusBuf, r2f(0x8007CA94), 0x2C420001, 0x38420001,                                 'Comp_CountMedals2 xori v0,v0,1 (>=3)');
+
+  // Comp_EndPrizeMoney @ 0x8007D628, 0x8007D674, 0x8007D6D4 (Chicago/Burnside/Roswell medal prize money!)
+  patchExact(slusBuf, r2f(0x8007D628), 0x00062840, jalW(THPS1_ADDR.Entry_CompPrizeAB),         'Comp_EndPrizeMoney Gold check @ 0x8007D628');
+  patchExact(slusBuf, r2f(0x8007D62C), 0x01051821, 0x00062840,                                 'Comp_EndPrizeMoney sll a1,a2,1 (delay)');
+  patchExact(slusBuf, r2f(0x8007D630), 0x9462000C, 0x00000000,                                 'Comp_EndPrizeMoney nop');
+  patchExact(slusBuf, r2f(0x8007D674), 0x00062040, jalW(THPS1_ADDR.Entry_CompPrizeAB),         'Comp_EndPrizeMoney Silver check @ 0x8007D674');
+  patchExact(slusBuf, r2f(0x8007D678), 0x01041021, 0x00062040,                                 'Comp_EndPrizeMoney sll a0,a2,1 (delay)');
+  patchExact(slusBuf, r2f(0x8007D67C), 0x9442000C, 0x00000000,                                 'Comp_EndPrizeMoney nop');
+  patchExact(slusBuf, r2f(0x8007D6D4), 0x00073040, jalW(THPS1_ADDR.Entry_CompPrizeC),          'Comp_EndPrizeMoney Bronze check @ 0x8007D6D4');
+  patchExact(slusBuf, r2f(0x8007D6D8), 0x01061021, 0x00073040,                                 'Comp_EndPrizeMoney sll a2,a3,1 (delay)');
+  patchExact(slusBuf, r2f(0x8007D6DC), 0x9444000C, 0x00000000,                                 'Comp_EndPrizeMoney nop');
+
+  // Comp_InitPodium @ 0x8007E588..0x8007E590 (v0 = skaterProg, a1 = g_CurrentLevel -> v1 = levelFlags)
+  patchExact(slusBuf, r2f(0x8007E588), 0x00052040, jalW(THPS1_ADDR.Entry_CompInitPodium),      'Comp_InitPodium @ 0x8007E588');
+  patchExact(slusBuf, r2f(0x8007E58C), 0x00441021, 0x00000000,                                 'Comp_InitPodium nop1');
+  patchExact(slusBuf, r2f(0x8007E590), 0x9443000C, 0x00000000,                                 'Comp_InitPodium nop2');
+
+  // CCar::CCar vehicle model dispatch for THPS1 Streets SF (215 -> c_van, 216 -> c_cabl1; THPS2 levels untouched!)
+  patchExact(slusBuf, r2f(0x80061A58), 0x0C0127A9, jalW(THPS1_ADDR.Entry_Car215_SetModel),     'CCar 215 c_bus/c_van @ 0x80061A58');
+  patchExact(slusBuf, r2f(0x80061A70), 0x0C0127A9, jalW(THPS1_ADDR.Entry_Car216_SetModel),     'CCar 216 c_cable/c_cabl1 @ 0x80061A70');
+
+  // --- B. Patch levelsel.bin (WAD[33]) AND its uncompressed copy in levelsel.pre (WAD[47] + 0x18)! ---
+  console.log('\n=== Aplicando Patches Cirurgicos em levelsel.bin + levelsel.pre ===');
+  const lsOff = hedBuf.readUInt32LE(33 * 12 + 4);
+  const lsSz  = hedBuf.readUInt32LE(33 * 12 + 8);
+  const lsPreOff = hedBuf.readUInt32LE(47 * 12 + 4) + 0x18;
+  const lsRelOff = hedBuf.readUInt32LE(34 * 12 + 4);
+  const lsRelSz  = hedBuf.readUInt32LE(34 * 12 + 8);
+  const lsOrig = origWad.subarray(lsOff, lsOff + lsSz);
+  const lsRelSet = parseRelOffsets(origWad.subarray(lsRelOff, lsRelOff + lsRelSz));
+
+  // Verify levelsel.pre + 0x18 matches levelsel.bin verbatim in original backup
+  if (!origWad.subarray(lsPreOff, lsPreOff + lsSz).equals(lsOrig)) {
+    throw new Error('levelsel.pre + 0x18 does not match levelsel.bin in original backup!');
+  }
+
+  const lsMod = Buffer.from(lsOrig);
+
+  function patchLs(off, origVal, newVal, desc) {
+    if (lsRelSet.has(off)) {
+      console.log(`  [WARN-REL-CHK] levelsel +0x${off.toString(16)} (${desc}) appeared in raw .rel scan (verifying non-relocated imm)`);
+    }
+    patchExact(lsMod, off, origVal, newVal, `levelsel +0x${off.toString(16)} ${desc}`);
+  }
+
+  // 1. Relocate all 13 g_LevelTable references in levelsel.bin -> 0x800E6000
+  const lsRelocs = relocateLevelTableRefs(lsMod, lsOrig, 0, lsOrig.length, 'levelsel.bin');
+  if (lsRelocs !== 13) throw new Error(`Expected 13 g_LevelTable relocs in levelsel.bin, got ${lsRelocs}`);
+
+  // 2. Expand CLevelRend (300 -> 460 B, sprites[20] @ +300, asyncIds[20] @ +380)
+  patchLs(0x0970, 0x2404012C, 0x240401CC, 'CLevelRend new(300 -> 460)');
+  patchLs(0x287C, 0x263400CC, 0x2634012C, 'CLevelRend sprites +204->+300 (ctor)');
+  patchLs(0x28B0, 0x2A62000B, 0x2A620014, 'CLevelRend ctor loop 11->20');
+  patchLs(0x2B00, 0x263500F8, 0x2635017C, 'CLevelRend async +248->+380 (queue)');
+  // Replace `jal 0x59ffc` (+0x2AF8) & `addiu s2, sp, 32` (+0x2B10) with loading s2 = LoadOrderWords (0..19 sequential CD stream!)
+  {
+    const { hi, lo } = splitHiLo(THPS1_ADDR.LoadOrderWords);
+    patchLs(0x2AF8, 0x0C0167FF, (0x3C120000 | hi) >>> 0, 'CLevelRend lui s2, hi(LoadOrderWords)');
+    patchLs(0x2B10, 0x27B20020, (0x26520000 | lo) >>> 0, 'CLevelRend addiu s2, s2, lo(LoadOrderWords)');
+  }
+  patchLs(0x2B70, 0x2A83000B, 0x2A830014, 'CLevelRend queue loop 11->20');
+  patchLs(0x2BE4, 0x265000CC, 0x2650012C, 'CLevelRend dtor +204->+300');
+  patchLs(0x2C14, 0x2A22000B, 0x2A220014, 'CLevelRend dtor loop 11->20');
+  patchLs(0x2DA0, 0x8C4400CC, 0x8C44012C, 'CLevelRend draw +204->+300');
+  patchLs(0x2EA4, 0x269200CC, 0x2692012C, 'CLevelRend update sprites +204->+300');
+  patchLs(0x2EA8, 0x269100F8, 0x2691017C, 'CLevelRend update async +248->+380');
+  patchLs(0x2F0C, 0x2A62000B, 0x2A620014, 'CLevelRend update loop 11->20');
+  patchLs(0x3048, 0x269000CC, 0x2690012C, 'CLevelRend swap +204->+300');
+
+  // 3. Expand CLevelMap (624 -> 784 B, sprites[20] @ +624, asyncIds[20] @ +704)
+  patchLs(0x09B8, 0x24040270, 0x24040310, 'CLevelMap new(624 -> 784)');
+  patchLs(0x32B0, 0x265401E8, 0x26540270, 'CLevelMap sprites +488->+624 (ctor)');
+  patchLs(0x3314, 0x2A22000B, 0x2A220014, 'CLevelMap ctor loop 11->20');
+  patchLs(0x3444, 0x26550224, 0x265502C0, 'CLevelMap async +548->+704 (queue)');
+  // Replace `addiu s1, v1, 0` (+0x3434) & `jal 0x59ffc` (+0x343C) with s1 = LoadOrderWords (0..19 sequential CD stream!)
+  {
+    const { hi, lo } = splitHiLo(THPS1_ADDR.LoadOrderWords);
+    patchLs(0x3434, 0x00608821, (0x3C110000 | hi) >>> 0, 'CLevelMap lui s1, hi(LoadOrderWords)');
+    patchLs(0x343C, 0x0C0167FF, (0x26310000 | lo) >>> 0, 'CLevelMap addiu s1, s1, lo(LoadOrderWords)');
+  }
+  patchLs(0x34B0, 0x2A63000B, 0x2A630014, 'CLevelMap queue loop 11->20');
+  patchLs(0x351C, 0x265001E8, 0x26500270, 'CLevelMap dtor +488->+624');
+  patchLs(0x3554, 0x2A22000B, 0x2A220014, 'CLevelMap dtor loop 11->20');
+  patchLs(0x3620, 0x26930224, 0x269302C0, 'CLevelMap update async +548->+704');
+  patchLs(0x3660, 0x268301E8, 0x26830270, 'CLevelMap update sprites +488->+624');
+  patchLs(0x36B4, 0x2A02000B, 0x2A020014, 'CLevelMap update loop 11->20');
+  patchLs(0x36CC, 0x268501E8, 0x26850270, 'CLevelMap draw1 +488->+624');
+  patchLs(0x3724, 0x8C6401E8, 0x8C640270, 'CLevelMap draw2 +488->+624');
+  patchLs(0x3818, 0x268501E8, 0x26850270, 'CLevelMap draw3 +488->+624');
+  patchLs(0x3BBC, 0x8C4401E8, 0x8C440270, 'CLevelMap draw4 +488->+624');
+  patchLs(0x3C00, 0x8C4401E8, 0x8C440270, 'CLevelMap draw5 +488->+624');
+
+  // 4. Hook MoveCursor (+0x12A8..+0x131C) -> interleaved DisplayOrder carousel!
+  //    At +0x12A8: jal Entry_LevelSelMoveCursor; nop; beq zero, zero, +0x1320; nop
+  //    (Uses relative branch `beq zero, zero, +27` so ZERO overlay relocation needed!)
+  patchLs(0x12A8, 0x3C02800E, jalW(THPS1_ADDR.Entry_LevelSelMoveCursor), 'MoveCursor interleaved jal');
+  patchLs(0x12AC, 0x8C428278, 0x00000000, 'MoveCursor nop');
+  patchLs(0x12B0, 0x00000000, 0x1000001B, 'MoveCursor b +0x1320 (relative +27 words)');
+  patchLs(0x12B4, 0x00521021, 0x00000000, 'MoveCursor delay nop');
+
+  // 5. Patch IsLevelUnlocked (+0x3128): route ALL levels 0..19 straight to Career_LevelIsOpen (0x8002597C)!
+  patchLs(0x3124, 0x10400009, 0x00000000, 'IsLevelUnlocked skip loop1');
+  patchLs(0x3128, 0x2A220008, 0x00000000, 'IsLevelUnlocked skip <8 check');
+  patchLs(0x312C, 0x14400007, 0x00000000, 'IsLevelUnlocked fallthrough -> jal 0x8002597c');
+
+  // 6. Hook ShowPct (+0x121C..+0x1220) so ALL 19 career levels (0..9, 11..19) show their % badge cleanly!
+  patchLs(0x121C, 0x28420008, jalW(THPS1_ADDR.Entry_LevelSelShowPct), 'LevelSel ShowPct jal');
+  patchLs(0x1220, 0x38420001, 0x00000000,                             'LevelSel ShowPct delay nop');
+
+  // 7. Hook LevelSelPct (+0x13F8..+0x1478): on entry v0=skaterProg, a3=levelId, a0=isComp -> a2=pct, branch to +0x147C!
+  //    +0x13F8: move a2, a0 (isComp)
+  //    +0x13FC: move a0, v0 (skaterProg)
+  //    +0x1400: jal Entry_LevelSelPct
+  //    +0x1404: move a1, a3 (levelId, delay slot)
+  //    +0x1408: beq zero, zero, +0x147C (+28 words)
+  //    +0x140C: move a2, v0 (delay slot: a2 = pct!)
+  patchLs(0x13F8, 0x1080001A, 0x00803021, 'LevelSelPct move a2, a0 (isComp)');
+  patchLs(0x13FC, 0x00003021, 0x00402021, 'LevelSelPct move a0, v0 (skaterProg)');
+  patchLs(0x1400, 0x2444000C, jalW(THPS1_ADDR.Entry_LevelSelPct), 'LevelSelPct jal');
+  patchLs(0x1404, 0x00881021, 0x00E02821, 'LevelSelPct move a1, a3 (levelId)');
+  patchLs(0x1408, 0x94450000, 0x1000001C, 'LevelSelPct b +0x147C (+28 words)');
+  patchLs(0x140C, 0x00000000, 0x00403021, 'LevelSelPct move a2, v0 (pct)');
+
+  // 8. Skip 96 KB Level Select preview FMV (.STR) allocation (+0x2F7C: beq a0,zero,+16 -> b +16):
+  //    With 40 bitmaps cached for 20 levels in Heap[1], lingering >3s on a THPS2 level would request
+  //    96 KB in Movie_AllocBuffers (0x8007AE70) and OOM. Skipping it keeps crisp static 176x48 renders
+  //    consistently across all 19 levels with zero disc seek hiccups and zero OOM risk!
+  patchLs(0x2F7C, 0x10800010, 0x10000010, 'CLevelRend skip 96KB preview FMV (anti-OOM)');
+
+  // Write patched levelsel.bin to BOTH WAD[33] AND levelsel.pre (WAD[47] + 0x18)!
+  lsMod.copy(wadBuf, lsOff);
+  lsMod.copy(wadBuf, lsPreOff);
+  console.log(`  [OK] levelsel.bin atualizado em WAD[33] (0x${lsOff.toString(16)}) e levelsel.pre (0x${lsPreOff.toString(16)})`);
+
+  // --- C. Patch options.bin (WAD[37]) ---
+  console.log('\n=== Aplicando Relocacao g_LevelTable em options.bin ===');
+  const optOff = hedBuf.readUInt32LE(37 * 12 + 4);
+  const optSz  = hedBuf.readUInt32LE(37 * 12 + 8);
+  const optOrig = origWad.subarray(optOff, optOff + optSz);
+  const optMod = Buffer.from(optOrig);
+  const optRelocs = relocateLevelTableRefs(optMod, optOrig, 0, optOrig.length, 'options.bin');
+  if (optRelocs !== 8) throw new Error(`Expected 8 g_LevelTable relocs in options.bin, got ${optRelocs}`);
+  optMod.copy(wadBuf, optOff);
+  console.log(`  [OK] options.bin atualizado em WAD[37] (0x${optOff.toString(16)})`);
+}
+
+module.exports = {
+  THPS1_ADDR,
+  DISPLAY_ORDER,
+  SLOT_OF_LEVEL,
+  UNLOCK_REQS,
+  THPS1_DEFS,
+  buildThps1ResidentBlock,
+  applyThps1EnginePatches,
+};

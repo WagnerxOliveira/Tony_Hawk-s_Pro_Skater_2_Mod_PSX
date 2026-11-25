@@ -106,6 +106,7 @@ try {
 
   // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
   const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode, assembleBailHookCode, assembleLulaoEngine, buildLulaoStrData } = require('./patch_random_videos_and_voices');
+  const { THPS1_ADDR, buildThps1ResidentBlock, applyThps1EnginePatches } = require('./thps1_engine_mod');
   const {
     VAB_TARGETS,
     BAIL_SFX_IDS,
@@ -122,7 +123,25 @@ try {
     BIO_SLOT_OFFSETS,
     buildPatchedS2BioFnt,
   } = require('./mod_skater_bios');
+  // Compute exact deterministic THPS1-in-THPS2 engine diffs on clean copies of SLUS_010.66 & CD.WAD
+  const origWadForRef = fs.readFileSync(path.join(rootDir, 'originals_backup', 'CD.WAD'));
+  const origHedForRef = fs.readFileSync(path.join(rootDir, 'originals_backup', 'CD.HED'));
+  const slusThps1Ref = Buffer.from(slusOrig);
+  const wadThps1Ref = Buffer.from(origWadForRef);
+  {
+    const savedLog = console.log;
+    console.log = () => {};
+    try { applyThps1EnginePatches(slusThps1Ref, wadThps1Ref, origHedForRef); }
+    finally { console.log = savedLog; }
+  }
+  const thps1SlusWords = [];
+  for (let off = 0x800; off < slusOrig.length; off += 4) {
+    const wO = slusOrig.readUInt32LE(off);
+    const wR = slusThps1Ref.readUInt32LE(off);
+    if (wO !== wR) thps1SlusWords.push([(0x80010000 + (off - 0x800)) >>> 0, wR]);
+  }
   const expectedSlusHooks = new Map([
+    ...thps1SlusWords,                                 // All 70 g_LevelTable relocs + THPS1-in-THPS2 engine hooks (deterministic!)
     [0x80030DA0, jalWord(ADDR.Entry_EndRunPause)],     // Hook Pause -> End Run (Lulao random funny voice)
     [0x80035D68, jalWord(ADDR.Entry_SpawnLetter)],     // Hook 3D S-K-A-T-E -> T-A-X-A-S dynamic spawn (Lulao only!)
     [0x8003C2E8, jalWord(ADDR.Entry_EndRunPause)],     // Hook Time-Up Natural End Run (Lulao random funny voice)
@@ -147,7 +166,7 @@ try {
     [0x80068394, jalWord(ADDR.Entry_PsxUpload)],       // Hook PSX Upload (Dynamic Lulao Cash Bills)
     [0x80068944, jalWord(ADDR.Entry_PsxUpload)],       // Hook PSX Upload (Dynamic Lulao Cash Bills)
     [0x80068AA0, jalWord(ADDR.Entry_PsxUpload)],       // Hook PSX Upload (Dynamic Lulao Cash Bills)
-    [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..6 + FlushCache
+    [0x8006CAD4, jalWord(ADDR.Mod_BootInit)],          // Hook Movies_Init -> load VOICES.DAT Sec 0..16 + FlushCache
     [0x80082B80, jalWord(ADDR.Tramp_RunPlaySel)],      // Hook Overlay_Run playsel -> instant music ducking + sync Lulao goals on exit
     [0x80082C38, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync (skateshp/career)
     [0x80082D2C, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync (levelsel)
@@ -157,8 +176,9 @@ try {
     [0x80082EF0, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
     [0x80082F70, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
     [0x80082FD4, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
-    [0x800A2950, 0x24846000],                          // InitHeap start -> 0x800E6000
-    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800E6000
+    [0x800A294C, 0x3C04800F],                          // InitHeap lui -> 0x800F (signed addiu -0x5000 = 0x800EB000)
+    [0x800A2950, 0x2484B000],                          // InitHeap start -> 0x800EB000
+    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800EB000
   ]);
   const isTextPool = (off) => (off >= 0x059BC0 && off < 0x05BC00) || (off >= 0x0A0000 && off < 0x0D2E74);
   const isModTail = (ram) => ram >= 0x800E2680 && ram < 0x800E2800;
@@ -317,7 +337,7 @@ try {
   const allowedWadIdxs = new Set([
     3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
     8, 14, 1094, 1095, 1096, 1100, 1102, 1103, 1109,// Lulao world assets: items (3D X + 51 Bottle/Aura), skhan_o/o2 (Barril 51+Lulao + Haddad), sksl2_o/l/l2 (Dilma + Vento Estocado), c_kart (Bolsonaro), skven_o/l (Pitu)
-    45, 60, 61, 458,                                // options.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
+    33, 37, 45, 47, 60, 61, 458,                    // levelsel.bin, options.bin, options.pre, levelsel.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
     369, 370, 371, 372, 377, 378, 379,              // 7 custom portraits: s2face1,2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     387, 1010, 431, 1012,                           // Silvio Santos (4 .PSX, incl. 3D Chest Mic on 387 & 1010)
     389, 986, 433, 988,                             // Lulao (4 .PSX)
@@ -360,6 +380,22 @@ try {
       }
     }
     if (psErr === 0) pass('playsel.bin (idx=61): 2/2 hooks Skater Select (+0x3388 Scroll, +0x100C Confirm) validos, 31.632 B restantes intactos');
+  }
+  // Verify levelsel.bin (idx 33), levelsel.pre (idx 47) & options.bin (idx 37) match THPS1 20-level overlay patches bit-for-bit!
+  {
+    let ovErr = 0;
+    for (const [idx, nm] of [[33, 'levelsel.bin'], [47, 'levelsel.pre'], [37, 'options.bin']]) {
+      const o = hedDisk.readUInt32LE(idx * 12 + 4), s = hedDisk.readUInt32LE(idx * 12 + 8);
+      const got = getWadEntry(fdMod, 455, hedDisk, idx);
+      const exp = wadThps1Ref.subarray(o, o + s);
+      if (!got.equals(exp)) { fail('WAD', `${nm} (idx=${idx}) difere dos patches esperados do motor THPS1!`); ovErr++; }
+    }
+    const lsGot = getWadEntry(fdMod, 455, hedDisk, 33);
+    const lsPreGot = getWadEntry(fdMod, 455, hedDisk, 47);
+    if (!lsPreGot.subarray(0x18, 0x18 + lsGot.length).equals(lsGot)) {
+      fail('WAD', 'levelsel.pre +0x18 dessincronizado de levelsel.bin!'); ovErr++;
+    }
+    if (ovErr === 0) pass('levelsel.bin (idx=33), levelsel.pre (idx=47 +0x18) & options.bin (idx=37): 13+8 relocs g_LevelTable + carrossel intercalado 20 fases + anti-OOM +0x2F7C 100% validos');
   }
   // Verify s2bio.fnt (idx 458) & player.pre (idx 60) ONLY modified s2bio.fnt (+0x14..+0x1187) identically!
   {
@@ -712,13 +748,13 @@ try {
   }
 
   // =========================================================================
-  // STAGE 6: ISO-9660 LBA ORDER, SIZES, XA ATTRIBUTES, UNMODIFIED FILES & VOICES.DAT
+  // STAGE 6: ISO-9660 LBA ORDER, SIZES, XA ATTRIBUTES, UNMODIFIED FILES, VOICES.DAT & THPS1.WAD
   // =========================================================================
-  console.log('\n[STAGE 6] ISO-9660 — 48/48 Arquivos Originais Redump + 49o VOICES.DAT (MODCODE + 41 Clips SPU)');
+  console.log('\n[STAGE 6] ISO-9660 — 48/48 Arquivos Originais Redump + 49o VOICES.DAT + 50o THPS1.WAD');
   const pvdR = readSectorsUser(fdRed, 16, 1), pvdM = readSectorsUser(fdMod, 16, 1);
   const filesR = parseIsoDir(fdRed, pvdR.readUInt32LE(158), pvdR.readUInt32LE(166), '').sort((a, b) => a.lba - b.lba);
   const filesM = parseIsoDir(fdMod, pvdM.readUInt32LE(158), pvdM.readUInt32LE(166), '').sort((a, b) => a.lba - b.lba);
-  if (filesR.length !== 48 || filesM.length !== 49) fail('ISO', `Contagem de arquivos: ${filesM.length} (esperado 49 = 48 Redump + VOICES.DAT)`);
+  if (filesR.length !== 48 || filesM.length !== 50) fail('ISO', `Contagem de arquivos: ${filesM.length} (esperado 50 = 48 Redump + VOICES.DAT + THPS1.WAD)`);
   const modMap = new Map(filesM.map(f => [f.path, f]));
   const expectedModFiles = new Set([
     'SLUS_010.66', 'CD.HED', 'CD.WAD', 'COMPILED.XA', 'INTRO.STR',
@@ -923,8 +959,47 @@ try {
         }
       }
       if (clipErr === 0) {
-        pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): 7 setores residentes (MODCODE + VOICETBL + BailSfx + VoiceSelect + LULAO_CODE 6KB + LULAO_STRDATA) + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
+        // Also validate THPS1 Resident Engine Block (Sectors 7..16 = 20,480 B at file off 14336..34816) bit-for-bit!
+        const savedLog2 = console.log; console.log = () => {};
+        let expThps1Blk;
+        try { expThps1Blk = buildThps1ResidentBlock().block; } finally { console.log = savedLog2; }
+        expThps1Blk.writeUInt32LE(voicesSectors >>> 0, THPS1_ADDR.g_Thps1Inited - THPS1_ADDR.Base);
+        const gotThps1Blk = voicesBuf.subarray(14336, 14336 + THPS1_ADDR.TotalBytes);
+        if (!gotThps1Blk.equals(expThps1Blk)) {
+          fail('VOICES', 'Setores 7..16 (THPS1_ENGINE 20.480 B) em VOICES.DAT diferem do bloco residente esperado!');
+        } else {
+          pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): 17 setores residentes (MODCODE + VOICETBL + BailSfx + VoiceSelect + LULAO_CODE 6KB + LULAO_STRDATA + THPS1_ENGINE 20KB) + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
+        }
       }
+    }
+  }
+
+  // Validate 50th file THPS1.WAD (contiguous right after VOICES.DAT -> ZERO CdSearchFile at runtime!)
+  const thps1File = modMap.get('THPS1.WAD');
+  let thps1Sectors = 0;
+  if (!thps1File) {
+    fail('THPS1', 'THPS1.WAD ausente na ISO!');
+  } else {
+    thps1Sectors = Math.ceil(thps1File.size / 2048);
+    if (voicesFile && thps1File.lba !== voicesFile.lba + voicesSectors) {
+      fail('THPS1', `THPS1.WAD LBA (${thps1File.lba}) nao e contiguo apos VOICES.DAT (${voicesFile.lba + voicesSectors})!`);
+    }
+    const thps1Iso = readSectorsUser(fdMod, thps1File.lba, thps1Sectors);
+    const thps1Disk = fs.readFileSync(path.join(rootDir, 'THPS1.WAD'));
+    if (!thps1Iso.equals(thps1Disk)) fail('THPS1', 'THPS1.WAD na ISO difere do arquivo no workspace!');
+    const thps1Man = JSON.parse(fs.readFileSync(path.join(rootDir, 'build', 'thps1_manifest.json'), 'utf8'));
+    let t1Err = 0;
+    if (thps1Man.totalSectors !== thps1Sectors || thps1Man.totalBytes !== thps1Disk.length) {
+      fail('THPS1', `THPS1.WAD divergente do manifesto: ${thps1Disk.length} B (${thps1Sectors} set.)`); t1Err++;
+    }
+    for (const en of thps1Man.entries) {
+      const slice = thps1Iso.subarray(en.relOffset, en.relOffset + en.size);
+      if (en.name.endsWith('.bmp') && slice.subarray(0, 2).toString('ascii') !== 'BM') { fail('THPS1', `${en.name} nao e BMP valido!`); t1Err++; }
+      if (en.name.endsWith('.trg') && slice.subarray(0, 4).toString('ascii') !== '_TRG') { fail('THPS1', `${en.name} nao e _TRG valido!`); t1Err++; }
+      if (en.name.endsWith('.psx') && slice.readUInt32LE(0) !== 0x00020004) { fail('THPS1', `${en.name} nao e PSX 0x00020004 valido!`); t1Err++; }
+    }
+    if (t1Err === 0) {
+      pass(`THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): ${thps1Man.totalFiles} arquivos prioritarios (18 BMPs + 9 TRGs convertidos + 6 PSXs) 100% validos e contiguos apos VOICES.DAT`);
     }
   }
 
@@ -1019,10 +1094,10 @@ try {
   // =========================================================================
   const modSize = fs.statSync(modBin).size;
   const redSize = fs.statSync(redumpBin).size;
-  const expModSize = redSize + voicesSectors * 2352;
+  const expModSize = redSize + (voicesSectors + thps1Sectors) * 2352;
   const totalSec = modSize / 2352;
   console.log(`\n[STAGE 10] Varredura Completa de Todos os ${totalSec.toLocaleString('pt-BR')} Setores (${(modSize/1048576).toFixed(1)} MB) de THPS2_MOD.bin`);
-  if (modSize !== expModSize) fail('DISC', `Tamanho do BIN (${modSize}) != esperado Redump + VOICES.DAT (${expModSize})`);
+  if (modSize !== expModSize) fail('DISC', `Tamanho do BIN (${modSize}) != esperado Redump + VOICES.DAT + THPS1.WAD (${expModSize})`);
   const syncPat = Buffer.from([0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00]);
   const scanBuf = Buffer.alloc(CHUNK * 2352);
   let badSync = 0, badMsf = 0, badMode = 0, badSub = 0, badEdc1 = 0, badEdc2 = 0;

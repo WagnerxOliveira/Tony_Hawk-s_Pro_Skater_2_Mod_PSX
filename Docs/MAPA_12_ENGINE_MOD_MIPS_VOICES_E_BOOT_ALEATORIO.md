@@ -4,20 +4,21 @@
 
 ---
 
-## 1. Arena Residente de 12,5 KB Abaixo da Heap (Zero Impacto nos 48 LBAs Redump)
+## 1. Arena Residente de 34 KB Abaixo da Heap (`0x800E2800..0x800EAFFF`, 17 Setores, Zero Impacto nos 48 LBAs Redump)
 
-Para hospedar o código MIPS customizado, a tabela de metadados de vozes, o motor do Modo Carreira do Lulao e o streamer SPU 2 KB sem alterar o tamanho de `SLUS_010.66` (`864.256 B`) nem deslocar nenhum dos 48 arquivos originais da ISO, deslocamos a base da heap dinâmica em apenas **12,5 KB** (`0x800E2678 → 0x800E5800`, `< 1,1%` do heap livre):
+Para hospedar o código MIPS customizado (`MODCODE`), a tabela de metadados de vozes (`VOICETBL`), o motor Dual Zero-Stall & Zero-Chiado do Lulão/Bolsonaro (`LULAO_CODE` + `LULAO_STRDATA`) e o **Motor Residente de 20 Fases THPS1-in-THPS2 (`THPS1_ENGINE`, `0x800E6000..0x800EAFFF`)** sem alterar o tamanho de `SLUS_010.66` (`864.256 B`) nem deslocar nenhum dos 48 arquivos originais da ISO, deslocamos a base da heap dinâmica para **`0x800EB000`** (`InitHeap @ 0x800A294C/50` e `HeapStartPtr @ 0x800E2674`):
 
 | Faixa de RAM | Tamanho | Conteúdo | Origem |
 | :---: | :---: | :--- | :--- |
-| `0x800E2674` | `4 B` | `HeapStartPtr = 0x800E5800` | Patch inline em `SLUS_010.66` (+ `InitHeap` @ `0x800A2950`) |
-| `0x800E2680..0x800E27FF` | `384 B` | **Bootstrapper + Trampolins + Estado Privado** (`Mod_BootInit` lê 6 setores, `Tramp_*`, bitmask `g_InPlaySel @ 0x800E27DC` [bit0=PlaySel, bit1=GameplayVoice], `g_VoicesBaseLba`, `g_BailScreamIdx`) | Embutido no fim de `SLUS_010.66` (área `.bss` livre) |
+| `0x800E2674` | `4 B` | `HeapStartPtr = 0x800EB000` | Patch inline em `SLUS_010.66` (+ `InitHeap` @ `0x800A294C/50`) |
+| `0x800E2680..0x800E27FF` | `384 B` | **Bootstrapper + Trampolins + Estado Privado** (`Mod_BootInit` lê **17 setores `0..16`**, `Tramp_*`, bitmask `g_InPlaySel @ 0x800E27DC`, `g_VoicesBaseLba`, `g_BailScreamIdx`) | Embutido no fim de `SLUS_010.66` (área `.bss` livre) |
 | `0x800E2800..0x800E2FFF` | `2.048 B` | **`MODCODE`** (`1.964 B` usados / `84 B` livres): `BootRand_PlaySlot`, `SkaterVoice_Play`, `Hook_PlaySel_Scroll/Confirm`, `Hook_RunPlaySel` | Carregado no boot a partir do **Setor 0** de `VOICES.DAT` |
 | `0x800E3000..0x800E33FF` | `1.024 B` | **`VOICETBL`** (`magic = 0x564F4943`): `lulaoCount=14`, `bolsoCount=14`, `silvioCount=13 @ +0x3F0`, 41 descritores (até 62 suportados) e índices rotativos `@ +0x3F4..+0x3FC` | Carregado no boot a partir do **Setor 1** (`+0x000..+0x3FF`) de `VOICES.DAT` |
 | `0x800E3400..0x800E35FF` | `512 B` | **`Hook_BailSfx`** (`268 B` usados): rotação estrita round-robin dos **9 gritos de queda** em partida + cooldown anti-sobreposição de 50 frames | Carregado no boot a partir do **Setor 1** (`+0x400..+0x5FF`) de `VOICES.DAT` |
 | `0x800E3600..0x800E37FF` | `512 B` | **`VoiceSelect_Lookup` (`0x800E3600`) & `VoiceSelect_SeedAll` (`0x800E3680`)** (`224 B` usados): dispatcher multi-skatista (Slots `1`, `2` e `3`) | Carregado no boot a partir do **Setor 1** (`+0x600..+0x7FF`) de `VOICES.DAT` |
-| `0x800E3800..0x800E47FF` | `4.096 B` | **`LULAO_CODE`** (`3.788 B` usados / `308 B` livres): `Lulao_SyncStrings`, `Hook_OverlaySyncRun`, `Hook_CollectCash` (deferred flag `<0,0005 ms`), `Hook_EndRun_*`, `Hook_FrameTick`, `Hook_GameplayStart/Exit`, **`LulaoCache_Load/Free`** (`freeList[1]` OOM guard calibrado `>= 48 KB` + fallback garantido `startClip = 0`), tabela de 28 entradas em anel (`LULAO_GPBANK`) e **Streamer SPU 2 KB Ping-Pong via `g_StageBuf` de `1 KB`** (`0x7F400..0x7FBFF` @ `6.890,625 Hz` / `0x0280`, mute+KOFF settle `36 µs` em disparos rápidos) | Carregado no boot a partir dos **Setores 2..3** de `VOICES.DAT` |
-| `0x800E4800..0x800E57FF` | `4.096 B` | **`LULAO_STRDATA`** (`88` pares `{targetPtr, lulaoStrPtr}`, backup runtime de originais em `0x800E4B00..0x800E4C7F` e `1.740 B` de strings ASCII das 8 fases + `"Roubei mais 50!/100!/250!"`) | Carregado no boot a partir dos **Setores 4..5** de `VOICES.DAT` |
+| `0x800E3800..0x800E4FFF` | `6.144 B` | **`LULAO_CODE`** (`5.548 B` usados / `596 B` livres): `Lulao_SyncStrings`, `Hook_OverlaySyncRun`, `Hook_CollectCash`, `Hook_EndRun_*`, `Hook_FrameTick`, `Hook_GameplayStart/Exit`, `Hook_SpawnLetter` (`T-A-X-A-S`), `Hook_CarHitVoice` (Bolsonaro Golf Cart), `Hook_PsxUpload` (Notas Dinâmicas do Lulão), **`LulaoCache_Load/Free`** (reserva adaptativa `48 KB` THPS2 / `80 KB` THPS1 em `freeList[1]` + split dual Lulão/Bolsonaro) e **Streamer SPU 2 KB Ping-Pong Anti-Chiado** (`vLOUT/vROUT = 0` + guarda 60 Hz) | Carregado no boot a partir dos **Setores 2..4** de `VOICES.DAT` |
+| `0x800E5000..0x800E5FFF` | `4.096 B` | **`LULAO_STRDATA`** (`93` pares `{targetPtr, lulaoStrPtr}`, backup runtime de originais e `1.705 B` de strings ASCII das 8 fases + `T-A-X-A-S` + `"Roubei mais 50!/100!/250!"`) | Carregado no boot a partir dos **Setores 5..6** de `VOICES.DAT` |
+| `0x800E6000..0x800EAFFF` | `20.480 B` | **`THPS1_ENGINE` (Motor de 20 Fases Intercaladas):** `g_ExtLevelTable[20]`, `g_DisplayOrderWords`/`g_LoadOrderWords`/`g_SlotOfLevel`, `g_ExtLightTable`, `g_ExtShadowTable`, `g_ExtHighScoreTable`, `g_Thps1Hed[33+1]`, `g_Thps1Strings`, `g_ExtCareer[20 × 100 B]` e **`THPS1_CODE`** (`3.316 B / 4.096 B`, 28 rotinas MIPS incl. `Hook_Car215/216_SetModel` — detalhes completos em [MAPA 14](MAPA_14_THPS1_ARQUIVOS_E_ENGENHARIA_REVERSA.md)!) | Carregado no boot a partir dos **Setores 7..16** de `VOICES.DAT` |
 
 ---
 

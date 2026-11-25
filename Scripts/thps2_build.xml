@@ -65,6 +65,7 @@
       </dir>
       <file name="INTRO.STR" type="str" source="D:\thps2_extract_antigravity\build\staging_raw\INTRO.STR"/>
       <file name="VOICES.DAT" type="data" source="D:\thps2_extract_antigravity\VOICES.DAT"/>
+      <file name="THPS1.WAD" type="data" source="D:\thps2_extract_antigravity\THPS1.WAD"/>
       <dummy sectors="150"/>
     </directory_tree>
   </track>

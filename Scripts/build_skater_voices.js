@@ -414,8 +414,8 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     if (prev.length >= 2048) prev.copy(sec0, 0, 0, 2048);
   }
 
-  // Resident Sectors 2..6 (10240 B = LULAO_CODE @ 0x800E3800 [6144 B] + LULAO_STRDATA @ 0x800E5000 [4096 B])
-  const RESIDENT_EXTRA_SECTORS = 5;
+  // Resident Sectors 2..16 (30720 B = LULAO_CODE [6144 B] + LULAO_STRDATA [4096 B] + THPS1_ENGINE [20480 B])
+  const RESIDENT_EXTRA_SECTORS = 15;
   const RESIDENT_EXTRA_BYTES = RESIDENT_EXTRA_SECTORS * 2048;
 
   const allEntries = [];
@@ -568,6 +568,12 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
   }
 
   const finalBuf = Buffer.concat([sec0, sec1, secExtra, ...payloads]);
+  // Stamp exact VOICES.DAT total sector count into RAM 0x800E96E4 (THPS1.WAD immediately follows VOICES.DAT -> ZERO CdSearchFile at runtime!)
+  const voicesTotalSectors = finalBuf.length / 2048;
+  const thps1OffsetInFile = 2 * 2048 + (0x800E96E4 - 0x800E3800);
+  if (finalBuf.length >= thps1OffsetInFile + 4) {
+    finalBuf.writeUInt32LE(voicesTotalSectors >>> 0, thps1OffsetInFile);
+  }
   fs.writeFileSync(voicesDatPath, finalBuf);
 
   const manifest = {

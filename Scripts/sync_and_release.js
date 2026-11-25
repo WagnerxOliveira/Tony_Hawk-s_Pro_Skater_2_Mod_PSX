@@ -70,9 +70,12 @@ if (!fs.existsSync(patchPath) || !fs.existsSync(manifestPath)) {
 }
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
-// 3. Regenerate all 9 technical Markdown maps
+// 3. Regenerate all technical Markdown maps (MAPA_01..09 + MAPA_14 THPS1)
 console.log('\n=== 3. Regenerando mapas tecnicos em Docs/ ===');
 run('node', [path.join(rootDir, 'tools', 'generate_all_docs.js')]);
+if (fs.existsSync(path.join(rootDir, 'tools', 'generate_thps1_docs.js'))) {
+  run('node', [path.join(rootDir, 'tools', 'generate_thps1_docs.js')]);
+}
 
 // 4. Sync open-source scripts into repo/Scripts/
 console.log('\n=== 4. Sincronizando scripts open-source para repo/Scripts/ ===');
@@ -96,11 +99,15 @@ const scriptsToSync = [
   'mod_lulao_world_assets.js',
   'mod_collectibles_haddad_dilma.js',
   'mod_lulao_collectibles_v2.js',
+  'extract_thps1.js',
+  'port_thps1_levels.js',
+  'thps1_engine_mod.js',
   'build_skater_voices.js',
   'patch_random_videos_and_voices.js',
   'fix_game_errors.js',
   'audit_game.js',
   'generate_all_docs.js',
+  'generate_thps1_docs.js',
   'ghidra_apply_symbols.py',
   'thps2_build.xml',
   'sync_and_release.js',
@@ -331,6 +338,7 @@ const notes = [
   '4. Abra **`THPS2_MOD.cue`** no **DuckStation**, **PCSX-Redux** ou **RetroArch** e jogue!',
   '',
   '### ✨ Destaques do Mod',
+  '- **Todas as 9 Fases de *Tony Hawk\'s Pro Skater 1* (`SLUS-00860`) Integradas e Intercaladas no Modo Carreira do THPS2 (19 Fases Jogáveis + Custom Park!):** *Warehouse*, *School*, *Mall*, *Skate Park Chicago*, *Downtown*, *Downhill Jam*, *Burnside*, *Streets (San Francisco)* e *Roswell* intercaladas uma a uma entre todas as fases do THPS2 (sem remover nenhuma fase!), começando com apenas *The Hangar* liberada e desbloqueando na ordem exata THPS2 ↔ THPS1 (`Hangar → Warehouse → School II → School → Marseille → Mall → ...`), mantendo todos os objetivos originais do THPS1, **2.301 trilhos `.TRG` convertidos** e todas as **moedas giratórias do THPS1 convertidas em notas de `$100` Cash** que somam ao saldo do skatista e compram Stats no Skate Shop! Motor residente MIPS de 20 fases (`0x800E6000..0x800EAFFF`) + `THPS1.WAD` deduplicado (`1,33 MB`, 33 arquivos prioritários) + delta nativo `+0x50 primBufDelta`.',
   '- **Vídeos Aleatórios no Boot com Duração Exata Original (Activision `13,87s` + Neversoft `17,73s` + Intro):** a cada inicialização no DuckStation, 3 vídeos customizados diferentes são sorteados automaticamente entre os 20 vídeos do disco (Setor 60 do Memory Card + timers HW PS1), respeitando a duração exata de cada animação original sem alterar os vídeos de final de carreira.',
   '- **41 Vozes Rotativas na Seleção de Skatistas (`Silvio Santos`, `Lulao` & `Bolsonaro`) + Música Suavizada (`-12 dB`):** 41 áudios exclusivos em SPU-ADPCM hardware (`13` Silvio Santos + `14` Lulao + `14` Bolsonaro em `VOICES.DAT`) tocando na Voz 23 dedicada ao navegar Left/Right e confirmar com **X**, com redução automática da música de fundo para **25%** durante a Seleção de Skatistas e restauração em **100%** nas fases.',
   '- **9 Gritos Alternados de Queda (*Bail*) + Biografias PT-BR Nativas (`á, ã, ç, é, ê, í, ó`):** 9 gritos extraídos injetados em `skate2/2g/2p .VAB/.SFX` (`0 B` extras em SPU RAM) com rotação estrita round-robin (`Hook_BailSfx @ 0x800E3400` + cooldown 50f) e fonte `s2bio.fnt` com glifos acentuados PT-BR para as biografias de Lulao e Bolsonaro.',
@@ -352,7 +360,7 @@ const notes = [
   `| Resultado \`THPS2_MOD.bin\` (Verificado Round-Trip: ${manifest.patch.roundTripVerified ? '✅ SIM' : '⚠️'}) | \`${manifest.patchedBin.sizeBytes}\` B (\`${manifest.patchedBin.sectors}\` setores) | SHA-256 \`${manifest.patchedBin.sha256}\` |`,
   '',
   '### 📚 Para Desenvolvedores / Modders (`THPS2_PSX_Modding_Toolkit_and_Docs.zip`)',
-  '- Inclui toda a enciclopédia técnica (`Docs/MAPA_01..13_*.md` + guias + `CHANGELOG.md` + `HISTORIA_DO_PROJETO_THPS2_MOD.md`) e a suíte completa de scripts Node.js + Ghidra (`Scripts/`).',
+  '- Inclui toda a enciclopédia técnica (`Docs/MAPA_01..14_*.md` incl. enciclopédia forense completa do THPS1 + guias + `CHANGELOG.md` + `HISTORIA_DO_PROJETO_THPS2_MOD.md`) e a suíte completa de scripts Node.js + Ghidra (`Scripts/`).',
   '',
   `> *Última atualização automática: \`${manifest.generatedAt}\` — Distribuição estritamente legal via patch delta (\`.xdelta\`), sem hospedar imagens comerciais completas.*`
 ].join('\n');

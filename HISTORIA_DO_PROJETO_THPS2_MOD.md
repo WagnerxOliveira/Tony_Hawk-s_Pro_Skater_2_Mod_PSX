@@ -327,34 +327,70 @@ Para garantir perfeição de estúdio (e imunidade total em todas as fases, incl
 
 ---
 
-## Capítulo 13 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 13 — A Abertura do *Tony Hawk's Pro Skater 1* (`SLUS-00860`), o Tesouro Escondido no `CD.WAD` e a Fusão das 19 Fases Intercaladas!
+
+Depois de dominar skatistas 3D, fontes PT-BR, coletáveis esculpidos sob medida e o chip SPU do PlayStation 1, chegamos ao maior desafio arquitetural de toda a jornada: **abrir o disco original de *Tony Hawk's Pro Skater 1* (1999, `SLUS-00860`), extrair e catalogar cada arquivo seu em categorias limpas e integrar TODAS as 9 fases clássicas do THPS1 intercaladas dentro do Modo Carreira do THPS2 — sem apagar uma única fase original do THPS2!**
+
+### 1. Abrindo o Disco de 1999 (`EXTRAIDOS_ARQUIVOS_THPS1/`)
+Quando extraímos `Tony Hawk's Pro Skater (USA).bin/.cue` (`SLUS-00860`), descobrimos um contraste delicioso com o THPS2:
+- No THPS1, o índice `CD.HED` (`15.461 B`) ainda guardava **os 669 nomes de arquivos em texto ASCII puro** (sem hash!).
+- Escrevemos [`Scripts/extract_thps1.js`](Scripts/extract_thps1.js) para extrair os **31 arquivos da raiz da ISO**, todos os **669 arquivos do `CD.WAD` (26,63 MB)** e todos os **58 sub-arquivos desempacotados dos 6 pacotes `.PRE`**, organizando tudo automaticamente em **9 categorias / 25 subpastas** dentro de `EXTRAIDOS_ARQUIVOS_THPS1/` e documentando cada byte em [`Docs/MAPA_14_THPS1_ARQUIVOS_E_ENGENHARIA_REVERSA.md`](Docs/MAPA_14_THPS1_ARQUIVOS_E_ENGENHARIA_REVERSA.md) (`160 KB`!).
+
+### 2. A Descoberta Arqueológica em `CD.WAD[1127..1183]` (Economizando 7,7 MB!)
+Antes de sair copiando cegamente os 9 MB de geometria `.PSX` do THPS1 para o disco do THPS2, fizemos um cruzamento binário completo contra o `originals_backup/CD.WAD` do THPS2 — e encontramos um verdadeiro **fóssil da Neversoft**:
+- **A própria Neversoft deixou resquícios das 9 fases do THPS1 dentro de `CD.WAD[1127..1183]` do THPS2 comercial** (usados como bancos de teste durante o desenvolvimento do THPS2)!
+- **43 arquivos `.PSX` eram 100% idênticos bit-a-bit ao THPS1 USA**, enquanto **todos os 9 `.TRG` estavam sem conversão** (ainda no formato incompatível do THPS1), 4 `.PSX` diferiam (`skware*`, `skschl.psx`), `skvans_t.psx` faltava e `c_cable.psx` tinha apenas 1 textura placeholder em vez das 11 texturas do bonde de San Francisco!
+- **A sacada cirúrgica (`Scripts/port_thps1_levels.js` + `THPS1.WAD`):** deduplicamos os 43 `.PSX` idênticos e empacotamos **apenas os 33 arquivos novos ou divergentes** (18 BMPs de Level Select no início + 9 `.TRG` convertidos + 4 `.PSX` divergentes + `skvans_t.psx` + `c_cabl1.psx`) em um único arquivo compacto **`THPS1.WAD` (`1,33 MB` / `683` setores)**, adicionado como o **50º arquivo da ISO** logo após `VOICES.DAT` (**0 setores deslocados nos 48 arquivos Redump!**). No executável, `Hook_CdWadFallback @ 0x80054190` consulta primeiro `g_Thps1Hed` (calculando o LBA via `g_VoicesBaseLba + 1174`, **zero `CdSearchFile` em runtime!**) garantindo prioridade absoluta aos nossos `.TRG` convertidos sobre as sobras antigas da Neversoft!
+
+### 3. Convertendo 2.301 Trilhos & Transformando Todas as Moedas do THPS1 em Notas de `$100` Cash para Comprar Stats!
+Por que uma fase do THPS1 não funciona simplesmente "jogando o `.TRG` dentro do THPS2"? Por duas incompatibilidades binárias sutis que resolvemos automaticamente em [`Scripts/port_thps1_levels.js`](Scripts/port_thps1_levels.js):
+1. **Os 8 Bytes Extras dos Trilhos (`Type 10/11`):** no THPS1, cada nó de corrimão/borda (*grind*) termina com `angles[3]` (`6 B`) + sentinela `0xFFFF` (`2 B`), que o THPS2 eliminou. Nosso conversor reescreve **2.301 / 2.301 trilhos** mantendo o alinhamento absoluto de 4 bytes de cada nó subsequente no arquivo!
+2. **Moedas Giratórias (`21/22/23`) → Notas de `$100` Cash (`26`) Compráveis no Skate Shop:** desmontando `PowerUp_Spawn @ 0x8004BA5C` e `Career_GetCashBitIndex @ 0x80024E4C`, provamos que o THPS2 lê o **byte baixo** (`26 = $100 Cash`) para gerar o objeto e o **byte alto** (`coinIdx = 0..63`) como índice de persistência. Ao converter todos os **68 nós de moedas do THPS1 (`64` ativas em `AutoExec` = `$6.400`)** para `((coinIdx << 8) | 26)`, toda moeda do THPS1 vira uma nota de **`$100`** nativa do THPS2 — inclusive estampada com o rosto do Lulão e gritando **`"ROUBEI MAIS 100!"`** quando jogando com o Lulão —, somando direto em `totalCashEarned` e `currentCashSpendable` para **comprar Stats, Manobras e Shapes no Skate Shop junto com o dinheiro do THPS2!**
+
+### 4. Expandindo o Motor do THPS2 de 11 para 20 Fases Intercaladas (`Scripts/thps1_engine_mod.js`)
+O executável original do THPS2 foi compilado com o limite fixo de 11 fases (`0..10`) espalhado por dezenas de rotinas e overlays. Para expandir para **19 fases jogáveis intercaladas (`Hangar → Warehouse → School II → School → Marseille → Mall → NY City → Skate Park Chicago → Venice Beach → Downtown → SkateStreet → Downhill Jam → Philadelphia → Burnside → The Bullring → Streets SF → Chopper Drop → Roswell → Skate Heaven`) + Custom Park**:
+- **Arena Residente de 20 Fases (`0x800E6000..0x800EAFFF`, `VOICES.DAT` Setores `7..16`, `NewHeapStart = 0x800EB000`):** alocamos `g_ExtLevelTable[20]`, `g_ExtLightTable[20]`, `g_ExtShadowTable[20]`, `g_ExtHighScoreTable[20]` (com 6 hooks seguros mantendo `0..10` nativos para Memory Card!), `g_ExtCareer[20 × 100 B]` (progresso completo dos 20 skatistas nas 9 fases THPS1) e **28 rotinas MIPS** (`THPS1_CODE`, `3.316 B / 4.096 B`).
+- **Relocação Cirúrgica de 91 Referências `g_LevelTable`:** varredura retroativa automática de até 300 instruções relocou **70/70 referências em `SLUS_010.66`** (incluindo os 3 usos de longo alcance via `$s5`), **13/13 em `levelsel.bin` (+ `levelsel.pre + 0x18`)** e **8/8 em `options.bin`**.
+- **Padrão Oficial do THPS2 na Seleção de Fases & Carreira:** todas as 19 fases começam bloqueadas exceto *The Hangar*, desbloqueando progressivamente por dinheiro e medalhas; o carrossel exibe 40 bitmaps carregados em **apenas 2 seeks de laser** (`g_LoadOrderWords` + BMPs contíguos no início de `THPS1.WAD`); cada fase regular do THPS1 mostra **exatamente seus 5 objetivos originais** (`GoalListLoopCheck @ 0x80025EE4` + `ShowGoalsBtn @ 0x8002D900`).
+
+### 5. Três Grandes Mistérios de Hardware e Engine do PS1 Caçados e Resolvidos Ao Vivo no DuckStation!
+O teste automatizado ao vivo em todas as 9 fases no DuckStation provou mais uma vez seu valor incalculável, revelando dois limites reais dos **2 MB de RAM do PS1** e uma diferença histórica escondida na fábrica de veículos `CCar`:
+1. **O Crash Oculto de 96 KB ao Ficar 3 Segundos no Level Select (`levelsel.bin +0x2F7C`):** ao expandir o carrossel de 11 para 20 fases (40 bitmaps em `Heap[1]`), permanecer mais de 3 segundos sobre *The Hangar* disparava `Movie_AllocBuffers (0x8007AE70)` pedindo `96 KB` para o mini-vídeo preview enquanto `Heap[1]` tinha `80,8 KB` livres (`-15,2 KB` → Tela Vermelha OOM!). Um único patch de 1 instrução (`beq → b` em `levelsel.bin +0x2F7C`) eliminou o OOM para sempre e padronizou os renders estáticos nítidos em todas as 19 fases!
+2. **O Segredo Oficial da Neversoft em `g_LevelTable + 0x50` (`0x80050118`) que Salvou *School* (`471 KB`) e Todas as Fases Pesadas:** *School* (`skschl.psx = 471 KB`, `+56 KB` maior que *School II*!) falhava por apenas `17,3 KB` ao carregar `tricks.bin` (`34,8 KB`). Ao fazer o raio-X completo de `Heap[1]` ao vivo no GDB e desmontar `0x80050118`, descobrimos o **campo nativo assinado `primBufDelta` em `g_LevelTable[lv] + 0x50`** que a própria Neversoft usava em *School II* (`-20000`), *NY City* (`-22000`) e *Philadelphia* (`-20000`) para ajustar o buffer duplo de polígonos da GPU (`2 × delta`)! Calibrando `+0x50` para as fases mais densas do THPS1 (`-36000` em *School*/*Downtown* = **`+72 KB` livres em `Heap[1]`!**; `-34000` em *Downhill Jam*/*Streets SF*; `-28000` em *Mall*; `-20000` em *Roswell*) + reserva adaptativa de `80 KB` em `LulaoCache_Load`, *School*, *Mall*, *Chicago*, *Downtown*, *Downhill Jam*, *Burnside* e *Roswell* rodaram lisas a 60 FPS!
+3. **A Colisão Histórica dos Veículos `215` e `216` em *Streets SF* (`CCar::CCar @ 0x80061A50`):** ao testar *Streets (San Francisco)* no GDB, capturamos uma exceção MIPS `AdEL` (`bad = 0x0000000B`) exatamente em `M3dAsm_RenderObject @ 0x80094E50`. Cruzando o binário original do THPS1 (`SLUS_008.60 @ 0x8006B4F8`) com o THPS2 (`SLUS_010.66 @ 0x800B41B8`), descobrimos a causa exata: no THPS1, o Baddy subtipo **`215`** era a van (`c_van`) e **`216`** era o bonde de San Francisco (`c_cable`), mas no THPS2 a Neversoft reutilizou `215` para o ônibus escolar (`c_bus`) e `216` para o metrô de Nova Iorque (`c_cable`). Adicionando dois micro-hooks de 10 instruções (`Hook_Car215_SetModel @ 0x80061A58` → `"c_van"` e `Hook_Car216_SetModel @ 0x80061A70` → `"c_cabl1"`, ativos somente quando `g_CurrentLevel >= 11`!), *Streets SF* ganhou tanto a van original quanto o bonde de 11 texturas — sem afetar um único bit de *School II* ou *NY City*! **Resultado final: 9 de 9 fases do THPS1 + regressão do Hangar 100% comprovadas ao vivo em 3D no DuckStation!**
+
+---
+
+## Capítulo 14 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
     subgraph RAM["🧠 Mapa da Main RAM do PS1 (2 MB: 0x80000000..0x801FFFFF)"]
         K["0x80000000..0x8000FFFF — Kernel BIOS PS1"]
-        E["0x80010000..0x800E267F — SLUS_010.66<br/>40 Hooks MIPS + 217 Strings + 5 Words PT-BR Font"]
-        B["0x800E2680..0x800E27FF — Mod_BootInit & Trampolins"]
+        E["0x80010000..0x800E267F — SLUS_010.66<br/>248 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font"]
+        B["0x800E2680..0x800E27FF — Mod_BootInit (17 set.) & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
-        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache + Streamer SPU 2 KB Anti-Chiado vLOUT/vROUT + SpawnLetter + CarHitVoice + PsxUpload)"]
+        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache 48/80KB + Streamer SPU 2 KB Anti-Chiado vLOUT/vROUT + SpawnLetter + CarHitVoice + PsxUpload)"]
         S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Vento Estocado + Diploma no Buteco + Roubei)"]
-        H["0x800E6000..0x801FFFFF — Heap Dinâmica THPS2 + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK (48 KB reserva)"]
+        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] + g_ExtCareer[20] + g_ExtHighScoreTable + g_Thps1Hed + THPS1_CODE 28 rotinas)"]
+        H["0x800EB000..0x801FFFFF — Heap Dinâmica THPS2 (~1,10 MB) + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK"]
     end
-    K --> E --> B --> M --> L --> S --> H
+    K --> E --> B --> M --> L --> S --> T --> H
 ```
 
 ### Placar Técnico Consolidado do Projeto
 
 | Dimensão | Quantidade / Métrica Verificada |
 | :--- | :--- |
-| **Integridade da ISO Compilada** | **319.207 / 319.207 setores** (`716,0 MB`) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
+| **Integridade da ISO Compilada** | **319.900 / 319.900 setores** (`717,5 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
 | **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.531 entradas** |
-| **Hooks MIPS R3000A Cirúrgicos** | **40 hooks** em `SLUS_010.66` + **2 hooks** em `playsel.bin` + **7 setores residentes** em `VOICES.DAT` (`1.164` setores) |
+| **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo** com objetivos originais, **2.301 trilhos** convertidos e **68 nós de moedas → `$100` Cash** para Stats!) + Custom Park |
+| **Hooks & Relocações MIPS R3000A** | **248 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` + `levelsel.bin`/`levelsel.pre` + `options.bin` + **17 setores residentes** em `VOICES.DAT` (`1.174` set.) + **`THPS1.WAD`** (`1,33 MB`, 33 arquivos prioritários) |
 | **Skatistas Personalizados** | **7 skatistas** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan*) = **28 modelos `.PSX` + 7 retratos `s2face*.bmp`** |
 | **Mundo 3D & Coletáveis Customizados** | Letra 3D **`X`** (`T-A-X-A-S` dinâmico) + **Barris 51 Frente / Lulão Atrás** + **Notas Dinâmicas do Lulão (`$50/$100/$250`)** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D** & **5 Pacotes Vento Estocado 3D** & **Carrinho de Golfe com Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) |
 | **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
-| **Idioma & Fonte** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Modo Carreira do Lulão |
+| **Idioma, Fonte & Documentação** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Lulão + **14 Mapas Técnicos** (incl. enciclopédia completa de 669 arquivos do THPS1 em `MAPA_14`) |
 
 ---
 
@@ -370,8 +406,10 @@ flowchart TB
 - **GTE (*Geometry Transformation Engine*)**: coprocessador 3D do PS1 que projeta triângulos e quads na tela e descarta faces viradas para trás (*back-face culling* via `NCLIP`).
 - **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo (como estampar o rosto do Lulão nas notas ou tocar uma fala do Bolsonaro ao atropelar) e devolve o controle perfeitamente ao jogo original.
 - **Patch `.xdelta`**: arquivo de diferença binária que transforma legalmente a cópia original do usuário no mod completo sem distribuir arquivos comerciais protegidos.
+- **`THPS1.WAD` & `Hook_CdWadFallback`**: 50º arquivo da ISO (`1,33 MB`, 33 ativos prioritários) consultado antes do `CD.HED` original para sobrepor os `.TRG` convertidos do THPS1 e o bonde `c_cabl1.psx` sobre as sobras antigas da Neversoft, deduplicando 43 `.PSX` já idênticos no disco do THPS2.
+- **`primBufDelta` (`g_LevelTable + 0x50`)**: campo nativo assinado da engine Neversoft (`0x80050118`) que ajusta o tamanho do buffer duplo de pacotes GPU por fase (`2 × delta` bytes em `Heap[1]`), permitindo que fases densas do THPS1 (como *School* `471 KB` e *Downtown*) convivam confortavelmente na RAM de 2 MB do PS1.
 
 ---
 
 > 🛠️ **Quer explorar os detalhes técnicos de cada endereço RAM ou rodar os scripts?**
-> Comece pelo **[README.md](README.md)**, navegue pelos 13 mapas da enciclopédia em **[`Docs/`](Docs/)** e veja todos os scripts open-source em **[`Scripts/`](Scripts/)**.
+> Comece pelo **[README.md](README.md)**, navegue pelos **14 mapas** da enciclopédia em **[`Docs/`](Docs/)** (incluindo o novo **[MAPA 14 — Enciclopédia Forense do THPS1](Docs/MAPA_14_THPS1_ARQUIVOS_E_ENGENHARIA_REVERSA.md)**) e veja todos os scripts open-source em **[`Scripts/`](Scripts/)**.

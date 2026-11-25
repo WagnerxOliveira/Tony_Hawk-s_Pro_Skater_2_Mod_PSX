@@ -297,6 +297,9 @@ function generateMkpsxisoXml(rootDir, stagingRawDir, outXmlPath, outBinPath, out
     ...(fs.existsSync(path.join(rootDir, 'VOICES.DAT'))
       ? [`      <file name="VOICES.DAT" type="data" source="${dataRef('VOICES.DAT')}"/>`]
       : []),
+    ...(fs.existsSync(path.join(rootDir, 'THPS1.WAD'))
+      ? [`      <file name="THPS1.WAD" type="data" source="${dataRef('THPS1.WAD')}"/>`]
+      : []),
     '      <dummy sectors="150"/>',
     '    </directory_tree>',
     '  </track>',

@@ -33,6 +33,7 @@
 const fs = require('fs');
 const path = require('path');
 const { buildVoicesBank } = require('./build_skater_voices');
+const { THPS1_ADDR, buildThps1ResidentBlock, applyThps1EnginePatches } = require('./thps1_engine_mod');
 
 const rootDir = path.resolve(__dirname, '..');
 const slusPath = path.join(rootDir, 'SLUS_010.66');
@@ -86,16 +87,16 @@ const SYM = {
   NewCardAck:             0x800A8EF4,
   _card_read:             0x800AF1F0,
   _card_write:            0x800A9CF4,
-  g_LevelTable:           0x800B8444, // 11 levels, stride 0x174, goals @ +0x90 (stride 24), short @ +0x88
+  g_LevelTable:           0x800E6000, // Relocated 20-entry g_ExtLevelTable (0..10 THPS2 + 11..19 THPS1!), stride 0x174
   g_PsxBanks:             0x800BF434, // 20 PSX bank structs, stride 64 B (+0=name, +20=psxBuf)
   g_MovieTable:           0x800C1CB4, // stride 36 bytes, +14 = uint16 num_frames
   g_Career:               0x800C2958,
 };
 
-// Fixed Mod RAM Addresses (reserved below heap 0x800E6000 = 7 resident sectors from VOICES.DAT!)
+// Fixed Mod RAM Addresses (reserved below heap 0x800EB000 = 17 resident sectors from VOICES.DAT!)
 const ADDR = {
   HeapStartPtr:        0x800E2674,
-  NewHeapStart:        0x800E6000,
+  NewHeapStart:        0x800EB000,
   Mod_BootInit:        0x800E2680,
   Tramp_BootMovie:     0x800E2734,
   Tramp_PlaySelScroll: 0x800E2744,
@@ -365,8 +366,8 @@ function assembleSlusTailCompact() {
   a.jal(SYM.CdControl);
   a.move(R.a2, R.zero);
 
-  // CdRead(7 sectors, 0x800E2800, 0x80) -> loads MODCODE (Sec0), VOICETBL+Sec1 (Sec1), LULAO_CODE (Sec2..4), LULAO_STRDATA (Sec5..6)
-  a.addiu(R.a0, R.zero, 7);
+  // CdRead(17 sectors, 0x800E2800, 0x80) -> loads MODCODE (Sec0), VOICETBL+Sec1 (Sec1), LULAO_CODE (Sec2..4), LULAO_STRDATA (Sec5..6), THPS1_ENGINE (Sec7..16)
+  a.addiu(R.a0, R.zero, 17);
   a.addiu(R.a1, R.s0, ADDR.ModCodeBase & 0xffff);
   a.jal(SYM.CdRead);
   a.addiu(R.a2, R.zero, 0x80);
@@ -1952,13 +1953,23 @@ function assembleLulaoEngine(gpMeta) {
   a.move(R.s0, R.t1);
 
   a.label('lcl_fl_done');
-  // Require largestFree >= 49152 (48 KB safety reserve) + 8192 (min cache) = 57344 B!
-  a.li(R.t0, 57344);
+  // Adaptive Heap[1] safety reserve:
+  //   - THPS2 levels (0..10): 48 KB (49,152 B) -> empirically verified across all 10 THPS2 levels (MaxDelta=34.3 KB)
+  //   - THPS1 levels (11..19): 80 KB (81,920 B) -> covers large THPS1 levels (School/Downtown/SF) + 34 KB post-init allocs!
+  a.li(R.t2, 49152);
+  a.lw(R.t0, 14980, R.gp);               // g_CurrentLevel @ gp+14980
+  a.nop();
+  a.sltiu(R.t1, R.t0, 11);
+  a.bne(R.t1, R.zero, 'lcl_have_res');
+  a.nop();
+  a.li(R.t2, 81920);                     // 80 KB safety reserve for THPS1 levels (11..19)
+  a.label('lcl_have_res');
+  // Require largestFree >= reserve + 8192 (min cache)
+  a.addiu(R.t0, R.t2, 8192);
   a.sltu(R.t1, R.s0, R.t0);
   a.bne(R.t1, R.zero, 'lcl_ret');
   a.nop();
-  a.li(R.t0, 49152);
-  a.subu(R.s0, R.s0, R.t0);              // s0 = total usable bytes (excl. 48 KB safety reserve)
+  a.subu(R.s0, R.s0, R.t2);              // s0 = total usable bytes (excl. safety reserve)
   a.addiu(R.s0, R.s0, -1024);            // reserve 1024 B for g_StageBuf!
   a.li(R.t1, 0xFFFFF800);
   a.and(R.s0, R.s0, R.t1);               // s0 = total audio budget (multiple of 2048 B!)
@@ -3061,11 +3072,12 @@ function applyAll() {
     }
   }
 
-  // 1. Assemble resident SLUS tail, MODCODE, Hook_BailSfx & Lulao Career strings
+  // 1. Assemble resident SLUS tail, MODCODE, Hook_BailSfx, Lulao Career strings & THPS1 Engine Block (24 KB)
   const slusTail = assembleSlusTailCompact();
   const modCode = assembleModCode();
   const bailHookCode = assembleBailHookCode();
   const { buf: lulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
+  const { block: thps1Block } = buildThps1ResidentBlock();
 
   // 2. Build/update VOICES.DAT (41 menu clips @ 11025 Hz + ring-doubled LULAO_GPBANK @ 6890.625 Hz)
   //    and assemble LULAO_CODE with the exact finalized GPBANK startSector & 28-entry ring table!
@@ -3076,11 +3088,11 @@ function applyAll() {
     const built = assembleLulaoEngine(gpMeta);
     lulaoCode = built.buf;
     lulaoLabels = built.labels;
-    return Buffer.concat([lulaoCode, lulaoStrData]); // 10240 B (Sectors 2..6)
+    return Buffer.concat([lulaoCode, lulaoStrData, thps1Block]); // 34816 B (Sectors 2..18)
   });
 
   // 3. Patch SLUS_010.66 (exact same file size 864,256 B!)
-  console.log('\n=== Aplicando 33 Hooks Cirurgicos + Fix School II G6 em SLUS_010.66 ===');
+  console.log('\n=== Aplicando 33 Hooks Cirurgicos + Fix School II G6 + Motor THPS1 em SLUS_010.66 ===');
   const slus = fs.readFileSync(slusPath);
   const ramToOff = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
 
@@ -3089,8 +3101,9 @@ function applyAll() {
   patchWord(slus, ramToOff(0x800D50F8), 0x74756843, 0x6B63694B,                   'Fix School II G6 "Kick" @ 0x800D50F8');
   patchWord(slus, ramToOff(0x800D50FC), 0x6F686E69, 0x70696C66,                   'Fix School II G6 "flip" @ 0x800D50FC');
 
-  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000, 0x800E5800]);
-  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x24846000,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000, 0x24845800]);
+  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000, 0x800E5800, 0x800E6000, 0x800EC000]);
+  patchWord(slus, ramToOff(0x800A294C), 0x3C04800E, 0x3C04800F,                   'InitHeap lui @ 0x800A294C');
+  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x2484B000,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000, 0x24845800, 0x24846000, 0x2484C000]);
   patchWord(slus, ramToOff(0x80053690), 0x28620018, 0x28620017,                   'Reserve SPU Voice 23 @ 0x80053690');
   patchWord(slus, ramToOff(0x800527B8), jalWord(SYM.SFX_FindGlobal),      jalWord(ADDR.Tramp_BailSfx),        'Hook SFX_Play Bail Round-Robin @ 0x800527B8');
   patchWord(slus, ramToOff(0x8006CAD4), jalWord(SYM.Movies_Init),         jalWord(ADDR.Mod_BootInit),         'Hook Movies_Init @ 0x8006CAD4');
@@ -3125,8 +3138,6 @@ function applyAll() {
   }
 
   slusTail.copy(slus, ramToOff(ADDR.Mod_BootInit));
-  fs.writeFileSync(slusPath, slus);
-  console.log(`  [OK] SLUS_010.66 gravado (${slus.length} B — tamanho 100% preservado!)`);
 
   // 4. Patch playsel.bin inside CD.WAD (entry 61, verified offset via CD.HED!)
   console.log('\n=== Aplicando Hooks Cirurgicos em playsel.bin (CD.WAD idx=61) ===');
@@ -3140,6 +3151,12 @@ function applyAll() {
   const wad = fs.readFileSync(wadPath);
   patchWord(wad, playselOff + 0x3388, jalWord(SYM.GetSelectedSkaterIdx), jalWord(ADDR.Tramp_PlaySelScroll),  'playsel.bin Scroll  +0x3388', [jalWord(0x800E2780)]);
   patchWord(wad, playselOff + 0x100C, jalWord(SYM.SFX_Play),             jalWord(ADDR.Tramp_PlaySelConfirm), 'playsel.bin Confirm +0x100C', [jalWord(0x800E27A8)]);
+
+  // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin)
+  applyThps1EnginePatches(slus, wad, hed);
+
+  fs.writeFileSync(slusPath, slus);
+  console.log(`  [OK] SLUS_010.66 gravado (${slus.length} B — tamanho 100% preservado!)`);
   fs.writeFileSync(wadPath, wad);
   console.log(`  [OK] CD.WAD gravado (${wad.length} B — todos os offsets 100% preservados!)`);
 

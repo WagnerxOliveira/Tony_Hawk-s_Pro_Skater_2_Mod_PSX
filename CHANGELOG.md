@@ -4,7 +4,25 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 
 ---
 
-## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório & Enciclopédia v2
+## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório, Integração das 9 Fases do THPS1 & Enciclopédia v2
+
+### 🏛️ Extração Completa do THPS1 (`SLUS-00860`) & Integração Intercalada das 9 Fases no Modo Carreira do THPS2 (`Scripts/extract_thps1.js`, `port_thps1_levels.js`, `thps1_engine_mod.js` & `MAPA_14`)
+- **Extração & Categorização Integral de *Tony Hawk's Pro Skater 1 (USA / `SLUS-00860`)* (`EXTRAIDOS_ARQUIVOS_THPS1/`):**
+  - Extraídos e catalogados com SHA-256 todos os **31 arquivos da raiz da ISO** (`01_ISO_Raiz/`), todos os **669 arquivos do `CD.WAD`** (resolvendo 100% dos nomes reais a partir do `CD.HED` plaintext de 1999) e todos os **58 sub-arquivos desempacotados dos 6 pacotes `.PRE`**, organizados em **9 categorias / 25 subpastas**.
+- **Descoberta Arqueológica em `CD.WAD[1127..1183]` & `THPS1.WAD` Deduplicado (`1,33 MB`, 683 setores, 50º arquivo da ISO):**
+  - Identificados 43 `.PSX` 100% idênticos bit-a-bit ao THPS1 USA deixados pela própria Neversoft dentro do `CD.WAD` retail do THPS2 (`[1127..1183]`), enquanto os 9 `.TRG` originais estavam sem conversão, 4 `.PSX` divergiam e `skvans_t.psx` / `c_cabl1.psx` (bonde de San Francisco com 11 texturas) estavam ausentes.
+  - Empacotados em **`THPS1.WAD`** apenas os **33 arquivos novos/prioritários** (18 BMPs de Level Select contíguos no início + 9 `.TRG` convertidos + 4 `.PSX` divergentes + `skvans_t.psx` + `c_cabl1.psx`), economizando ~7,7 MB na ISO e no `.xdelta`, preservando **48/48 LBAs Redump intactos** e usando **zero `CdSearchFile` em runtime** (`thps1BaseLba = g_VoicesBaseLba + g_VoicesTotalSectors`).
+- **Conversão Cirúrgica `.TRG v2.0` (`Scripts/port_thps1_levels.js`):**
+  - **2.301 / 2.301 trilhos (`Type 10/11`)** convertidos (removendo os 6 B de `Angles` + `0xFFFF` do THPS1 preservando alinhamento absoluto de 4 B).
+  - **68 / 68 nós de moedas giratórias (`Type 5`, subtipos `21/22/23` — 64 ativas em `AutoExec` = `$6.400`)** convertidos em **notas de `$100` Cash nativas do THPS2 (`((coinIdx << 8) | 26)`)**, somando diretamente ao saldo da Carreira (`totalCashEarned` & `currentCashSpendable`), exibindo rosto do Lulão + `"Roubei mais 100!"` e comprando **Stats, Manobras e Shapes** no Skate Shop junto com o dinheiro do THPS2!
+- **Motor Residente MIPS de 20 Fases (`0x800E6000..0x800EAFFF`, `NewHeapStart = 0x800EB000`, `17` setores residentes em `VOICES.DAT`):**
+  - Relocadas **70/70 referências `g_LevelTable` em `SLUS_010.66`**, **13/13 em `levelsel.bin` (+ `levelsel.pre + 0x18`)** e **8/8 em `options.bin`** para `g_ExtLevelTable[20]`.
+  - **Progressão Intercalada 19 Fases + Custom Park:** apenas *The Hangar* inicia aberta (`$0`), desbloqueando alternadamente THPS2 ↔ THPS1 (*Hangar → Warehouse → School II → School → Marseille → Mall → NY City → Skate Park Chicago → Venice Beach → Downtown → SkateStreet → Downhill Jam → Philadelphia → Burnside → The Bullring → Streets SF → Chopper Drop → Roswell → Skate Heaven*), mantendo **todos os objetivos originais do THPS1** (5 metas por fase regular via `GoalListLoopCheck` + medalhas nas 3 competições), progresso isolado em `g_ExtCareer[20 × 100 B]`, recordes em `g_ExtHighScoreTable` (6 hooks seguros) e carregamento rápido em 2 seeks (`g_LoadOrderWords`).
+  - **Três Descobertas Críticas de Memória e Engine PS1 Resolvidas ao Vivo no DuckStation:**
+    1. **Anti-OOM em `levelsel.bin +0x2F7C`:** desativada a alocação de `96 KB` do vídeo preview no Level Select (`beq → b`) que causaria OOM em `Heap[1]` ao permanecer >3s sobre uma fase THPS2 com 40 bitmaps carregados.
+    2. **Delta Nativo Neversoft `+0x50 primBufDelta` (`0x80050118`):** calibrado o campo nativo por fase (`-36000` em *School* / *Downtown*, `-34000` em *Downhill Jam* / *Streets SF*, `-28000` em *Mall*, `-20000` em *Roswell*, `-8000` em *Chicago* / *Burnside*) liberando até `+72 KB` em `Heap[1]` para as fases mais densas do THPS1 + reserva adaptativa de `80 KB` em `LulaoCache_Load` para `level >= 11`.
+    3. **Despacho Cirúrgico de Veículos de *Streets SF* (`Hook_Car215_SetModel @ 0x80061A58 → c_van` & `Hook_Car216_SetModel @ 0x80061A70 → c_cabl1`):** resolve a colisão histórica de subtipos de `CCar` entre THPS1 (`215 = c_van`, `216 = c_cable`) e THPS2 (`215 = c_bus`, `216 = c_cable` metrô NY), mantendo *School II* e *NY City* 100% intactos e validando **9/9 fases do THPS1 + regressão do Hangar em 3D real no DuckStation!**
+- **Enciclopédia Forense do THPS1 & Auditoria 10/10:** criada [`Docs/MAPA_14_THPS1_ARQUIVOS_E_ENGENHARIA_REVERSA.md`](Docs/MAPA_14_THPS1_ARQUIVOS_E_ENGENHARIA_REVERSA.md) (`161 KB`, todos os 31 ISO + 669 `CD.WAD` + 58 `.PRE` catalogados), expandida [`HISTORIA_DO_PROJETO_THPS2_MOD.md`](HISTORIA_DO_PROJETO_THPS2_MOD.md) e atualizada `Scripts/audit_game.js` (**248/248 hooks/relocs + `THPS1.WAD` + 319.900/319.900 setores — 0 erros, 0 avisos**).
 
 ### 🔇 Eliminação Definitiva do "Chiado" no Fundo das Falas em Gameplay (`vLOUT/vROUT` Hardware SPU Mute + Cadeia DSP `afftdn`/Kaiser-Sinc)
 - **Causa Raiz Hardware PS1 Provada ao Vivo no DuckStation (WASAPI Loopback 48 kHz + FFT):**
