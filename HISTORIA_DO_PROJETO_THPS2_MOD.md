@@ -829,7 +829,7 @@ flowchart TB
 
 | Dimensão | Quantidade / Métrica Verificada |
 | :--- | :--- |
-| **Integridade da ISO Compilada** | **319.783 / 319.783 setores** (`717,3 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
+| **Integridade da ISO Compilada** | **319.798 / 319.798 setores** (`717,3 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
 | **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.472 entradas THPS2** (`[0..1126]` & `[1186..1530]`, incl. `tricks.bin` / `panel.pre` / `tricksel.pre` nos mesmos setores!) + zona fechada THPS1 `[1127..1185]` exata (`4.577/4.577` setores, `Delta = 0`, `0` overlap) |
 | **Novo Personagem Adicional (`Slot 20`)** | ***Crash Bandicoot* (`Crash B.`, 21º Skatista — 0 skatistas excluídos!):** remodelado fielmente a `crashl/m/n.png` a partir da malha `CR10G` (305v/574t, sorriso aberto, perfil volumoso, brilho dorsal dourado, atlas semântico `128×64` zero-bleed) em Style A/B (`crash.psx` / `crashb.psx` **`57.276 B <= 67.584 B`**), retrato sorridente `s2face20.bmp`, Bio PT-BR, **moveset Bob Burnquist + especial Rodney Mullen (`Casper to 360 Flip`, ID `73`)**, **8 shapes Skate Shop Crash 3 (`s2dCR01c..08c` + `s2gCR01c..08c`)** com `g_CrashDeckShadow`, **coletáveis 3D (`$50` Manga Wumpa / `$100` Cristal / `$250` Diamante + `C-R-A-S-H` / TNT / Aku Aku / Uka Uka) & 12 SFX autênticos do Crash 3 Zero-Stall (`CRASH_SFXBANK` `30 KB` @ `11.025 Hz`)** alojados a **custo ZERO de Heap** |
