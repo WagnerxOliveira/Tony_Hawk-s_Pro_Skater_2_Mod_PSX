@@ -753,7 +753,61 @@ Na bateria E2E ao vivo no DuckStation com **0 erros críticos**:
 
 ---
 
-## Capítulo 19 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 19 — A Remodelagem Fiel do Crash B., Coletáveis Wumpa/Cristal/Diamante e Áudio Autêntico do Crash 3 Zero-Stall
+
+Com o **Slot 20 (`Crash B.`)** rodando liso em todas as 19 fases, chegava a hora de elevar a fidelidade visual e sonora dele ao nível máximo de acabamento: remodelar o corpo 3D do zero fiel às três fotos de referência fornecidas (`crashl.png` frente, `crashm.png` perfil lateral e `crashn.png` costas), transformar as três faixas de dinheiro (`$50`, `$100` e `$250`) em coletáveis icônicos do *Crash 3* exclusivos para ele, e dar vida sonora autêntica ao personagem — som do **Aku Aku** no Hangar, sons de **Wumpa / Cristal / Diamante** ao pegar dinheiro e **8 sons aleatórios diferentes do Crash caindo** a cada bail, tudo com **zero travamento e zero chiado**.
+
+### 1. Diagnóstico Forense do Modelo Antigo e Reconstrução Anatômica Fiel (`Scripts/mod_skater_crash.js`)
+
+Ao desmontar `Skater_AttachAnim (0x800340EC)` e o avaliador `TAG 0x2C (0x80027F84..0x80028338)` no `SLUS_010.66`, descobrimos exatamente por que o primeiro rascunho parecia distorcido:
+1. Em tempo de execução, **`sk2anim.psx` sobrescreve as translações dos 19 pivôs de osso** (`sola Y=+315`, `joelho=-496`, `pelve=-1344`, `cotovelo=-1664`, `punho=-1104`, `cabeça=-2496`). Qualquer peça rígida colada fora desse campo de pivôs sofria estiramento ("efeito Slenderman") e solas flutuando acima do shape.
+2. O atlas anterior espremia um mapa `512×512` inteiro em `96×96`, gerando sangramento de UV (olhos borrados, boca sem dentes, costas sem o brilho dourado característico).
+
+A solução foi uma reconstrução matemática completa a partir da topologia mestre autêntica `CR10G` da Naughty Dog (**305 vértices / 574 triângulos**, sendo `521` com cores por vértice + `53` texturizados):
+- **Sorriso Icônico de `crashl.png` (`buildUnfoldedCr10gPositions`):** desdobramos a grade `4×5` comprimida de vértices da boca/dentes (`verts 78..85, 149..165`) da própria malha `CR10G` no sorriso largo, branco e travesso das referências, com olhos brancos simétricos, pupilas redondas pretas nítidas e sobrancelhas escuras grossas.
+- **Campo de Deformação Contínuo $C^0$ (`buildRetargetedCrashParts`):** todos os 305 vértices atravessam um único campo contínuo alinhado aos pivôs reais de `burnq2.psx` — preservando o volume tridimensional robusto de perfil (`crashm.png`), as solas dos tênis vermelhos rentes à lixa do skate (`Y=+315`), punhos/luvas lisos sem espetos e costuras `101 w=1` / `123 w=2` com erro `0,000`.
+- **Atlas Semânticos `128×64` 8bpp com `0,00%` de Sangramento UV (`buildSemanticHeadTexture` & `buildSemanticBodyTexture`):** blocos dedicados para os dentes brancos com divisórias verticais, olhos/pupilas, sobrancelhas, o **brilho dorsal dourado mosqueado** (`crashn.png`), barriga dourada + umbigo escuro, cadarços/língua brancos dos tênis e paleta PS1 calibrada; no **Style B (`crashb.psx`)**, óculos moto pretos espelhados + jaqueta de couro com chamas e zíper cromado.
+- **Tamanho Final & Retrato:** `crash.psx` e `crashb.psx` compilaram em exatos **`57.276 B`** (`10,3 KB` abaixo do teto hardcoded `67.584 B` do `CSkaterCache`!), e o retrato **`s2face20.bmp`** (`4.088 B`, `magIdx=21`) passou a ser renderizado diretamente da nova cabeça sorridente.
+
+### 2. Troca Cirúrgica dos 3 Coletáveis de Dinheiro (`$50` Manga Wumpa, `$100` Cristal, `$250` Diamante)
+
+Em `Scripts/mod_crash_collectibles.js`, reestruturamos os 3 slots de dinheiro dentro de **`crash_it.psx`** (`37.556 B`, `pm=0x4828`, `14` objetos — ainda menor que o `items.psx` original de `40.784 B`!) e atualizamos as mensagens dinâmicas do HUD em `Scripts/mod_crash_engine.js`:
+
+| Valor Original | Mesh em `crash_it.psx` | Novo Objeto 3D Exclusivo do Crash B. | Banner no HUD |
+| :---: | :---: | :--- | :--- |
+| **`$50`** | `M[9]` (`0xCC4E141F`) | **Fruta Wumpa ("Manga") 3D** com caule e folha verde | `Manga Wumpa +50!` |
+| **`$100`** | `M[10]` (`0x260F4F80`) | **Cristal de Poder 3D (`Cry1G`)** facetado roxo-magenta | `Cristal +100!` |
+| **`$250`** | `M[11]` (`0x694ED947`) | **Diamante Cintilante 3D (`Ge10G`)** lapidado branco-ciano | `Diamante +250!` |
+
+### 3. Banco **`CRASH_SFXBANK`** (`12` SFX Autênticos do Crash 3 @ `11.025 Hz`) + Motor MIPS Zero-Stall (`0x800E5B40`)
+
+Auditamos diretamente por escuta os `.wav` extraídos de *Crash Bandicoot 3: Warped* e empacotamos **`12` efeitos 100% autênticos** em um novo sub-banco **`CRASH_SFXBANK`** no final de `VOICES.DAT` (header `"CRSF"` `128 B` + payloads SPU-ADPCM @ `11.025 Hz`, `pitch = 0x0400` = **`30.000 B → 30.720 B` / `15 setores = 30,0 KB`**):
+
+| Slot | Papel no Gameplay | Arquivo Original Crash 3 | Duração / SPU-ADPCM |
+| :---: | :--- | :--- | :---: |
+| **`#00`** | Coletar `$50` (Manga Wumpa) | `frt0A_1edba049.wav` | `104 ms` / `656 B` |
+| **`#01`** | Coletar `$100` (Cristal de Poder) | `Pb10A_66582049.wav` | `493 ms` / `3.104 B` |
+| **`#02`** | Coletar `$250` (Diamante) | `GSh2A_55b22149.wav` | `757 ms` / `4.768 B` |
+| **`#03`** | Coletar **Aku Aku** (5× Hangar / School Miami G5) | `WD10A_75382049.wav` (*"BOODABAGA!"* + tambor) | `729 ms` / `4.592 B` |
+| **`#04..#11`** | **8 Sons Aleatórios de Queda (*Bail*) do Crash** (sem repetição consecutiva!) | `fal0A`, `arg0A`, `yip0A`, `sht0A`, `de20A`, `CD1dA`, `CD3dA`, `Cd2cA` | `86–1.054 ms` / `544–6.640 B` |
+
+Todo o código residente (**`CRASH_SFX_CODE` @ `0x800E5B40..0x800E5DFF`**, `644 / 704 B`, `60 B` livres) e os 36 bytes de estado compartilhado (`0x800E5FC0..0x800E5FE3`) foram alojados na folga dos Setores `5..6` de `VOICES.DAT` — **`0` bytes subtraídos da Heap (`NewHeapStart = 0x800EC800` inalterado!)**:
+- **`Entry_CrashStartAsync (0x800E5B48)`:** durante a Tela de Objetivos (`GoalList`), pré-carrega os `30 KB` do `CRASH_SFXBANK` via DMA assíncrono **somente quando `skaterIdx == 20`** (`0 B` de RAM gastos para os outros 20 skatistas!).
+- **`Entry_CrashGoalPickup (0x800E5B40)`** (hook em `PowerUp_Pickup @ 0x80036858`): lê `lhu 56(s1)` (`subtype 25` → `$50` Wumpa modo 4, `26` → `$100` Cristal modo 5, `24` → `$250` Diamante modo 6, `33` em Hangar/School Miami → Aku Aku modo 7), agenda o som na Voz 23 e retorna `v0 = 0` (suprimindo com segurança o sininho original em `SFX_SetPitch @ 0x80052C98`).
+- **`Hook_BailSfx (0x800E3400)`:** quando `g_CrashSfxActive != 0`, suprime o grito humano (`s0 = 0xFFFF, v0 = -1`), preserva o som do impacto no concreto + cooldown de 50 frames e dispara o modo `8` (`Entry_CrashResolveClip @ 0x800E5B50`), que sorteia um dos 8 sons `#04..#11` com entropia de hardware (`Root Counters` + `VSync` + `XorShift32`) garantindo **nunca repetir o mesmo som duas vezes seguidas**.
+- **Qualidade de Hardware PS1:** o streamer SPU Voz 23 alterna dinamicamente taxa e passo (`0x0400` / `18.411` centi-amostras/VBlank a `11.025 Hz` para Crash B. vs `0x0280` / `11.507` a `6.890,625 Hz` para Lulão/Bolsonaro), mantém o **anti-chiado `vLOUT/vROUT = 0`** durante a reprodução e **preserva a música XA a 100%** nos efeitos curtos do Crash (sem ducking!), com **`0` chamadas `CdRead`/`XA_Pause`/`Mem_Alloc`** durante a partida.
+
+### 4. Prova Ao Vivo no DuckStation (GDB — Crash B. & Isolamento do Lulão)
+
+Validamos tudo em hardware PS1 emulado via GDB com armadilhas em `CdRead` e `XA_Pause` e leitura direta dos registradores da SPU no barramento PS1 (`0x1F801D74`, `0x1F801D84`, `0x1F801D86`):
+- **Crash B. (`Slot 20`) no PlaySel & Hangar:** Style A (`crash.psx`, `pm=0x7ea8`, `57.276 B`) & Style B (`crashb.psx`), `items = crash_it.psx (pm=0x4828, 14 objs)`, `skhan_o = cr_han_o.psx (pm=0x793c)`, `CRASH_SFXBANK` (`"CRSF"`, 12 clipes, `15` setores) 100% pré-carregado antes do gameplay (`async=0`, `Heap[1] = 121,4 KB` livres).
+- **Todos os 4 Pickups (`$50` Manga `#0`, `$100` Cristal `#1`, `$250` Diamante `#2`, Hangar Aku Aku `#3`):** executaram em **`1–8 ms`** com `retV0 = 0`, `SPU V23_PITCH = 0x0400` (`11.025 Hz`), `vLOUT/vROUT = (0,0)`, música XA sem ducking, **`0 CdRead`**, **`0 XA_Pause`** e restauração limpa do reverb ao finalizar.
+- **5 Quedas Consecutivas via `SFX_Play(28)` Real:** sortearam **`[10, 9, 6, 8, 10]`** (**4 sons autênticos distintos em 5 quedas**, zero repetição consecutiva, grito humano suprimido, `2–3 ms`, `0 CdRead`).
+- **Isolamento Total no Lulão (`Slot 2` no Hangar):** `g_CrashSfxActive = 0`, `items = items.psx (pm=0x3344)`, `skhan_o = skhan_o.psx (pm=0x77cc)`, `LULAO_GPBANK` (`14` falas) tocando a **`6.890,625 Hz` (`V23_PITCH = 0x0280`, `XA_duck = 2`, `rev = (0,0)`)** e rotação original dos 9 gritos de queda (`g_BailScreamIdx 0 → 1`) 100% intacta — **`0` erros críticos no log do DuckStation!**
+
+---
+
+## Capítulo 20 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
@@ -763,10 +817,10 @@ flowchart TB
         B["0x800E2680..0x800E27FF — Mod_BootInit (20 set.) & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
         L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: SyncStrings Dual Lulão/Crash + Pipeline DMA Assíncrono 3 Fases + Streamer SPU 2 KB Anti-Chiado + SpawnLetter + CarHitVoice + PsxUpload 0-Seek + GoalPickupSfx)"]
-        S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + RingTables GPBANK @ +0xE00/+0xEE0)"]
+        S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + CRASH_SFX_CODE 0x800E5B40 + RingTables GPBANK + Estado CRASH_SFX 0x800E5FC0)"]
         T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] 60 Metas + g_Thps1GapList[24] + TURBO_BURST/AUX 60Hz + FastMap 100% CD.WAD + g_ExtCareer[20] + CompLoadBmp)"]
         C["0x800EB000..0x800EC7FF — LULAO_CASHART Boot-Residente (6 KB / Setores 17..19 — 0 ms seek em toda fase!)"]
-        H["0x800EC800..0x801FFFFF — Heap Dinâmica THPS2 (~1,09 MB) + Pré-Cache Assíncrono tricks.bin + LULAO_GPBANK & BOLSO_GPBANK"]
+        H["0x800EC800..0x801FFFFF — Heap Dinâmica THPS2 (~1,09 MB) + Pré-Cache Assíncrono tricks.bin + LULAO_GPBANK/BOLSO_GPBANK (Slot 2) ou CRASH_SFXBANK 30 KB (Slot 20)"]
     end
     K --> E --> B --> M --> L --> S --> T --> C --> H
 ```
@@ -775,18 +829,18 @@ flowchart TB
 
 | Dimensão | Quantidade / Métrica Verificada |
 | :--- | :--- |
-| **Integridade da ISO Compilada** | **319.789 / 319.789 setores** (`717,3 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
+| **Integridade da ISO Compilada** | **319.783 / 319.783 setores** (`717,3 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
 | **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.472 entradas THPS2** (`[0..1126]` & `[1186..1530]`, incl. `tricks.bin` / `panel.pre` / `tricksel.pre` nos mesmos setores!) + zona fechada THPS1 `[1127..1185]` exata (`4.577/4.577` setores, `Delta = 0`, `0` overlap) |
-| **Novo Personagem Adicional (`Slot 20`)** | ***Crash Bandicoot* (`Crash B.`, 21º Skatista — 0 skatistas excluídos!):** Style A/B (`crash.psx` / `crashb.psx` `59.324 B <= 67.584 B`), retrato `s2face20.bmp`, Bio PT-BR, **moveset Bob Burnquist + especial Rodney Mullen (`Casper to 360 Flip`, ID `73`)**, **8 shapes Skate Shop Crash 3 (`s2dCR01c..08c` + `s2gCR01c..08c`)** com `g_CrashDeckShadow`, **coletáveis 3D & objetivos `C-R-A-S-H` exclusivos em todas as 19 fases** (`crash_it.psx` + 7 `cr_*.psx` com `SObject.rgbOff` relocado), alojado a **custo ZERO de Heap** em `0x800B82C4..0x800B943F` |
-| **Velocidade de Menus & Carregamento (PS1 2× Real)** | **`PlaySel → LevelSel`:** `381f → 288f` (`-1,55 s` / `-24,4%`, **0 seeks Minuto 71**, `s2arrow8/9` dentro de `levelsel.pre`) • **Fases THPS1 (`School Miami`):** **`1.004f → 772f` (`-3,87 s`)** em zona fechada `CD.WAD[1127..1185]` • **Pós-`X` na `GoalList` → Gameplay:** **`0 CdReads` (`-2,8 s` a `-3,3 s`!)** via DMA assíncrono em 3 fases (`tricks.bin` → `LULAO_GPBANK` → `BOLSO_GPBANK`) + `TURBO_BURST` (`67s`/`12s`/`6s`) + `CDWAD_Poll` 60 Hz + `CASHART` boot-residente (`0x800EB000`) |
+| **Novo Personagem Adicional (`Slot 20`)** | ***Crash Bandicoot* (`Crash B.`, 21º Skatista — 0 skatistas excluídos!):** remodelado fielmente a `crashl/m/n.png` a partir da malha `CR10G` (305v/574t, sorriso aberto, perfil volumoso, brilho dorsal dourado, atlas semântico `128×64` zero-bleed) em Style A/B (`crash.psx` / `crashb.psx` **`57.276 B <= 67.584 B`**), retrato sorridente `s2face20.bmp`, Bio PT-BR, **moveset Bob Burnquist + especial Rodney Mullen (`Casper to 360 Flip`, ID `73`)**, **8 shapes Skate Shop Crash 3 (`s2dCR01c..08c` + `s2gCR01c..08c`)** com `g_CrashDeckShadow`, **coletáveis 3D (`$50` Manga Wumpa / `$100` Cristal / `$250` Diamante + `C-R-A-S-H` / TNT / Aku Aku / Uka Uka) & 12 SFX autênticos do Crash 3 Zero-Stall (`CRASH_SFXBANK` `30 KB` @ `11.025 Hz`)** alojados a **custo ZERO de Heap** |
+| **Velocidade de Menus & Carregamento (PS1 2× Real)** | **`PlaySel → LevelSel`:** `381f → 288f` (`-1,55 s` / `-24,4%`, **0 seeks Minuto 71**, `s2arrow8/9` dentro de `levelsel.pre`) • **Fases THPS1 (`School Miami`):** **`1.004f → 772f` (`-3,87 s`)** em zona fechada `CD.WAD[1127..1185]` • **Pós-`X` na `GoalList` → Gameplay:** **`0 CdReads` (`-2,8 s` a `-3,3 s`!)** via DMA assíncrono em 3 fases (`tricks.bin` → `LULAO_GPBANK`/`CRASH_SFXBANK` → `BOLSO_GPBANK`) + `TURBO_BURST` (`67s`/`12s`/`6s`) + `CDWAD_Poll` 60 Hz + `CASHART` boot-residente (`0x800EB000`) |
 | **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo**, com **60 novos objetivos satíricos `10 × 6`**, **3 telas oficiais de competição `t1comp0/1/2.bmp`** para *Chicago*, *Burnside* e *Roswell*, **24 Gaps reais ao vivo**, **2.301 trilhos** convertidos, **68 nós de moedas → `$100` Cash** para Stats e **333 remapes SFX/Shatter `.TRG`**) + Custom Park |
 | **Level Select & Vídeos Preview** | **40/40 fotos instantâneas no Frame 1** via **`FastMap` 100% crescente no `CD.WAD` (`139f = 2,32 s`, 0 seeks Minuto 71!)** + **vídeos preview inferiores restaurados (`vlcBufSize = 16.896 B`, `ringSec = 16`, `148 KB` livres na `Heap[1]`, `movActive = 1`, 0 OOM, 0 leak)** |
 | **Renderização 3D Zero-Artefatos** | **Zero linhas vazias/fendas no chão** (*School II* / *NY City*), **zero céu/objetos sumindo** via perfil `SLUS-01066.ini` (`PGXPEnable = false`, `PGXPDepthBuffer = false`, `WidescreenHack = false`, `5× HD Nearest`, `4:3`) + `PrimBuf` calibrado + 6 hooks `.TRG SecretFlag` |
-| **Hooks & Relocações MIPS R3000A** | **1.271 palavras cirúrgicas** em `SLUS_010.66` + **12/12 overlays & `tricks.bin`/`.PRE`** validados bit-a-bit (`playsel`, `equipsel`+`.pre`, `levelsel`+`.pre`, `tricks.bin`+`panel.pre`+`tricksel.pre`, `options`, `multisel`, `tricksel`, `creedit`) + **20 setores residentes** em `VOICES.DAT` (`1.174` set., `NewHeapStart = 0x800EC800`) + **37 ativos THPS1 *in-place* em `CD.WAD`** + **`THPS1.WAD` (`1,12 MB` / `572` set., `38` arquivos = `5` THPS1 + `33` ativos Crash B.)** |
+| **Hooks & Relocações MIPS R3000A** | **1.271 palavras cirúrgicas** em `SLUS_010.66` + **12/12 overlays & `tricks.bin`/`.PRE`** validados bit-a-bit (`playsel`, `equipsel`+`.pre`, `levelsel`+`.pre`, `tricks.bin`+`panel.pre`+`tricksel.pre`, `options`, `multisel`, `tricksel`, `creedit`) + **20 setores residentes** em `VOICES.DAT` (`1.189` set., `NewHeapStart = 0x800EC800`, incl. `CRASH_SFX_CODE 644/704 B` + `CRASH_SFXBANK 15 set.`) + **37 ativos THPS1 *in-place* em `CD.WAD`** + **`THPS1.WAD` (`1,11 MB` / `566` set., `38` arquivos = `5` THPS1 + `33` ativos Crash B.)** |
 | **Skatistas Personalizados + Adicionado** | **8 skatistas no total:** **7 customizados** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan* = **28 `.PSX` + 7 retratos**) **+ 1 novo slot adicionado** (**`Crash B.` `Slot 20`** = **4 `.PSX` + 4 `.PSH` + `s2face20.bmp` + 16 BMPs de shapes**) |
-| **Mundo 3D & Coletáveis Customizados** | **Crash B. (Exclusivo `Slot 20` nas 19 fases):** `crash_it.psx` (`C-R-A-S-H`, TNT/NITRO/Checkpoint, Cristal de Poder `ABR=1`, Fruta Wumpa, Gema Warp, Relíquia de Ouro, Aku Aku) + 7 bancos `cr_*.psx` (incl. Uka Uka) • **THPS2 (Lulão):** Letra 3D **`X`** (`T-A-X-A-S`) + Barris 51/Lulão + Notas Dinâmicas + Garrafa 3D de 51 + Aura `ABR=1` + 5 Haddads 3D (*Hangar*) + 5 Dilmas 3D, 5 Ventos Estocados 3D & Carrinho Bolsonaro 3D (*School II*) + 5 Garrafas 3D de Pitú (*Venice*) • **THPS1 (`30` coletáveis 3D `fl=0x2003`):** 5 Mandiocas da Dilma (*Warehouse*), 5 Triplex (*School*), 5 Malas (*Mall*), 5 Cofres INSS (*Downtown*), 5 Pedalinhos (*Downhill Jam*), 5 Picanhas (*Streets SF*) |
-| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc, pré-carregados via DMA assíncrono na `GoalList`!)** + **9 gritos de queda (`0 B` SPU RAM extra)** + **Som de Caixa + Skatista Zero-Stall** (`Entry_GoalPickupSfx` + `CModel::KnockDown` reforçado + 333 remapes `.TRG`, `CdReads = 0`!) |
+| **Mundo 3D & Coletáveis Customizados** | **Crash B. (Exclusivo `Slot 20` nas 19 fases):** `crash_it.psx` (`37.556 B`: `$50` Manga Wumpa, `$100` Cristal de Poder, `$250` Diamante, letras `C-R-A-S-H`, TNT/NITRO/Checkpoint, Relíquia de Ouro, Aku Aku) + 7 bancos `cr_*.psx` (incl. Uka Uka) • **THPS2 (Lulão):** Letra 3D **`X`** (`T-A-X-A-S`) + Barris 51/Lulão + Notas Dinâmicas + Garrafa 3D de 51 + Aura `ABR=1` + 5 Haddads 3D (*Hangar*) + 5 Dilmas 3D, 5 Ventos Estocados 3D & Carrinho Bolsonaro 3D (*School II*) + 5 Garrafas 3D de Pitú (*Venice*) • **THPS1 (`30` coletáveis 3D `fl=0x2003`):** 5 Mandiocas da Dilma (*Warehouse*), 5 Triplex (*School*), 5 Malas (*Mall*), 5 Cofres INSS (*Downtown*), 5 Pedalinhos (*Downhill Jam*), 5 Picanhas (*Streets SF*) |
+| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` (`6.890,625 Hz`, `-12 dB` ducking)** + **`12` SFX autênticos do Crash 3 (`CRASH_SFXBANK` `30 KB` @ `11.025 Hz` sem ducking: Wumpa, Cristal, Diamante, Aku Aku + 8 quedas aleatórias sem repetição, pré-carregado na `GoalList` com `0 CdReads` e `-26,5 dB` anti-chiado `vLOUT/vROUT=0`!)** + **9 gritos de queda (`0 B` SPU RAM extra)** + **Som de Caixa + Skatista Zero-Stall** (`Entry_GoalPickupSfx` + `CModel::KnockDown` reforçado + 333 remapes `.TRG`, `CdReads = 0`!) |
 | **Idioma, Fonte & Documentação** | **46 linhas de biografias PT-BR** (Lulão, Bolsonaro & Crash B.) com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Lulão + **47 ponteiros dinâmicos** do Crash B. + **60 objetivos satíricos THPS1 pixel-validados em `s2goal.fnt`** + **14 Mapas Técnicos** (incl. enciclopédia completa de 669 arquivos do THPS1 em `MAPA_14`) |
 
 ---

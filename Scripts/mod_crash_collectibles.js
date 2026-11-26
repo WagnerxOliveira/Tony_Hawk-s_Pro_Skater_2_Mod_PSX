@@ -15,9 +15,9 @@
  *      - M[3..7] (S,K,A,T,E): Sculpted 3D bevelled "C - R - A - S - H" floating jungle letters!
  *      - M[8] (0x7c1b2c4a Secret Tape): Authentic 3D Cry1G Power Crystal + 3 crossed PS1 ABR=1
  *                                       additive violet-cyan shimmering aura planes (0x18C3)!
- *      - M[9] (0xcc4e141f $50 Cash):  Sculpted 3D Wumpa Fruit (tropical gradient + green leaf!)
- *      - M[10] (0x260f4f80 $100 Cash): Authentic 3D Ge10G Warp Gem (cyan-emerald faceted diamond!)
- *      - M[11] (0x694ed947 $250 Cash): Authentic 3D Rel1G Gold Time Relic (metallic Ankh trophy!)
+ *      - M[9] (0xcc4e141f $50 Cash):    Sculpted 3D Wumpa Fruit ("Manga", tropical gradient + green leaf!)
+ *      - M[10] (0x260f4f80 $100 Cash):  Authentic 3D Cry1G Power Crystal ("Cristal", magenta-violet facets!)
+ *      - M[11] (0x694ed947 $250 Cash):  Authentic 3D Ge10G Diamond / Clear Gem ("Diamante", icy-white/cyan facets!)
  *      - M[12] (0x4605a8d0 Stat Point): Authentic 3D WD10G Aku Aku Mask (colorful feathers + face!)
  *      - M[13] (0x58585858 fallback): Sculpted 3D "H" letter
  *
@@ -443,17 +443,18 @@ function makeWumpaTex() {
 }
 
 function makeGemTex() {
-  // Sparkling cyan-emerald diamond gem!
+  // Sparkling Crash 3 Clear-Ice Diamond Gem (brilliant white/sky-cyan crystal facets!)
   const W = 64, H = 64;
   const rgba = Buffer.alloc(W * H * 4);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const dx = (x - 32) / 32, dy = (y - 32) / 32;
-    const spec = Math.exp(-((dx + 0.2) * (dx + 0.2) * 9 + (dy + 0.2) * (dy + 0.2) * 9));
-    const facet = ((Math.floor(x / 12) + Math.floor(y / 12)) & 1) ? 1.0 : 0.80;
+    const spec = Math.exp(-((dx + 0.18) * (dx + 0.18) * 10 + (dy + 0.22) * (dy + 0.22) * 10));
+    const facet = ((Math.floor(x / 12) + Math.floor(y / 12)) & 1) ? 1.0 : 0.78;
+    const rim = ((x % 12) === 0 || (y % 12) === 0) ? 1.12 : 1.0;
     const o = (y * W + x) * 4;
-    rgba[o]     = clamp(Math.round((78 + spec * 175) * facet), 42, 255);
-    rgba[o + 1] = clamp(Math.round((235 + spec * 20) * facet), 155, 255);
-    rgba[o + 2] = clamp(Math.round((195 + spec * 60) * facet), 125, 255);
+    rgba[o]     = clamp(Math.round((152 + spec * 103) * facet * rim), 95, 255);
+    rgba[o + 1] = clamp(Math.round((226 + spec * 29)  * facet * rim), 155, 255);
+    rgba[o + 2] = clamp(Math.round((250 + spec * 5)   * facet * rim), 195, 255);
     rgba[o + 3] = 255;
   }
   return rgba;
@@ -638,14 +639,14 @@ function buildCrashItemsPsx(objs3d) {
     0x34524351, // M[6]  -> 3D Letter "S" (replaces T)
     0x29b68a16, // M[7]  -> 3D Letter "H" (replaces E)
     0x7c1b2c4a, // M[8]  -> 3D Power Crystal (Cry1G) + Violet-Cyan Aura! (Secret Tape!)
-    0xcc4e141f, // M[9]  -> 3D Wumpa Fruit ($50 Cash!)
-    0x260f4f80, // M[10] -> 3D Warp Gem (Ge10G) ($100 Cash!)
-    0x694ed947, // M[11] -> 3D Gold Time Relic (Rel1G) ($250 Cash!)
+    0xcc4e141f, // M[9]  -> 3D Wumpa Fruit ("Manga" — $50 Cash!)
+    0x260f4f80, // M[10] -> 3D Power Crystal (Cry1G — "Cristal" — $100 Cash!)
+    0x694ed947, // M[11] -> 3D Sparkling Diamond Gem (Ge10G — "Diamante" — $250 Cash!)
     0x4605a8d0, // M[12] -> 3D Aku Aku Mask (WD10G) (Stat Point!)
     0x58585858, // M[13] -> 3D Letter "H" fallback
   ];
 
-  // Build all 10 4-bit 64x64 Crash 3 textures (total 20,480 B!)
+  // Build all 9 4-bit 64x64 Crash 3 textures (total 18,432 B!)
   const akuCrop = cropObjMatTo64(objs3d.aku);
   const texSpecs = [
     { name: 'cr_tnt',   ...make4BitTex(64, 64, drawCrateFaceTexture('TNT'), false) },    // T[0]
@@ -656,8 +657,7 @@ function buildCrashItemsPsx(objs3d) {
     { name: 'cr_aura',  ...make4BitTex(64, 64, makeCrystalAuraTex(), true) },            // T[5] ABR=1!
     { name: 'cr_wumpa', ...make4BitTex(64, 64, makeWumpaTex(), false) },                 // T[6]
     { name: 'cr_gem',   ...make4BitTex(64, 64, makeGemTex(), false) },                   // T[7]
-    { name: 'cr_relic', ...make4BitTex(64, 64, makeRelicTex(), false) },                 // T[8]
-    { name: 'cr_aku',   ...make4BitTex(64, 64, akuCrop.rgba, false) },                   // T[9]
+    { name: 'cr_aku',   ...make4BitTex(64, 64, akuCrop.rgba, false) },                   // T[8]
   ];
 
   // Build all 14 3D collectible meshes!
@@ -675,11 +675,11 @@ function buildCrashItemsPsx(objs3d) {
     build3DLetterMesh('A', 3),                                                                    // M[5] A
     build3DLetterMesh('S', 3),                                                                    // M[6] S
     build3DLetterMesh('H', 3),                                                                    // M[7] H
-    buildPowerCrystalWithAura(objs3d.cry, 4, 5, 210),                                             // M[8] Power Crystal + Aura!
-    build3DWumpaFruitMesh(6),                                                                     // M[9] 3D Wumpa Fruit!
-    buildMeshFromCrash3Obj(objs3d.gem, 7, 130, { shadeMode: 'planar', rgbScale: 1.08 }),          // M[10] 3D Warp Gem!
-    buildMeshFromCrash3Obj(objs3d.rel, 8, 175, { shadeMode: 'planar', rgbScale: 1.05 }),          // M[11] 3D Gold Time Relic!
-    buildMeshFromCrash3Obj(objs3d.aku, 9, 160, { doubleSided: true, uvBox: akuCrop.uvBox }),      // M[12] 3D Aku Aku Mask!
+    buildPowerCrystalWithAura(objs3d.cry, 4, 5, 210),                                             // M[8] Secret Tape: Power Crystal + Aura!
+    build3DWumpaFruitMesh(6),                                                                     // M[9] $50 -> 3D Wumpa Fruit ("Manga")!
+    buildMeshFromCrash3Obj(objs3d.cry, 4, 175, { shadeMode: 'planar', rgbScale: 1.08 }),          // M[10] $100 -> 3D Power Crystal ("Cristal")!
+    buildMeshFromCrash3Obj(objs3d.gem, 7, 155, { shadeMode: 'planar', rgbScale: 1.12 }),          // M[11] $250 -> 3D Sparkling Diamond ("Diamante")!
+    buildMeshFromCrash3Obj(objs3d.aku, 8, 160, { doubleSided: true, uvBox: akuCrop.uvBox }),      // M[12] Stat Point -> 3D Aku Aku Mask!
     build3DLetterMesh('H', 3),                                                                    // M[13] H fallback
   ];
 

@@ -107,7 +107,7 @@ try {
   else pass('Header PS-X EXE +0x4C NTSC-U 100% valido');
 
   // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
-  const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode, assembleBailHookCode, assembleLulaoEngine, buildLulaoStrData } = require('./patch_random_videos_and_voices');
+  const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode, assembleBailHookCode, assembleLulaoEngine, assembleCrashSfxCode, buildLulaoStrData } = require('./patch_random_videos_and_voices');
   const { THPS1_ADDR, buildThps1ResidentBlock, applyThps1EnginePatches } = require('./thps1_engine_mod');
   const { CRASH_ADDR, applyCrashEnginePatches, buildPatchedTricksBin } = require('./mod_crash_engine');
   const {
@@ -850,10 +850,11 @@ try {
     const gpMeta = voicesManifest && voicesManifest.gameplayBank;
     const bolsoMeta = voicesManifest && voicesManifest.bolsoGameplayBank;
     const cashMeta = voicesManifest && voicesManifest.cashArt;
-    if (!gpMeta || gpMeta.clipCount !== 14 || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28 || gpMeta.spuPitch !== 0x0280 || !bolsoMeta || bolsoMeta.clipCount !== 14 || bolsoMeta.ringEntries.length !== 28 || !cashMeta || !cashMeta.startSector) {
-      fail('VOICES', 'Manifesto build/voices_manifest.json sem gameplayBank/bolsoGameplayBank/cashArt validos!');
+    const crashSfxMeta = voicesManifest && voicesManifest.crashSfxBank;
+    if (!gpMeta || gpMeta.clipCount !== 14 || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28 || gpMeta.spuPitch !== 0x0280 || !bolsoMeta || bolsoMeta.clipCount !== 14 || bolsoMeta.ringEntries.length !== 28 || !cashMeta || !cashMeta.startSector || !crashSfxMeta || crashSfxMeta.clipCount !== 12 || crashSfxMeta.spuPitch !== 0x0400) {
+      fail('VOICES', 'Manifesto build/voices_manifest.json sem gameplayBank/bolsoGameplayBank/cashArt/crashSfxBank validos!');
     } else {
-      const fullGpMeta = { ...gpMeta, bolso: bolsoMeta, cashArt: cashMeta };
+      const fullGpMeta = { ...gpMeta, bolso: bolsoMeta, cashArt: cashMeta, crash: crashSfxMeta };
       const { buf: expLulaoCode, labels: lulaoLabels } = assembleLulaoEngine(fullGpMeta);
       if (!voicesBuf.subarray(4096, 10240).equals(expLulaoCode)) fail('VOICES', 'Setores 2..4 (LULAO_CODE 6144 B) em VOICES.DAT diferem do assembly esperado!');
 
@@ -962,11 +963,28 @@ try {
         fail('VOICES', `LULAO_CASHART boot-residente invalido em VOICES.DAT @ setor +${cashMeta.startSector} (esperado setor 17)!`);
         gpErr++;
       }
+      // Validate CRASH_SFXBANK ("CRSF" magic, 12 clips @ 11,025 Hz / 0x0400, 16B-aligned offsets & sizes)
+      const crBaseOff = crashSfxMeta.startSector * 2048;
+      if (crBaseOff + crashSfxMeta.totalBytes > voicesBuf.length || voicesBuf.readUInt32LE(crBaseOff) !== 0x43525346 || voicesBuf.readUInt32LE(crBaseOff + 4) !== 12) {
+        fail('VOICES', `CRASH_SFXBANK invalido em VOICES.DAT @ setor +${crashSfxMeta.startSector}!`);
+        gpErr++;
+      } else {
+        for (let i = 0; i < 12; i++) {
+          const eOff = voicesBuf.readUInt32LE(crBaseOff + 8 + i * 8);
+          const eSz  = voicesBuf.readUInt32LE(crBaseOff + 12 + i * 8);
+          if (eSz === 0 || (eSz % 16) !== 0 || (eOff % 16) !== 0 || (eOff + eSz) > crashSfxMeta.totalBytes) {
+            fail('VOICES', `CRASH_SFXBANK slot #${i} invalido: off=${eOff} sz=${eSz}`);
+            gpErr++;
+          }
+        }
+      }
       if (mipsInvErr === 0 && gpErr === 0) {
-        pass(`LULAO_GPBANK + BOLSO_GPBANK + CASHART Boot-Residente + Async DMA Preload: Lulao 14x2 (@+${gpMeta.startSector}) + Bolsonaro 14x2 (@+${bolsoMeta.startSector}) + CashArt (@+17 -> 0x800EB000, 0 seeks!), 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
+        pass(`LULAO_GPBANK + BOLSO_GPBANK + CRASH_SFXBANK (12 SFX Crash 3 @ 11025 Hz) + CASHART Boot-Residente: 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
       }
       const { buf: expLulaoStrData, mappings: lulaoMappings } = buildLulaoStrData(fullGpMeta);
-      if (!voicesBuf.subarray(10240, 14336).equals(expLulaoStrData)) fail('VOICES', 'Setores 5..6 (LULAO_STRDATA + ringTables @ +0xE00) em VOICES.DAT diferem dos dados esperados!');
+      const expCrashSfxCode = assembleCrashSfxCode(fullGpMeta, lulaoLabels);
+      expCrashSfxCode.copy(expLulaoStrData, 0xB40);
+      if (!voicesBuf.subarray(10240, 14336).equals(expLulaoStrData)) fail('VOICES', 'Setores 5..6 (LULAO_STRDATA + CRASH_SFX_CODE + ringTables) em VOICES.DAT diferem dos dados esperados!');
       // Pillar 1 & 2 invariants on LULAO_STRDATA:
       //  - NEVER overwrite ANY Trick+Gap G6.paramStr (levels 0,1,3,4,6 -> matcher 0x800662AC)!
       //  - MUST include T-A-X-A-S toast pointers (0x800C08E8..0x800C08F8) & HUD words (0x800D7704..0x800D7714)!

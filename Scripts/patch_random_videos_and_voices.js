@@ -147,11 +147,25 @@ const ADDR = {
   Entry_GoalListAsync: 0x800E3868, // Hooks 0x80034890 (jal GoalList_Loop): starts async DMA LulaoCache during Goal List!
   Entry_GoalListTick:  0x800E3870, // Hooks 0x800230D4 (jal Pad_Update inside GoalList_Loop): polls DMA & chains BOLSO_GPBANK!
   Entry_BurstFree:     0x800E9F48, // TurboAux safe g_BurstBuf free helper (preserves all $s* regs)
-  // Sectors 5..6 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup, Strings & GP Ring Tables
+  // Sectors 5..6 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup, Strings, Crash SFX Code & GP Ring Tables
   LulaoStrDataBase:    0x800E5000,
   LulaoOrigBackup:     0x800E5300,
+  CrashSfxCodeBase:    0x800E5B40, // 704 B (0x800E5B40..0x800E5DFF): Crash B. Zero-Stall SFX Helpers!
+  Entry_CrashGoalPickup:  0x800E5B40,
+  Entry_CrashStartAsync:  0x800E5B48,
+  Entry_CrashResolveClip: 0x800E5B50,
   GpRingTableAddr:     0x800E5E00, // 28 x 8 B = 224 B (0x800E5E00..0x800E5EDF)
-  BolsoRingTableAddr:  0x800E5EE0, // 28 x 8 B = 224 B (0x800E5EE0..0x800E5FBF) // 96 x 4 B = 384 B (0x800E5300..0x800E547F)
+  BolsoRingTableAddr:  0x800E5EE0, // 28 x 8 B = 224 B (0x800E5EE0..0x800E5FBF)
+  // Fixed Shared Crash 3 Zero-Stall SFX State (0x800E5FC0..0x800E5FFF = 64 B, tail of Sector 6!)
+  g_CrashSfxActive:    0x800E5FC0, // 1 ONLY when Crash B. (Slot 20) active & CRASH_SFXBANK in RAM; 0 otherwise
+  g_CrashLastBail:     0x800E5FC4, // Last random Crash bail index (0..7) for strict non-repeating variety
+  g_StreamPitch:       0x800E5FC8, // Dynamic Voice 23 pitch: 0x0280 (Lulao/Bolso) vs 0x0400 (Crash 11,025 Hz)
+  g_StreamRateCenti:   0x800E5FCC, // Dynamic centi-samples/VBlank: 11507 (6890.625 Hz) vs 18411 (11025 Hz)
+  g_CrashSfxStartSec:  0x800E5FD0, // VOICES.DAT relative sector of CRASH_SFXBANK
+  g_CrashSfxSectors:   0x800E5FD4, // Sector count of CRASH_SFXBANK (~16 sectors = 32 KB)
+  g_CrashLastSfxSlot:  0x800E5FD8, // Last Crash SFX slot played (0..11) for diagnostics/verification
+  g_CrashPlayCount:    0x800E5FDC, // Total Crash SFX triggers played in current session
+  g_CrashPendingMode:  0x800E5FE0, // Deferred Crash SFX mode: 4=Wumpa, 5=Crystal, 6=Diamond, 7=AkuAku, 8=RandomBail
   SpuVoiceBuf:         0x00058000, // Menu Skater Select SPU slot (0x58000..0x7EFF0 = 159,728 B free above shell.vab)
   SpuStreamHalfA:      0x0007F400, // Gameplay Ping-Pong Half A (1024 B, ABOVE bullring.vab 0x7F360!)
   SpuStreamHalfB:      0x0007F800, // Gameplay Ping-Pong Half B (1024 B, 0x7F800..0x7FBFF)
@@ -542,9 +556,25 @@ function assembleBailHookCode() {
   a.jr(R.ra);
   a.addiu(R.sp, R.sp, 24);
 
-  // Strict non-repeating Round-Robin rotation: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 0
+  // Strict non-repeating Round-Robin rotation (Slots 0..19), OR Zero-Stall Random Crash 3 Fall Sound (Slot 20)!
   a.label('do_rotate');
   a.sw(R.v0, ADDR.g_LastBailFrame & 0xffff, R.t0);
+
+  // Crash B. (Slot 20) isolation check: if g_CrashSfxActive != 0, trigger deferred random Crash 3 bail SFX (mode 8)
+  // via SPU Voice 23 RAM cache and suppress the human bail scream cleanly (keeps concrete impact SFX intact)!
+  a.lw(R.t1, ADDR.g_CrashSfxActive & 0xffff, R.t0);
+  a.nop();
+  a.beq(R.t1, R.zero, 'bail_human');
+  a.addiu(R.t2, R.zero, 8);
+  a.sw(R.t2, ADDR.g_CrashPendingMode & 0xffff, R.t0);
+  a.ori(R.s0, R.zero, 0xFFFF);
+  a.addiu(R.v0, R.zero, -1);
+  a.lw(R.ra, 16, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('bail_human');
   a.lw(R.t1, ADDR.g_BailScreamIdx & 0xffff, R.t0);
   a.nop();
   a.sltiu(R.t2, R.t1, 9);
@@ -1468,7 +1498,7 @@ function buildLulaoStrData(gpMeta = null) {
       let ramAddr = strPool.get(val);
       if (ramAddr === undefined) {
         const b = Buffer.from(val + '\0', 'ascii');
-        if (strOff + b.length > 0xE00) throw new Error(`LULAO_STRDATA overflow em "${val}"!`);
+        if (strOff + b.length > 0xB40) throw new Error(`LULAO_STRDATA overflow em "${val}" (max 0xB40 p/ CrashSfxCode)!`);
         b.copy(buf, strOff);
         ramAddr = (ADDR.LulaoStrDataBase + strOff) >>> 0;
         strPool.set(val, ramAddr);
@@ -1491,10 +1521,20 @@ function buildLulaoStrData(gpMeta = null) {
       buf.writeUInt32LE(e.byteOffsetInBank >>> 0, off); off += 4;
       buf.writeUInt32LE(e.byteSize >>> 0, off); off += 4;
     }
+    // Initialize Fixed Crash SFX State @ +0xFC0..+0xFFF (RAM 0x800E5FC0..0x800E5FFF)
+    buf.writeUInt32LE(0, 0xFC0);                              // g_CrashSfxActive = 0
+    buf.writeUInt32LE(0xFFFFFFFF, 0xFC4);                     // g_CrashLastBail = -1
+    buf.writeUInt32LE(gpMeta.spuPitch >>> 0, 0xFC8);          // g_StreamPitch = 0x0280
+    buf.writeUInt32LE(11507, 0xFCC);                          // g_StreamRateCenti = 11507
+    buf.writeUInt32LE((gpMeta.crash?.startSector || 0) >>> 0, 0xFD0); // g_CrashSfxStartSec
+    buf.writeUInt32LE((gpMeta.crash?.totalSectors || 0) >>> 0, 0xFD4);// g_CrashSfxSectors
+    buf.writeUInt32LE(0xFFFFFFFF, 0xFD8);                     // g_CrashLastSfxSlot = -1
+    buf.writeUInt32LE(0, 0xFDC);                              // g_CrashPlayCount = 0
+    buf.writeUInt32LE(0, 0xFE0);                              // g_CrashPendingMode = 0
   }
   // Terminator {0, 0} already zeroed!
 
-  console.log(`  [DATA] LULAO_STRDATA: 0x${ADDR.LulaoStrDataBase.toString(16)}..0x${(ADDR.LulaoStrDataBase + strOff).toString(16)} (${mappings.length} ponteiros, ${strOff - 0x480} B strings / 2432 B, livre: ${0xE00 - strOff} B + 448 B ringTables @ +0xE00)`);
+  console.log(`  [DATA] LULAO_STRDATA: 0x${ADDR.LulaoStrDataBase.toString(16)}..0x${(ADDR.LulaoStrDataBase + strOff).toString(16)} (${mappings.length} ponteiros, ${strOff - 0x480} B strings / 1728 B, livre: ${0xB40 - strOff} B + CrashSfxCode @ +0xB40 + ringTables @ +0xE00)`);
   return { buf, mappings };
 }
 
@@ -1533,7 +1573,7 @@ function assembleLulaoEngine(gpMeta) {
   a.j('Hook_SpawnLetter');    a.nop(); // 0x800E3848
   a.j('Hook_CarHitVoice');    a.nop(); // 0x800E3850
   a.j('Hook_PsxUpload');      a.nop(); // 0x800E3858
-  a.j('Hook_GoalPickupSfx');  a.nop(); // 0x800E3860
+  a.j(ADDR.Entry_CrashGoalPickup); a.nop(); // 0x800E3860 (Crash Wumpa/Crystal/Diamond/AkuAku + School Miami Box SFX!)
   a.j('Hook_GoalListAsync');  a.nop(); // 0x800E3868
   a.j('Hook_GoalListTick');   a.nop(); // 0x800E3870
 
@@ -1672,10 +1712,13 @@ function assembleLulaoEngine(gpMeta) {
   a.sw(R.ra, 20, R.sp);
   a.jal(SYM.Career_CollectCash);
   a.nop();
+  a.lui(R.t2, 0x800E);
+  a.lw(R.t1, ADDR.g_CrashSfxActive & 0xffff, R.t2); // Crash B. plays Wumpa/Crystal/Diamond via Hook_GoalPickupSfx!
   a.lwSym(R.t0, 'g_CacheClipCount');     // Non-zero ONLY when Lulao (Slot 2) & RAM cache loaded!
+  a.bne(R.t1, R.zero, 'hcc_ret');
   a.nop();
   a.beq(R.t0, R.zero, 'hcc_ret');
-  a.addiu(R.t1, R.zero, 1);              // mode 1 = Cash Pickup
+  a.addiu(R.t1, R.zero, 1);              // mode 1 = Lulao Cash Pickup
   a.swSym(R.t1, R.t2, 'g_PendingVoiceMode');
   a.label('hcc_ret');
   a.lw(R.ra, 20, R.sp);
@@ -1688,7 +1731,10 @@ function assembleLulaoEngine(gpMeta) {
   //    Leaf deferred trigger: protected by g_EndRunSpoken, ZERO stall!
   // --------------------------------------------------------------------------
   a.label('Lulao_OnEndRun');
+  a.lui(R.t3, 0x800E);
+  a.lw(R.t2, ADDR.g_CrashSfxActive & 0xffff, R.t3);
   a.lwSym(R.t0, 'g_EndRunSpoken');
+  a.bne(R.t2, R.zero, 'oer_ret');
   a.lwSym(R.t1, 'g_CacheClipCount');
   a.bne(R.t0, R.zero, 'oer_ret');
   a.nop();
@@ -1759,8 +1805,18 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
   a.lwSym(R.t0, 'g_PendingVoiceMode');
   a.nop();
+  a.bne(R.t0, R.zero, 'hft_start_lulao');
+  a.lui(R.t1, 0x800E);
+  a.lw(R.t0, ADDR.g_CrashPendingMode & 0xffff, R.t1); // Crash B. zero-stall SFX (4..8)
+  a.nop();
   a.beq(R.t0, R.zero, 'hft_tick');
   a.nop();
+  a.sw(R.zero, ADDR.g_CrashPendingMode & 0xffff, R.t1);
+  a.jal('LulaoStream_StartFromCache');
+  a.move(R.a0, R.t0);
+  a.j('hft_tick');
+  a.nop();
+  a.label('hft_start_lulao');
   a.swSym(R.zero, R.t1, 'g_PendingVoiceMode');
   a.jal('LulaoStream_StartFromCache');
   a.move(R.a0, R.t0);
@@ -1813,6 +1869,8 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
   a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
   a.swSym(R.zero, R.t0, 'g_PendingVoiceMode');
+  a.lui(R.t0, 0x800E);
+  a.sw(R.zero, ADDR.g_CrashPendingMode & 0xffff, R.t0);
   a.jal('Lulao_SyncStrings');
   a.nop();
   // Ensure RAM voice cache is loaded (0 frames when already preloaded asynchronously during GoalList_Loop!)
@@ -2198,7 +2256,7 @@ function assembleLulaoEngine(gpMeta) {
   a.swSym(R.t0, R.t1, 'g_AsyncState');   // Phase 0 (tricks.bin) DMA in flight!
 
   a.label('lcl_chk_lulao');
-  // Phase 1/2: Only preload LULAO_GPBANK (+ BOLSO_GPBANK) once per level & for Lulao (Slot 2)
+  // Phase 1/2: Preload LULAO_GPBANK (Slot 2) OR CRASH_SFXBANK (Slot 20) once per level!
   a.lwSym(R.t0, 'g_CacheBuf');
   a.nop();
   a.bne(R.t0, R.zero, 'lcl_ret');
@@ -2206,6 +2264,12 @@ function assembleLulaoEngine(gpMeta) {
   a.la(R.a0, SYM.g_Career);
   a.jal(SYM.GetSelectedSkaterIdx);
   a.nop();
+  a.addiu(R.t0, R.zero, 20);             // Slot 20 = Crash B.!
+  a.bne(R.v0, R.t0, 'lcl_chk_slot2');
+  a.nop();
+  a.j(ADDR.Entry_CrashStartAsync);       // Jump to 0x800E5B88 (allocates & queues ~31 KB CRASH_SFXBANK!)
+  a.nop();
+  a.label('lcl_chk_slot2');
   a.addiu(R.t0, R.zero, 2);
   a.bne(R.v0, R.t0, 'lcl_ret');
   a.nop();
@@ -2398,6 +2462,9 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
   a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
   a.swSym(R.zero, R.t0, 'g_PendingVoiceMode');
+  a.lui(R.t0, 0x800E);
+  a.sw(R.zero, ADDR.g_CrashSfxActive & 0xffff, R.t0);
+  a.sw(R.zero, ADDR.g_CrashPendingMode & 0xffff, R.t0);
   a.swSym(R.zero, R.t0, 'g_CacheClipCount');
   a.swSym(R.zero, R.t0, 'g_BolsoClipCount');
   a.swSym(R.zero, R.t0, 'g_BolsoDataPtr');
@@ -2753,6 +2820,21 @@ function assembleLulaoEngine(gpMeta) {
   a.bne(R.t0, R.zero, 'lsf_koff_wait');
   a.addiu(R.t0, R.t0, -1);
 
+  // Crash B. zero-stall SFX modes (4=Wumpa, 5=Crystal, 6=Diamond, 7=AkuAku, 8=RandomBail @ 11,025 Hz):
+  a.sltiu(R.t0, R.s4, 4);
+  a.bne(R.t0, R.zero, 'lsf_lulao_rate');
+  a.nop();
+  a.j(ADDR.Entry_CrashResolveClip);
+  a.nop();
+
+  // Lulao/Bolsonaro gameplay speech: set dynamic pitch 0x0280 (6890.625 Hz) & rate 11507 centi-samples/VBlank
+  a.label('lsf_lulao_rate');
+  a.lui(R.t0, 0x800E);
+  a.addiu(R.t1, R.zero, gpMeta.spuPitch & 0xffff);
+  a.sw(R.t1, ADDR.g_StreamPitch & 0xffff, R.t0);
+  a.addiu(R.t1, R.zero, 11507);
+  a.sw(R.t1, ADDR.g_StreamRateCenti & 0xffff, R.t0);
+
   // Pick next random cached clip index (0..s1-1), never repeating last clip of that speaker when count > 1
   a.jal('Lulao_NextRand');
   a.nop();
@@ -2861,7 +2943,9 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.t1, R.zero, 0x3FFF);
   a.sh(R.t1, 0x1D70, R.t0);              // VOL_L = 0x3FFF
   a.sh(R.t1, 0x1D72, R.t0);              // VOL_R = 0x3FFF
-  a.addiu(R.t1, R.zero, gpMeta.spuPitch & 0xffff); // PITCH = 0x0280 (exact 6890.625 Hz!)
+  a.lui(R.t2, 0x800E);
+  a.lw(R.t1, ADDR.g_StreamPitch & 0xffff, R.t2); // Dynamic PITCH: 0x0280 (Lulao/Bolso) or 0x0400 (Crash 11,025 Hz!)
+  a.nop();
   a.sh(R.t1, 0x1D74, R.t0);
   a.ori(R.t1, R.zero, (ADDR.SpuStreamHalfA >>> 3) & 0xffff); // 0xFE80
   a.sh(R.t1, 0x1D76, R.t0);              // START_ADDR = 0xFE80
@@ -2935,8 +3019,10 @@ function assembleLulaoEngine(gpMeta) {
   a.beq(R.s0, R.t4, 'ltk_eof');
   a.nop();
 
-  // Active streaming (s0 == 1): acc += dt * 11507; while (acc >= 358400) acc -= 358400;
-  a.li(R.t3, 11507);
+  // Active streaming (s0 == 1): acc += dt * g_StreamRateCenti (11507 @ 6890.625 Hz or 18411 @ 11025 Hz!)
+  a.lui(R.t0, 0x800E);
+  a.lw(R.t3, ADDR.g_StreamRateCenti & 0xffff, R.t0);
+  a.nop();
   a.multu(R.t2, R.t3);
   a.mflo(R.t4);
   a.lwSym(R.t5, 'g_StreamSampleAcc');
@@ -3172,48 +3258,7 @@ function assembleLulaoEngine(gpMeta) {
   a.j(SYM.PSX_ParseAndUploadTex);
   a.nop();
 
-  // --------------------------------------------------------------------------
-  // 13. Hook_GoalPickupSfx(sfxId, vol, pan) [@ 0x80036858 inside PowerUp_Pickup]
-  //     In School Miami (g_CurrentLevel == 12), collecting any of the 5 boxy
-  //     "Triplex do Guaruja" G5 objective collectibles (subtype 33 -> SFX 316)
-  //     triggers BOTH:
-  //       1. Heavy crate/box smash SFX 83 (vol 12288, resident school2.vab!)
-  //       2. Skater bump/reaction voice via Skater_BumpSfx (0x80049D34 -> Hook_BailSfx!)
-  //     100% resident PS1 SPU RAM -> ZERO CD-ROM access / 0.00 ms stall!
-  // --------------------------------------------------------------------------
-  a.label('Hook_GoalPickupSfx');
-  a.addiu(R.t0, R.zero, 316);            // subtype 33 G5 collectible SFX
-  a.bne(R.a0, R.t0, 'hgp_orig');
-  a.lw(R.t1, 14980, R.gp);               // delay slot: g_CurrentLevel
-  a.addiu(R.t0, R.zero, 12);             // 12 = School Miami (THPS1)
-  a.bne(R.t1, R.t0, 'hgp_orig');
-  a.nop();
-
-  a.addiu(R.sp, R.sp, -24);
-  a.sw(R.ra, 20, R.sp);
-  a.sw(R.s0, 16, R.sp);
-  // 1. Original pickup chime SFX 316 (save SPU voice handle in s0)
-  a.jal(SYM.SFX_Play);
-  a.nop();
-  a.move(R.s0, R.v0);
-  // 2. Heavy crate/box crash SFX 83 @ vol 12288 (resident school2.vab in SPU RAM!)
-  a.addiu(R.a0, R.zero, 83);
-  a.addiu(R.a1, R.zero, 12288);
-  a.jal(SYM.SFX_Play);
-  a.move(R.a2, R.zero);
-  // 3. Skater bump/reaction sound (0x80049D34 -> SFX 28..30 via Hook_BailSfx in resident skate2.vab!)
-  a.jal(SYM.Skater_BumpSfx);
-  a.nop();
-  a.move(R.v0, R.s0);
-  a.lw(R.s0, 16, R.sp);
-  a.lw(R.ra, 20, R.sp);
-  a.nop();
-  a.jr(R.ra);
-  a.addiu(R.sp, R.sp, 24);
-
-  a.label('hgp_orig');
-  a.j(SYM.SFX_Play);
-  a.nop();
+  // (Hook_GoalPickupSfx lives cleanly in CRASH_SFX_CODE @ 0x800E5B80 — saves 136 B in LULAO_CODE!)
 
   // --------------------------------------------------------------------------
   // Resident State & LULAO_GPBANK + BOLSO_GPBANK Descriptor Tables (0x800E3800..0x800E4FFF)
@@ -3278,6 +3323,215 @@ function assembleLulaoEngine(gpMeta) {
 }
 
 // ============================================================================
+// 2D. Assemble Resident Crash B. Zero-Stall SFX Code (0x800E5B80..0x800E5DFF, 640 B)
+//     Embedded cleanly in the free slack of VOICES.DAT Sectors 5..6 (ZERO heap shift!):
+//       - Entry_CrashGoalPickup  (0x800E5B80): Wumpa ($50), Crystal ($100), Diamond ($250), Aku Aku (Hangar/Miami G5)
+//       - Entry_CrashStartAsync  (0x800E5B88): Preloads ~32 KB CRASH_SFXBANK via async DMA during GoalList (Slot 20 ONLY!)
+//       - Entry_CrashResolveClip (0x800E5B90): Resolves exact Crash SFX slot (0..3 pickups, 4..11 non-repeating random bails)
+//                                              at crisp 11,025 Hz (pitch 0x0400) with ZERO XA ducking & ZERO chiado!
+// ============================================================================
+function assembleCrashSfxCode(gpMeta, L) {
+  const a = new MipsAsm(ADDR.CrashSfxCodeBase);
+  const req = name => {
+    const addr = L.get(name);
+    if (addr === undefined) throw new Error(`Label ausente em LULAO_CODE: ${name}`);
+    return addr;
+  };
+
+  // Fixed Entry Jump Table @ 0x800E5B80
+  a.j('CrashGoalPickup');  a.nop(); // 0x800E5B80
+  a.j('CrashStartAsync');  a.nop(); // 0x800E5B88
+  a.j('CrashResolveClip'); a.nop(); // 0x800E5B90
+
+  // ---- 1. CrashGoalPickup: full Hook_GoalPickupSfx @ 0x80036858 ----
+  //    a) When Crash B. (Slot 20) active: $50 Wumpa (4), $100 Crystal (5), $250 Diamond (6), Hangar/Miami G5 Aku Aku (7)!
+  //    b) Otherwise (Slots 0..19): School Miami (12) G5 boxy Triplex SFX 316 + 83 + Skater_BumpSfx, else vanilla SFX_Play!
+  a.label('CrashGoalPickup');
+  a.lui(R.t2, 0x800E);
+  a.lw(R.t1, ADDR.g_CrashSfxActive & 0xffff, R.t2);
+  a.nop();
+  a.beq(R.t1, R.zero, 'cgp_not_crash');
+  a.lhu(R.t0, 56, R.s1);                 // delay slot: PowerUp subtype
+  a.addiu(R.t1, R.zero, 25);             // $50 Cash -> Wumpa Fruit ("Manga") -> mode 4
+  a.beq(R.t0, R.t1, 'cgp_fire');
+  a.addiu(R.v1, R.zero, 4);
+  a.addiu(R.t1, R.zero, 26);             // $100 Cash -> Power Crystal ("Cristal") -> mode 5
+  a.beq(R.t0, R.t1, 'cgp_fire');
+  a.addiu(R.v1, R.zero, 5);
+  a.addiu(R.t1, R.zero, 24);             // $250 Cash -> Diamond ("Diamante") -> mode 6
+  a.beq(R.t0, R.t1, 'cgp_fire');
+  a.addiu(R.v1, R.zero, 6);
+  a.addiu(R.t1, R.zero, 33);             // G5 Collectible -> Hangar (0) & School Miami (12) 5 Aku Aku Masks -> mode 7!
+  a.bne(R.t0, R.t1, 'cgp_not_crash');
+  a.lw(R.t0, 14980, R.gp);               // delay slot: g_CurrentLevel
+  a.nop();
+  a.beq(R.t0, R.zero, 'cgp_fire');       // Level 0 = Hangar (5 Aku Aku!)
+  a.addiu(R.v1, R.zero, 7);
+  a.addiu(R.t1, R.zero, 12);             // Level 12 = School Miami (5 Aku Aku!)
+  a.beq(R.t0, R.t1, 'cgp_fire');
+  a.addiu(R.v1, R.zero, 7);
+
+  a.label('cgp_not_crash');
+  a.addiu(R.t0, R.zero, 316);            // subtype 33 G5 collectible SFX
+  a.bne(R.a0, R.t0, 'cgp_orig');
+  a.lw(R.t1, 14980, R.gp);               // delay slot: g_CurrentLevel
+  a.addiu(R.t0, R.zero, 12);             // 12 = School Miami (THPS1)
+  a.bne(R.t1, R.t0, 'cgp_orig');
+  a.nop();
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  a.jal(SYM.SFX_Play);
+  a.nop();
+  a.move(R.s0, R.v0);
+  a.addiu(R.a0, R.zero, 83);             // Heavy crate/box crash SFX 83 @ vol 12288 (resident school2.vab!)
+  a.addiu(R.a1, R.zero, 12288);
+  a.jal(SYM.SFX_Play);
+  a.move(R.a2, R.zero);
+  a.jal(SYM.Skater_BumpSfx);             // Skater bump/reaction voice
+  a.nop();
+  a.move(R.v0, R.s0);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('cgp_orig');
+  a.j(SYM.SFX_Play);
+  a.nop();
+
+  a.label('cgp_fire');
+  a.sw(R.v1, ADDR.g_CrashPendingMode & 0xffff, R.t2);
+  a.jr(R.ra);                            // Suppress vanilla THPS2 cash/goal chime (v0=0 safe for SFX_SetPitch!)
+  a.move(R.v0, R.zero);
+
+  // ---- 2. CrashStartAsync: allocates persistent ~32 KB g_CacheBuf & queues CRASH_SFXBANK DMA ----
+  //    Jumped to from LulaoCache_StartAsync (80 B stack frame already live; exits via lcl_kick_cd or lcl_ret!)
+  a.label('CrashStartAsync');
+  a.lui(R.t7, 0x800E);
+  a.lw(R.s5, ADDR.g_CrashSfxSectors & 0xffff, R.t7); // s5 = crashSfxSectors (~16 sectors)
+  a.nop();
+  a.beq(R.s5, R.zero, 'csa_fail');
+  a.nop();
+
+  a.jal(req('Heap1_LargestFree'));
+  a.nop();
+  a.sll(R.s0, R.s5, 11);                 // s0 = crashSfxBytes
+  a.li(R.t1, 25600);                     // 1 KB stage + 24 KB safety margin
+  a.addu(R.t1, R.s0, R.t1);
+  a.sltu(R.t0, R.v0, R.t1);
+  a.bne(R.t0, R.zero, 'csa_fail');
+  a.nop();
+
+  a.addiu(R.a0, R.s0, 1024);             // 1024 B g_StageBuf + CRASH_SFXBANK payload
+  a.swSym(R.a0, R.t2, req('g_CacheAllocBytes'));
+  a.move(R.a1, R.zero);                  // Heap[0] persistent across Retry
+  a.addiu(R.a2, R.zero, 1);              // top-down
+  a.jal(SYM.Mem_Alloc);
+  a.move(R.a3, R.zero);
+  a.beq(R.v0, R.zero, 'csa_fail');
+  a.move(R.s6, R.v0);                    // s6 = g_CacheBuf
+
+  // Commit Crash async DMA descriptors (reuses exact PollAsync Phase 0->Phase 1 pipeline!)
+  a.swSym(R.s6, R.t0, req('g_CacheBuf'));
+  a.swSym(R.zero, R.t0, req('g_CacheClipCount'));
+  a.swSym(R.zero, R.t0, req('g_BolsoClipCount'));
+  a.swSym(R.zero, R.t0, req('g_BolsoDataPtr'));
+  a.swSym(R.zero, R.t0, req('g_CacheStartClip'));
+  a.swSym(R.zero, R.t0, req('g_CacheBaseOff'));
+  a.swSym(R.zero, R.t0, req('g_PendBolsoSec'));
+  a.addiu(R.t1, R.zero, 12);             // 12 Crash SFX clips -> PollAsync commits g_CacheClipCount = 12!
+  a.swSym(R.t1, R.t0, req('g_PendLulaoClips'));
+  a.swSym(R.s5, R.t0, req('g_PendLulaoSec'));
+  a.lui(R.t7, 0x800E);
+  a.lw(R.t3, ADDR.g_CrashSfxStartSec & 0xffff, R.t7);
+  a.addiu(R.t2, R.zero, 1);
+  a.swSym(R.t3, R.t0, req('g_PendLulaoLbaRel'));
+  a.sw(R.t2, ADDR.g_CrashSfxActive & 0xffff, R.t7);
+  a.addiu(R.t2, R.zero, -1);
+  a.sw(R.t2, ADDR.g_CrashLastBail & 0xffff, R.t7);
+  a.sw(R.t2, ADDR.g_CrashLastSfxSlot & 0xffff, R.t7);
+  a.sw(R.zero, ADDR.g_CrashPlayCount & 0xffff, R.t7);
+  a.sw(R.zero, ADDR.g_CrashPendingMode & 0xffff, R.t7);
+  a.j(req('lcl_kick_cd'));
+  a.nop();
+
+  a.label('csa_fail');
+  a.j(req('lcl_ret'));
+  a.nop();
+
+  // ---- 3. CrashResolveClip: resolves slot 0..11 in "CRSF" bank @ g_CacheBuf+1024 ----
+  //    Jumped to from LulaoStream_StartFromCache with s0=g_CacheBuf, s4=mode (4..8), SPU already muted!
+  a.label('CrashResolveClip');
+  a.addiu(R.t4, R.s0, 1024);             // t4 = bankBase = g_CacheBuf + 1024
+  a.lw(R.t0, 0, R.t4);
+  a.li(R.t1, 0x43525346);                // "CRSF" magic LE
+  a.bne(R.t0, R.t1, 'crc_abort');
+  a.nop();
+
+  a.addiu(R.t0, R.zero, 8);
+  a.beq(R.s4, R.t0, 'crc_rand_bail');
+  a.addiu(R.s2, R.s4, -4);               // delay slot: modes 4..7 -> slots 0..3 (Wumpa/Crystal/Diamond/AkuAku)!
+  a.j('crc_slot_ready');
+  a.nop();
+
+  // Mode 8: Random strictly non-repeating Crash 3 fall/hurt sound (slots 4..11 = 8 unique Crash voices!)
+  a.label('crc_rand_bail');
+  a.jal(req('Lulao_NextRand'));          // hardware timers + VSync + XorShift32 entropy!
+  a.nop();
+  a.andi(R.s2, R.v0, 7);                 // s2 = 0..7
+  a.lui(R.t7, 0x800E);
+  a.lw(R.t1, ADDR.g_CrashLastBail & 0xffff, R.t7);
+  a.nop();
+  a.bne(R.s2, R.t1, 'crc_bail_ok');
+  a.nop();
+  a.addiu(R.s2, R.s2, 1);                // Never repeat the same fall sound twice in a row!
+  a.andi(R.s2, R.s2, 7);
+  a.label('crc_bail_ok');
+  a.sw(R.s2, ADDR.g_CrashLastBail & 0xffff, R.t7);
+  a.addiu(R.s2, R.s2, 4);                // slots 4..11!
+
+  a.label('crc_slot_ready');
+  // Record telemetry & look up { byteOffsetInBank, byteSize } @ bankBase + 8 + s2 * 8
+  a.lui(R.t7, 0x800E);
+  a.sw(R.s2, ADDR.g_CrashLastSfxSlot & 0xffff, R.t7);
+  a.lw(R.t0, ADDR.g_CrashPlayCount & 0xffff, R.t7);
+  a.addiu(R.t4, R.s0, 1024);             // reload t4 (preserved or clobbered by Lulao_NextRand!)
+  a.addiu(R.t0, R.t0, 1);
+  a.sw(R.t0, ADDR.g_CrashPlayCount & 0xffff, R.t7);
+
+  a.sll(R.t1, R.s2, 3);                  // slot * 8
+  a.addu(R.t1, R.t4, R.t1);
+  a.lw(R.t2, 8, R.t1);                   // byteOffsetInBank
+  a.lw(R.s3, 12, R.t1);                  // byteSize
+  a.nop();
+  a.addu(R.t2, R.t4, R.t2);              // g_StreamSrc = bankBase + byteOffsetInBank
+  a.swSym(R.t2, R.t0, req('g_StreamSrc'));
+  a.swSym(R.s3, R.t0, req('g_StreamTotalBytes'));
+
+  // Program crisp 11,025 Hz Crash 3 SPU pitch (0x0400) & rate (18411 centi-samples/VBlank)!
+  a.addiu(R.t1, R.zero, 0x0400);
+  a.sw(R.t1, ADDR.g_StreamPitch & 0xffff, R.t7);
+  a.addiu(R.t1, R.zero, 18411);
+  a.sw(R.t1, ADDR.g_StreamRateCenti & 0xffff, R.t7);
+
+  // Jump directly to lsf_duck_ok (skips XA music ducking so soundtrack stays vibrant!)
+  a.j(req('lsf_duck_ok'));
+  a.nop();
+
+  a.label('crc_abort');
+  a.j(req('lsf_done'));
+  a.nop();
+
+  const used = a.pc() - ADDR.CrashSfxCodeBase;
+  if (used > 704) throw new Error(`CRASH_SFX_CODE excede 704 B (${used} B)!`);
+  console.log(`  [ASM] CRASH_SFX_CODE: 0x${ADDR.CrashSfxCodeBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / 704 B, livre: ${704 - used} B)`);
+  a.padTo(ADDR.CrashSfxCodeBase + 704);
+  return a.emit();
+}
+
+// ============================================================================
 // Helper to patch a 32-bit word with strict original/idempotent verification
 // ============================================================================
 function patchWord(buf, fileOff, expectedOrig, newVal, desc, prevValidVals = []) {
@@ -3330,6 +3584,9 @@ function applyAll() {
     const built = assembleLulaoEngine(gpMeta);
     lulaoCode = built.buf;
     lulaoLabels = built.labels;
+    // Embed Crash B. Zero-Stall SFX Code (704 B) into LULAO_STRDATA free slack @ +0xB40..+0xDFF!
+    const crashSfxCode = assembleCrashSfxCode(gpMeta, lulaoLabels);
+    crashSfxCode.copy(lulaoStrData, 0xB40);
     return Buffer.concat([lulaoCode, lulaoStrData, thps1Block]); // 34816 B (Sectors 2..18)
   });
 
@@ -3414,7 +3671,7 @@ function applyAll() {
   return { slusTail, modCode, bailHookCode, lulaoCode, lulaoStrData, lulaoMappings, manifest };
 }
 
-module.exports = { applyAll, ADDR, SYM, jalWord, assembleSlusTailClean: assembleSlusTailCompact, assembleModCode, assembleBailHookCode, assembleLulaoEngine, buildLulaoStrData };
+module.exports = { applyAll, ADDR, SYM, jalWord, assembleSlusTailClean: assembleSlusTailCompact, assembleModCode, assembleBailHookCode, assembleLulaoEngine, assembleCrashSfxCode, buildLulaoStrData };
 
 if (require.main === module) {
   applyAll();

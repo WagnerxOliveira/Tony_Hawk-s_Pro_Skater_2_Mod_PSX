@@ -65,6 +65,37 @@ const GP_MAX_ACTIVE_SEC = 2.85;
 const GP_LULAO_ORDER = [11, 0, 8, 4, 6, 1, 13, 2, 9, 3, 7, 10, 5, 12];
 const cashArtPath = path.join(rootDir, 'build', 'lulao_cash_art.bin');
 
+// Authentic Crash Bandicoot 3: Warped PS1 SFX Bank (CRASH_SFXBANK @ 11,025 Hz, pitch 0x0400)
+//   Slot 0:    Wumpa Fruit ("Manga") $50 pickup          — frt0A (99 ms)
+//   Slot 1:    Power Crystal ("Cristal") $100 pickup     — Pb10A (486 ms)
+//   Slot 2:    Diamond / Gem ("Diamante") $250 pickup    — GSh2A (750 ms)
+//   Slot 3:    Aku Aku ("BOODABAGA!") Hangar G5 pickup   — WD10A (724 ms)
+//   Slots 4..11 (8 distinct authentic Crash 3 fall/hurt/woah sounds for random bail rotation!):
+//     4: fal0A (364 ms — iconic "WOAAAAH!")
+//     5: arg0A (231 ms — iconic "AARGH!")
+//     6: yip0A ( 81 ms — "YIP / WHOOP!")
+//     7: sht0A (104 ms — "OOOF!")
+//     8: de20A (154 ms — "UGH!")
+//     9: CD1dA (1049 ms — "WHOA-OOOOH! CRASH")
+//    10: CD3dA (367 ms — "AIEEE!")
+//    11: Cd2cA (264 ms — "OOH-AH!")
+const CRASH_SFX_DIR = path.join(rootDir, 'crash_3_psx', 'crash3_thps2_master', '02_extracted_crash3_complete', '06_audio_sfx_music_speech', 'sfx_adio');
+const CRASH_SFX_LIST = [
+  { slot: 0,  role: 'wumpa_50',   file: 'frt0A_1edba049.wav' },
+  { slot: 1,  role: 'crystal_100',file: 'Pb10A_66582049.wav' },
+  { slot: 2,  role: 'diamond_250',file: 'GSh2A_55b22149.wav' },
+  { slot: 3,  role: 'aku_aku_g5', file: 'WD10A_75382049.wav' },
+  { slot: 4,  role: 'bail_woah',  file: 'fal0A_1e52a049.wav' },
+  { slot: 5,  role: 'bail_arg',   file: 'arg0A_14da0049.wav' },
+  { slot: 6,  role: 'bail_yip',   file: 'yip0A_44932049.wav' },
+  { slot: 7,  role: 'bail_oof',   file: 'sht0A_388ba049.wav' },
+  { slot: 8,  role: 'bail_ugh',   file: 'de20A_1a704049.wav' },
+  { slot: 9,  role: 'bail_crash', file: 'CD1dA_4d3826c9.wav' },
+  { slot: 10, role: 'bail_yelp',  file: 'CD3dA_4d3866c9.wav' },
+  { slot: 11, role: 'bail_ooh',   file: 'Cd2cA_4c684649.wav' },
+];
+const CRASH_SFX_HEADER_BYTES = 128; // +0:"CRSF", +4:clipCount(12), +8..+103:12x{off,sz}, +104..+127:pad
+
 function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const wavPath = path.join(cacheDir, `${cacheKey}.wav`);
@@ -382,6 +413,118 @@ function encodeBolsoGameplayBank(bolsoFiles, force = false) {
   return encodeCompactGameplayBank('BOLSO_GPBANK', bolsoDir, bolsoFiles, 'gp3_bolso', null, force);
 }
 
+function encodeCrashSfxClipToSpu(wavSrcPath, cacheKey, force = false) {
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const wavPath = path.join(cacheDir, `${cacheKey}.wav`);
+  const rawSpuPath = path.join(cacheDir, `${cacheKey}.raw.spu`);
+  const spuPath = path.join(cacheDir, `${cacheKey}.spu`);
+
+  const srcStat = fs.statSync(wavSrcPath);
+  if (!force && fs.existsSync(spuPath)) {
+    const dstStat = fs.statSync(spuPath);
+    if (dstStat.size >= 32 && dstStat.mtimeMs >= srcStat.mtimeMs) {
+      return fs.readFileSync(spuPath);
+    }
+  }
+
+  // Clean anti-aliased downsample 22,050 Hz -> 11,025 Hz mono 16-bit PCM (DC block + 4.9 kHz LPF + -1.2 dB headroom)
+  // NOTE: Never apply EBU R128 loudnorm to 80-750 ms game SFX — Crash 3 WAVs are already mastered at -0.1..-1.1 dBFS!
+  const ff = spawnSync(ffmpegExe, [
+    '-y', '-v', 'error',
+    '-i', wavSrcPath,
+    '-ac', '1',
+    '-af', 'highpass=f=40,lowpass=f=4900,aresample=11025,volume=0.88',
+    '-c:a', 'pcm_s16le',
+    wavPath,
+  ], { encoding: 'utf8' });
+  if (ff.status !== 0) {
+    throw new Error(`ffmpeg (CRASH_SFX) falhou em ${path.basename(wavSrcPath)}: ${ff.stderr || ff.stdout}`);
+  }
+
+  const enc = spawnSync(psxavencExe, [
+    '-q',
+    '-t', 'spu',
+    '-f', String(SPU_SAMPLE_RATE),
+    '-a', '16',
+    '-L',
+    wavPath,
+    rawSpuPath,
+  ], { encoding: 'utf8' });
+  if (enc.status !== 0) {
+    throw new Error(`psxavenc (CRASH_SFX) falhou em ${path.basename(wavSrcPath)}: ${enc.stderr || enc.stdout}`);
+  }
+
+  let spu = fs.readFileSync(rawSpuPath);
+  // Clear internal flags cleanly (2 KB SPU ping-pong staging loader sets 0x04 / 0x03 / 0x01!)
+  for (let off = 0; off + 16 <= spu.length; off += 16) spu[off + 1] = 0x00;
+  const rem = spu.length % 16;
+  if (rem !== 0) spu = Buffer.concat([spu, Buffer.alloc(16 - rem, 0)]);
+  const stopBlk = Buffer.alloc(16, 0);
+  stopBlk[1] = 0x01;
+  spu = Buffer.concat([spu, stopBlk]);
+
+  fs.writeFileSync(spuPath, spu);
+  try { fs.unlinkSync(wavPath); } catch (_) {}
+  try { fs.unlinkSync(rawSpuPath); } catch (_) {}
+  return spu;
+}
+
+function encodeCrashSfxBank(force = false) {
+  console.log(`\n=== Codificando Sub-Banco CRASH_SFXBANK (12 SFX autenticos Crash 3 @ ${SPU_SAMPLE_RATE} Hz, pitch 0x0400) ===`);
+  const entries = [];
+  const chunks = [];
+  let offset = CRASH_SFX_HEADER_BYTES;
+
+  for (const spec of CRASH_SFX_LIST) {
+    const fullPath = path.join(CRASH_SFX_DIR, spec.file);
+    if (!fs.existsSync(fullPath)) throw new Error(`SFX Crash 3 ausente: ${fullPath}`);
+    const key = `crsfx_${SPU_SAMPLE_RATE}_${String(spec.slot).padStart(2, '0')}_${spec.file.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const spu = encodeCrashSfxClipToSpu(fullPath, key, force);
+    const durMs = Math.round(((spu.length / 16) * 28 / SPU_SAMPLE_RATE) * 1000);
+    entries.push({
+      slot: spec.slot,
+      role: spec.role,
+      file: spec.file,
+      byteOffsetInBank: offset,
+      byteSize: spu.length,
+      durationMs: durMs,
+    });
+    chunks.push(spu);
+    offset += spu.length;
+    console.log(
+      `  [CRASH_SFX #${String(spec.slot).padStart(2, '0')} ${spec.role.padEnd(11)}] ${spec.file.padEnd(22)} ` +
+      `${String(durMs).padStart(4)} ms | ${String(spu.length).padStart(5)} B @ +0x${entries[entries.length - 1].byteOffsetInBank.toString(16).padStart(4, '0')}`
+    );
+  }
+
+  const hdr = Buffer.alloc(CRASH_SFX_HEADER_BYTES, 0);
+  hdr.writeUInt32LE(0x43525346, 0); // "CRSF" magic LE
+  hdr.writeUInt32LE(entries.length, 4);
+  for (const e of entries) {
+    const pos = 8 + e.slot * 8;
+    hdr.writeUInt32LE(e.byteOffsetInBank >>> 0, pos);
+    hdr.writeUInt32LE(e.byteSize >>> 0, pos + 4);
+  }
+
+  const rawBank = Buffer.concat([hdr, ...chunks]);
+  const totalSectors = Math.ceil(rawBank.length / 2048);
+  const bankBuf = Buffer.alloc(totalSectors * 2048, 0);
+  rawBank.copy(bankBuf, 0);
+
+  console.log(`  [CRASH_SFXBANK] ${rawBank.length} B -> ${bankBuf.length} B (${totalSectors} setores = ${(bankBuf.length / 1024).toFixed(1)} KB, 100% RAM-resident p/ Crash B.!)`);
+  return {
+    clipCount: entries.length,
+    rawBytes: rawBank.length,
+    totalBytes: bankBuf.length,
+    totalSectors,
+    sampleRateHz: SPU_SAMPLE_RATE,
+    spuPitch: SPU_PITCH,
+    spuPitchHex: '0x0400',
+    entries,
+    bankBuf,
+  };
+}
+
 function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = null, extraResidentSectors = null) {
   if (!fs.existsSync(lulaoDir) || !fs.existsSync(bolsoDir) || !fs.existsSync(silvioDir)) {
     throw new Error(`Pastas de audio nao encontradas em ${audiosRoot}`);
@@ -473,6 +616,12 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
   payloads.push(bolsoGpBank.bankBuf);
   curSector += bolsoGpBank.totalSectors;
 
+  // Append CRASH_SFXBANK (12 authentic Crash 3 SFX @ 11,025 Hz / pitch 0x0400) for ZERO-STALL Crash B. audio!
+  const crashSfxStartSec = curSector;
+  const crashSfxBank = encodeCrashSfxBank(force);
+  payloads.push(crashSfxBank.bankBuf);
+  curSector += crashSfxBank.totalSectors;
+
   // Boot-Resident LULAO_CASHART (3 sectors = 6,144 B -> Sectors 17..19 -> RAM 0x800EB000..0x800EC7FF!):
   // Loaded ONCE at boot alongside MODCODE/THPS1_ENGINE -> eliminates the 318k-sector CD seek (~2.0 s) on EVERY level load!
   let cashArtBuf = Buffer.alloc(3 * 2048, 0);
@@ -515,6 +664,17 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
       startSector: cashArtStartSec,
       sectors: cashArtSectors,
       ramAddr: '0x800eb000',
+    },
+    crash: {
+      startSector: crashSfxStartSec,
+      clipCount: crashSfxBank.clipCount,
+      rawBytes: crashSfxBank.rawBytes,
+      totalBytes: crashSfxBank.totalBytes,
+      totalSectors: crashSfxBank.totalSectors,
+      sampleRateHz: crashSfxBank.sampleRateHz,
+      spuPitch: crashSfxBank.spuPitch,
+      spuPitchHex: crashSfxBank.spuPitchHex,
+      entries: crashSfxBank.entries,
     },
   };
 
@@ -622,6 +782,7 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
       ringEntries: gpMeta.bolso.ringEntries,
     },
     cashArt: gpMeta.cashArt,
+    crashSfxBank: gpMeta.crash,
   };
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));

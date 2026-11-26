@@ -800,10 +800,10 @@ function applyCrashEnginePatches(slusBuf, wadBuf, hedBuf, thps1Manifest) {
     [goalNamePtr(18, 3), 'Formar C-R-A-S-H'],
     [goalNamePtr(18, 5), '5 Cristais de Poder'],
     [goalNamePtr(18, 8), 'Cristal de Poder Secreto'],
-    // Cash / Wumpa / Gem / Relic Pickup Banners & Podium
-    [0x800C0310, 'Fruta Wumpa +50!'],
-    [0x800C0314, 'Gema Warp +100!'],
-    [0x800C030C, 'Reliquia Ouro +250!'],
+    // Cash / Wumpa / Crystal / Diamond Pickup Banners & Podium
+    [0x800C0310, 'Manga Wumpa +50!'],
+    [0x800C0314, 'Cristal +100!'],
+    [0x800C030C, 'Diamante +250!'],
     [0x800C01D4, 'Todas Wumpas da Fase!'],
     [0x800C080C, 'Wumpas'],
     // Banner letters S,K,A,T,E -> C,R,A,S,H

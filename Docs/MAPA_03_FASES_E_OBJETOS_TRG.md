@@ -26,13 +26,13 @@ Este documento mapeia **todas as 11 fases** dentro de `SLUS_010.66` (`g_LevelTab
 
 - **[0] s2dCr09u.bmp** (`0x800B8444` | GapList `+0x170` = `0x00000005`): `+0x20`: "s2dCr10u.bmp" • `+0x24`: "Zero Team" • `+0x40`: "s2dCr11u.bmp" • `+0x44`: "A-Team Team Deck" • `+0x60`: "s2dCr12u.bmp" • `+0x64`: "Birdhouse Team Seal" • `+0x80`: "s2dCr13u.bmp" • `+0x84`: "Team Silhouette" • `+0xa0`: "s2dCr14u.bmp" • `+0xa4`: "17th/21st Lancers" • `+0xc0`: "s2dCr15u.bmp" • `+0xc4`: "Flip New Wave" • `+0xe0`: "s2dCr16u.bmp" • `+0xe4`: "Race"
 - **[1] ?** (`0x800B85B8` | GapList `+0x170` = `0x00000000`): 
-- **[2] ?** (`0x800B872C` | GapList `+0x170` = `0x00115000`): 
+- **[2] ?** (`0x800B872C` | GapList `+0x170` = `0x00112000`): 
 - **[3] ?** (`0x800B88A0` | GapList `+0x170` = `0x3C03800C`): 
 - **[4] ?** (`0x800B8A14` | GapList `+0x170` = `0x1719FFFD`): 
 - **[5] ?** (`0x800B8B88` | GapList `+0x170` = `0x2E633230`): 
 - **[6] ?** (`0x800B8CFC` | GapList `+0x170` = `0x716E7275`): 
 - **[7] ?** (`0x800B8E70` | GapList `+0x170` = `0x800E7434`): `+0x68`: "Direto da Ilha Wumpa" • `+0x6c`: "para o skate mundial!" • `+0x70`: "Criado pelo Dr. Cortex," • `+0x74`: "Crash escapou do" • `+0x78`: "castelo girando tudo" • `+0x7c`: "e trouxe Aku Aku para" • `+0x80`: "proteger seus combos." • `+0x84`: "Domina todas manobras" • `+0x88`: "e especiais do Bob" • `+0x8c`: "Burnquist, além do" • `+0x90`: "lendário Casper to 360" • `+0x94`: "Flip de Rodney Mullen." • `+0x98`: "Pegue Frutas Wumpa," • `+0x9c`: "Cristais e Relíquias!"
-- **[8] Cristal de Poder Secreto** (`0x800B8FE4` | GapList `+0x170` = `0x00000000`): `+0x18`: "Cristal de Poder Secreto" • `+0x20`: "Formar C-R-A-S-H" • `+0x28`: "5 Mascaras Uka Uka" • `+0x30`: "Cristal de Poder Secreto" • `+0x38`: "Formar C-R-A-S-H" • `+0x40`: "5 Cristais de Poder" • `+0x48`: "Cristal de Poder Secreto" • `+0x50`: "Fruta Wumpa +50!" • `+0x58`: "Gema Warp +100!" • `+0x60`: "Reliquia Ouro +250!" • `+0x68`: "Todas Wumpas da Fase!" • `+0x70`: "Wumpas"
+- **[8] Cristal de Poder Secreto** (`0x800B8FE4` | GapList `+0x170` = `0x00000000`): `+0x18`: "Cristal de Poder Secreto" • `+0x20`: "Formar C-R-A-S-H" • `+0x28`: "5 Mascaras Uka Uka" • `+0x30`: "Cristal de Poder Secreto" • `+0x38`: "Formar C-R-A-S-H" • `+0x40`: "5 Cristais de Poder" • `+0x48`: "Cristal de Poder Secreto" • `+0x50`: "Manga Wumpa +50!" • `+0x58`: "Cristal +100!" • `+0x60`: "Diamante +250!" • `+0x68`: "Todas Wumpas da Fase!" • `+0x70`: "Wumpas"
 - **[9] ?** (`0x800B9158` | GapList `+0x170` = `0x00000000`): 
 - **[10] ?** (`0x800B92CC` | GapList `+0x170` = `0x00000000`): 
 

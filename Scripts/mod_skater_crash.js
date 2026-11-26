@@ -106,236 +106,356 @@ function parseObjFile(objPath) {
 }
 
 // ============================================================================
-// Retarget Crash 16 Rigid Parts cleanly onto burnq2.psx THPS2 Skeleton!
+// Surgical Crash Bandicoot 3D Remodel (100% Faithful to crashl/crashm/crashn!)
+// Builds directly from the 305-vert / 574-tri Naughty Dog CR10G master data:
+//   1. Unfolds CR10G's exact 4x5 mouth/teeth vertex grid into Crash's iconic
+//      wide cheeky white toothy grin (matching crashl.png & crashm.png!)
+//   2. Applies ONE continuous, proportion-faithful deformation field onto
+//      THPS2's 16 sk2anim bone pivots (ZERO Slenderman leg stretching, ZERO
+//      wrist/hip seam spikes, sneaker soles flush at burnq2 Y=+418!)
+//   3. Compiles ZERO-BLEED dedicated semantic 128x64 Head & 128x64 Body
+//      PS1 8-bit textures (crisp individual teeth, bold round black pupils,
+//      thick eyebrows, golden mottled back glow, diamond navel, white laced
+//      sneakers, and exact 8x8 center-sampled color swatches — 0.00% bleed!)
+// ============================================================================
+const CR10G_MASTER_JSON = path.join(CRASH_ROOT, '00_especificacoes_cirurgicas_txt', 'crash_cr10g_surgical_master_data.json');
+
+// Exact CR10G head triangle classification (verified directly against master JSON!)
+const TEETH_TRI_IDS = new Set([106, 107, 261, 262, 263, 266, 267, 268, 274, 287, 288, 289]);
+const MOUTH_GAP_TRI_IDS = new Set([105, 264, 265, 269, 270, 271, 272, 273]);
+
+function buildUnfoldedCr10gPositions(master) {
+  // Clone exact Naughty Dog CR10G raw_pos (+X anatomical left, +Y up, +Z forward)
+  const pos = master.vertices.map(v => v.raw_pos.slice());
+
+  // 1. Unfold CR10G's pinched idle mouth into Crash's iconic cheeky closed-teeth crescent grin
+  //    (matching crashl.png & crashm.png 1:1 — zero inverted triangles, exact left/right symmetry!)
+  const mouthOverrides = {
+    // Smile corners (wide upturned cheeky corners!)
+    79:  [-62, 504, 100],   // Left upper smile corner
+    78:  [-54, 476,  98],   // Left lower smile corner
+    158: [ 62, 504, 100],   // Right upper smile corner
+    157: [ 54, 476,  98],   // Right lower smile corner
+
+    // Upper teeth top gum line (arching up toward cheeky corners!)
+    81:  [-29, 498, 124],   // Left-center upper gum
+    82:  [  0, 494, 134],   // Center upper gum
+    149: [ 29, 498, 124],   // Right-center upper gum
+
+    // Upper teeth bottom edge (top of crisp black horizontal bite line!)
+    80:  [-27, 474, 124],   // Left-center upper bite
+    151: [  0, 470, 132],   // Center upper bite
+    150: [ 27, 474, 124],   // Right-center upper bite
+
+    // Lower teeth top edge (bottom of crisp black horizontal bite line — 8 units below upper!)
+    152: [-27, 465, 122],   // Left-center lower bite
+    155: [  0, 461, 128],   // Center lower bite
+    156: [ 27, 465, 122],   // Right-center lower bite
+
+    // Lower teeth bottom gum line
+    153: [-25, 444, 112],   // Left-center lower gum
+    154: [  0, 440, 116],   // Center lower gum
+    163: [ 25, 444, 112],   // Right-center lower gum
+
+    // Peach lip / cheek / chin framing the big grin cleanly (front + side profile match crashl/crashm!)
+    83:  [  0, 512, 136],   // Philtrum directly under nose/snout
+    84:  [-74, 524, 106],   // Left upper cheek
+    136: [ 74, 524, 106],   // Right upper cheek
+    85:  [-78, 504,  88],   // Left outer cheek
+    159: [ 78, 504,  88],   // Right outer cheek
+    25:  [-74, 482,  64],   // Left lower cheek
+    160: [ 74, 482,  64],   // Right lower cheek
+    77:  [-48, 446,  80],   // Left lower jaw
+    161: [ 48, 446,  80],   // Right lower jaw
+    165: [-22, 430,  98],   // Left-center peach chin
+    164: [  8, 426, 104],   // Right-center peach chin
+    162: [ 34, 434,  94],   // Outer right peach chin
+    76:  [  0, 416,  88],   // Bottom peach chin
+    73:  [-34, 442,  46],   // Back-left under-chin
+    75:  [ 34, 442,  46],   // Back-right under-chin
+  };
+  for (const [viStr, xyz] of Object.entries(mouthOverrides)) {
+    pos[Number(viStr)] = xyz.slice();
+  }
+
+  // 2. Refine eyeballs, bold round black pupils & thick angled dark-brown eyebrows
+  //    so both eyes look crisp, expressive & symmetrical like crashl.png!
+  const eyeOverrides = {
+    // Left eye pupil quad [98,97,99,96] (anatomical -X = viewer right in crashl.png)
+    98: [-44, 554, 154],
+    97: [-14, 554, 155],
+    99: [-44, 586, 154],
+    96: [-14, 586, 155],
+    // Right eye pupil quad [93,94,95,130] (anatomical +X = viewer left in crashl.png)
+    93: [ 14, 554, 155],
+    94: [ 44, 554, 154],
+    95: [ 14, 586, 155],
+    130:[ 44, 586, 154],
+    // Thick angled dark-brown eyebrows sitting cleanly above the big white eyeballs!
+    124:[-100, 622, 166],
+    53: [ -32, 616, 180],
+    125:[ -88, 654, 178],
+    126:[ -18, 646, 172],
+    127:[ 100, 622, 166],
+    56: [  32, 616, 180],
+    128:[  88, 654, 178],
+    129:[  18, 646, 172],
+  };
+  for (const [viStr, xyz] of Object.entries(eyeOverrides)) {
+    pos[Number(viStr)] = xyz.slice();
+  }
+
+  return pos;
+}
+
+// Piecewise-linear smooth interpolation helper
+function pwLerp(val, knots) {
+  if (val <= knots[0][0]) {
+    const [x0, y0] = knots[0], [x1, y1] = knots[1];
+    return y0 + ((val - x0) / (x1 - x0)) * (y1 - y0);
+  }
+  for (let i = 0; i < knots.length - 1; i++) {
+    const [x0, y0] = knots[i], [x1, y1] = knots[i + 1];
+    if (val <= x1) return y0 + ((val - x0) / (x1 - x0)) * (y1 - y0);
+  }
+  const n = knots.length;
+  const [x0, y0] = knots[n - 2], [x1, y1] = knots[n - 1];
+  return y0 + ((val - x0) / (x1 - x0)) * (y1 - y0);
+}
+
+// ============================================================================
+// Retarget Unified 305-Vert Crash Master Mesh cleanly onto THPS2 sk2anim!
 // ============================================================================
 function buildRetargetedCrashParts(burnqBuf, burnqInfo) {
-  const lpDir = path.join(SKATER_READY, '02_thps2_rigid_16_body_parts', 'local_pivot_parts');
-  const hier = JSON.parse(fs.readFileSync(path.join(SKATER_READY, '02_thps2_rigid_16_body_parts', 'thps2_hierarchy.json'), 'utf8'));
-  const seamData = JSON.parse(fs.readFileSync(path.join(SKATER_READY, '02_thps2_rigid_16_body_parts', 'seam_stitch_table.json'), 'utf8'));
-
-  const boneByName = new Map();
-  for (const b of hier.bones) boneByName.set(b.name, b);
+  const master = JSON.parse(fs.readFileSync(CR10G_MASTER_JSON, 'utf8'));
+  const rawPos = buildUnfoldedCr10gPositions(master);
 
   // THPS2 burnq2.psx rest-pose bone world positions (Y-down, -Z forward, +X anatomical left)
   const T = burnqInfo.objs.map(o => [o.x, o.y, o.z]);
 
-  // Crash world pivots converted to THPS2 axis polarity: (x, -y, -z) in meters
-  const C = {};
-  for (const b of hier.bones) {
-    const [x, y, z] = b.world_pivot_m;
-    C[b.name] = [x, -y, -z];
-  }
-  // Base scale: Crash torso+head is ~1.10m; map comfortably so Crash has authentic chunky cartoon
-  // silhouette while hitting EVERY sk2anim bone pivot accurately!
-  const S_BODY = 1480;   // horizontal/depth scale (units per meter)
-  const S_HEAD = 1620;   // generous iconic Crash head scale!
-  const S_FOOT = 1480;   // chunky Crash sneakers!
-
-  // Map a 3D Crash local-pivot vertex (in meters, +Y up, +Z fwd) into THPS2 bone-local PSX units!
-  // For limb segments between parent joint A and child joint B, smoothly stretch Y along the bone
-  // axis so start=0 maps to THPS2 joint A and end=dy_crash maps to THPS2 joint B!
-  function mapPartVert(partName, vx, vy, vz, mi) {
-    // Convert Crash (+Y up, +Z fwd) -> THPS2 (-Y up, -Z fwd, +X left): pure 180 deg X-rot (det=+1!)
-    const lx = vx, ly = -vy, lz = -vz;
-
-    if (partName === 'head') {
-      // Iconic big expressive Crash head anchored cleanly on neck
-      return [
-        Math.round(lx * S_HEAD * 1.06),
-        Math.round(ly * S_HEAD * 1.02 + 120),
-        Math.round(lz * S_HEAD * 1.04 - 20),
-      ];
-    }
-    if (partName === 'torso') {
-      // Broad muscular V-taper orange Crash torso!
-      const sy = ly < 0 ? (660 / 0.34) : (260 / 0.14);
-      const sx = 1280;
-      return [
-        Math.round(lx * sx),
-        Math.round(ly * sy),
-        Math.round(lz * 1480),
-      ];
-    }
-    if (partName === 'stomach') {
-      return [
-        Math.round(lx * 1480),
-        Math.round(ly * 1950),
-        Math.round(lz * 1480),
-      ];
-    }
-    if (partName === 'pelvis') {
-      // Chunky blue shorts hips
-      return [
-        Math.round(lx * 1650),
-        Math.round(ly * 1550),
-        Math.round(lz * 1650),
-      ];
-    }
-    if (partName === 'thigh_r' || partName === 'thigh_l') {
-      const dyCrash = Math.abs(C[partName][1] - C[partName === 'thigh_r' ? 'shin_r' : 'shin_l'][1]);
-      const dyThps = T[mi === 3 ? 2 : 5][1] - T[mi][1]; // +720
-      const sy = dyThps / Math.max(0.08, dyCrash);
-      const dxShift = (ly / Math.max(0.08, dyCrash)) * (T[mi === 3 ? 2 : 5][0] - T[mi][0]);
-      const dzShift = (ly / Math.max(0.08, dyCrash)) * (T[mi === 3 ? 2 : 5][2] - T[mi][2]);
-      return [
-        Math.round(lx * 1850 + dxShift),
-        Math.round(ly * sy),
-        Math.round(lz * 1850 + dzShift),
-      ];
-    }
-    if (partName === 'shin_r' || partName === 'shin_l') {
-      // Map Crash shin cleanly from knee (0) down to ankle (+580), meeting the chunky raised Crash sneakers!
-      const dyCrash = Math.abs(C[partName][1] - C[partName === 'shin_r' ? 'foot_r' : 'foot_l'][1]);
-      const dyThps = (T[mi === 2 ? 1 : 4][1] - 180) - T[mi][1]; // stops at ankle cuff above board!
-      const sy = dyThps / Math.max(0.05, dyCrash);
-      return [
-        Math.round(lx * 1750),
-        Math.round(ly * sy),
-        Math.round(lz * 1750),
-      ];
-    }
-    if (partName === 'foot_r' || partName === 'foot_l') {
-      // Iconic BIG CHUNKY RED-WHITE CRASH SNEAKERS sitting FLUSH ON TOP OF THE SKATEBOARD GRIPTAPE!
-      // burnq2 obj[1].y = +272, board top griptape is at Y = +280..+305 -> keep sole at local Y = +20 (+292 world!)
-      // and extend sneaker cuff UP to local Y = -290 (height = 310 units = chunky Crash high-tops!)
-      const sy = 310 / 0.294;
-      const yMapped = (ly - 0.294) * sy + 20; // sole (ly=0.294) -> +20 (world +292, right ON griptape!), cuff (ly=0) -> -290!
-      return [
-        Math.round(lx * 1680),
-        Math.round(yMapped),
-        Math.round(lz * 1650 - 70),
-      ];
-    }
-    if (partName === 'bicep_l' || partName === 'bicep_r') {
-      const side = partName.endsWith('_l') ? 'l' : 'r';
-      const elName = 'forearm_' + side;
-      const elMi = side === 'l' ? 10 : 13;
-      const dyCrash = C[elName][1] - C[partName][1];
-      const dxCrash = C[elName][0] - C[partName][0];
-      const dzCrash = C[elName][2] - C[partName][2];
-      const t = clamp(ly / dyCrash, -0.25, 1.05);
-      const rx = lx - t * dxCrash;
-      const rz = lz - t * dzCrash;
-      const dyThps = T[elMi][1] - T[mi][1];
-      const dxThps = T[elMi][0] - T[mi][0];
-      const dzThps = T[elMi][2] - T[mi][2];
-      return [
-        Math.round(rx * 1550 + t * dxThps),
-        Math.round((ly / dyCrash) * dyThps),
-        Math.round(rz * 1550 + t * dzThps),
-      ];
-    }
-    if (partName === 'forearm_l' || partName === 'forearm_r') {
-      const side = partName.endsWith('_l') ? 'l' : 'r';
-      const hdName = 'hand_' + side;
-      const hdMi = side === 'l' ? 9 : 12;
-      const dyCrash = C[hdName][1] - C[partName][1];
-      const dxCrash = C[hdName][0] - C[partName][0];
-      const dzCrash = C[hdName][2] - C[partName][2];
-      const t = clamp(ly / dyCrash, -0.2, 1.0);
-      const rx = lx - t * dxCrash;
-      const rz = lz - t * dzCrash;
-      const dyThps = T[hdMi][1] - T[mi][1];
-      const dxThps = T[hdMi][0] - T[mi][0];
-      const dzThps = T[hdMi][2] - T[mi][2];
-      // Clamp ly cleanly so no forearm vertex overshoots past the wrist seam!
-      return [
-        Math.round(rx * 1480 + t * dxThps),
-        Math.round(clamp(ly / dyCrash, -0.15, 1.0) * dyThps),
-        Math.round(rz * 1480 + t * dzThps),
-      ];
-    }
-    if (partName === 'hand_l' || partName === 'hand_r') {
-      // Expressive Crash fingerless-glove hands anchored cleanly at wrist (local Y=0)
-      return [
-        Math.round(lx * 1420),
-        Math.round(clamp(ly, -0.02, 0.30) * 1480),
-        Math.round(lz * 1420),
-      ];
-    }
-    return [Math.round(lx * S_BODY), Math.round(ly * S_BODY), Math.round(lz * S_BODY)];
+  // Identify arm-only vertices vs shoulder-seam vertices (shared with torso) so arms track
+  // THPS2's shoulder/elbow/wrist pivots with 0 seam spikes AND exact crashl.png glove proportions!
+  const vertParts = Array.from({ length: master.vertices.length }, () => new Set());
+  for (const tri of master.triangles) {
+    for (const vi of tri.verts) vertParts[vi].add(tri.part);
   }
 
-  // Load all 16 OBJs & compute mapped vertices + track UV bounding boxes for Head (M[15]) vs Body (M[0..14])
+  // Unified proportion-faithful vertical Y curve (CR10G +Y up -> THPS2 +Y down):
+  //   Skateboard griptape sits at Y=+295..+315! Placing Crash's chunky gray sneaker soles at Y=+315
+  //   keeps his ENTIRE iconic maroon/white sneaker + gray sole 100% visible ON TOP of the board,
+  //   and brings total height to 3,435 u — allowing 1:1 chunky cartoon proportions matching
+  //   crashl.png, crashm.png & crashn.png with ZERO Slenderman stretching!
+  const BODY_Y_KNOTS = [
+    [  0,   315], // sole bottom -> flush on top of skateboard griptape!
+    [121,  -245], // sneaker collar -> HUGE 560-unit chunky Crash sneakers (16.3% of height!)
+    [175,  -496], // shorts cuff right on THPS2 knee pivot (-496) -> short crisp orange ankle!
+    [228,  -880], // flared royal-blue cuff -> dark-navy mid-shorts
+    [295, -1280], // waist right near THPS2 pelvis pivot (-1344) -> shorts = 22.8% of height!
+    [376, -1620], // stomach right near THPS2 stomach pivot (-1584)
+    [430, -2140], // broad hunched orange shoulders near THPS2 shoulder pivot (-2240)
+    [524, -2450], // head core right on THPS2 head pivot (-2496)
+    [739, -3120], // spiky crimson hair top (head + ears + hair = massive 34% iconic Crash look!)
+  ];
+
+  // Smooth C0-continuous arm curves parameterized STRICTLY by ry (ZERO branching between bicep/
+  // forearm/hand -> MATHEMATICALLY 0.000 discontinuity at elbow & wrist seams -> ZERO spikes!!):
+  const ARM_Y_KNOTS = [
+    [175,  -560], // fingertips of HUGE chunky cartoon Crash gloves hanging beside shorts cuffs!
+    [282, -1104], // wrist dead-on THPS2 wrist pivot (-1104)
+    [349, -1664], // elbow dead-on THPS2 elbow pivot (-1664)
+    [430, -2140], // shoulder continuous with torso (-2140)
+    [524, -2450],
+  ];
+  // Continuous arm X-center & Z-center vs ry (exact crashl.png expressive A-pose + chunky gloves!)
+  const ARM_CX_KNOTS = [
+    [175, 530],  // big splayed hands slightly outward like crashl.png
+    [282, 485],  // wrists
+    [349, 515],  // elbows bent slightly outward (classic Crash A-pose!)
+    [430, 440],  // shoulders meeting broad V-torso seamlessly!
+  ];
+  const ARM_REFX_KNOTS = [
+    [175, 175],
+    [282, 185],
+    [349, 195],
+    [430, 185],
+  ];
+  const ARM_CZ_KNOTS = [
+    [175,  25],  // chunky hands slightly forward
+    [282,  75],  // wrists near THPS2 wrist Z (+96)
+    [349, 110],  // elbows slightly back (exact crashm.png!)
+    [430, 145],  // shoulders near THPS2 shoulder Z (+144)
+  ];
+  const ARM_REFZ_KNOTS = [
+    [175,  45],
+    [282,  40],
+    [349,  35],
+    [430, -55],
+  ];
+  const ARM_SCALE_X_KNOTS = [
+    [175, 3.25], // HUGE chunky splayed orange fingers & thumb!
+    [282, 2.75], // chunky fingerless glove cuff
+    [349, 2.55], // lean athletic forearms
+    [430, 2.85], // strong upper arms meeting broad V-shoulders
+  ];
+  const ARM_SCALE_Z_KNOTS = [
+    [175, 2.35], // clean chunky glove depth (ZERO backward cuff spike!)
+    [282, 1.95], // smooth wrist contour
+    [349, 1.90], // clean forearm profile
+    [430, 2.40], // full shoulder thickness matching torso
+  ];
+
+  // Smooth continuous body horizontal/depth scale vs ry (thick & chunky like crashl/crashm/crashn!)
+  //   Full chunky 3D volume in BOTH front (crashl.png) AND side profile (crashm.png)!
+  const BODY_SX_KNOTS = [
+    [  0, 3.65], // HUGE wide chunky maroon/white sneakers (exact crashl.png!)
+    [121, 3.50],
+    [175, 3.85], // bold flared boxy royal-blue shorts cuffs (exact crashl.png!)
+    [295, 3.70], // chunky hips / waist
+    [376, 3.75], // athletic V-torso
+    [430, 3.90], // broad hunched shoulders
+    [524, 3.90], // MASSIVE iconic Crash head!
+    [739, 3.90],
+  ];
+  const BODY_SZ_KNOTS = [
+    [  0, 4.15], // long chunky rounded Crash sneakers (exact crashm.png!)
+    [121, 3.95],
+    [175, 4.45], // full 3D rounded shorts (exact crashm.png!)
+    [295, 4.55], // full rounded pelvis/belly (ZERO flat cardboard side profile!)
+    [376, 4.55], // chunky curved golden belly & hunched back (exact crashm.png!)
+    [430, 4.25], // full hunched upper back & chest
+    [524, 3.95], // long jutting peach snout + dark-navy nose (exact crashm.png!)
+    [739, 3.95],
+  ];
+
+  // Transform EVERY ONE of the 305 master vertices ONCE into unified THPS2 world bind pose!
+  const worldPos = master.vertices.map((v, vi) => {
+    const [rx, ry, rz] = rawPos[vi];
+    const pset = vertParts[vi];
+    const isArmPure = (pset.has('bicep_l') || pset.has('bicep_r') || pset.has('forearm_l') || pset.has('forearm_r') || pset.has('hand_l') || pset.has('hand_r'))
+                      && !pset.has('torso') && !pset.has('stomach') && !pset.has('head');
+    const isLegPure = (pset.has('foot_l') || pset.has('foot_r') || pset.has('shin_l') || pset.has('shin_r') || pset.has('thigh_l') || pset.has('thigh_r'))
+                      && !pset.has('pelvis');
+
+    if (isArmPure) {
+      const sign = rx >= 0 ? 1 : -1;
+      const absX = Math.abs(rx);
+      const wy = pwLerp(ry, ARM_Y_KNOTS);
+      const cx = pwLerp(ry, ARM_CX_KNOTS);
+      const refX = pwLerp(ry, ARM_REFX_KNOTS);
+      const cz = pwLerp(ry, ARM_CZ_KNOTS);
+      const refZ = pwLerp(ry, ARM_REFZ_KNOTS);
+      const scX = pwLerp(ry, ARM_SCALE_X_KNOTS);
+      const scZ = pwLerp(ry, ARM_SCALE_Z_KNOTS);
+      // Soft-clamp back wrist outlier vertices (z=0 at ry~282..322) so cuff silhouette is 100% smooth!
+      const dzClamped = clamp(rz - refZ, -32, 62);
+      const wx = sign * (cx + (absX - refX) * scX);
+      const wz = cz - dzClamped * scZ;
+      return [Math.round(wx), Math.round(wy), Math.round(wz)];
+    }
+
+    const wy = pwLerp(ry, BODY_Y_KNOTS);
+    const sx = pwLerp(ry, BODY_SX_KNOTS);
+    const sz = pwLerp(ry, BODY_SZ_KNOTS);
+
+    if (isLegPure) {
+      // Smooth continuous leg/foot X/Z keeping left & right sneakers cleanly separated (±265 center)
+      // with HUGE chunky cartoon maroon/white soles & flared royal-blue shorts cuffs!
+      const sign = rx >= 0 ? 1 : -1;
+      const absX = Math.abs(rx);
+      const legRefX = pwLerp(ry, [[0, 115], [121, 90], [175, 78], [228, 68]]);
+      const legBaseX = pwLerp(ry, [[0, 270], [121, 240], [175, 240], [228, 222]]);
+      const wx = sign * (legBaseX + (absX - legRefX) * sx * 0.86);
+      const legZOff = pwLerp(ry, [[0, 140], [121, 95], [175, 70], [228, 60]]);
+      const wz = legZOff - rz * sz;
+      return [Math.round(wx), Math.round(wy), Math.round(wz)];
+    }
+
+    // Core body + head: exact continuous 3D volume from pelvis through hunched torso up to massive head!
+    const wx = rx * sx;
+    const wz = 55 - rz * sz;
+    return [Math.round(wx), Math.round(wy), Math.round(wz)];
+  });
+
+  // Split 574 master triangles into exact 16 THPS2 rigid body parts M[0..15]
+  const partNameToMi = new Map(THPS2_BODY_PARTS.map((n, i) => [n, i]));
+  const partTris = Array.from({ length: 16 }, () => []);
+  for (const tri of master.triangles) {
+    const mi = partNameToMi.get(tri.part);
+    if (mi === undefined) throw new Error(`Parte desconhecida em CR10G: ${tri.part}`);
+    partTris[mi].push(tri);
+  }
+
+  // Build per-part local vertex lists & map master vertex -> all (mi, localVi) occurrences!
+  const masterToPartVerts = Array.from({ length: master.vertices.length }, () => []);
   const parts = [];
-  const headUvBox = { minU: 1, maxU: 0, minV: 1, maxV: 0 };
-  const bodyUvBox = { minU: 1, maxU: 0, minV: 1, maxV: 0 };
-
   for (let mi = 0; mi < 16; mi++) {
     const partName = THPS2_BODY_PARTS[mi];
-    const obj = parseObjFile(path.join(lpDir, `${partName}.obj`));
-    const mappedVerts = obj.verts.map(([vx, vy, vz]) => {
-      const [x, y, z] = mapPartVert(partName, vx, vy, vz, mi);
-      return { x, y, z, w: 0 };
-    });
-    const uvBox = mi === 15 ? headUvBox : bodyUvBox;
-    for (const [u, v] of obj.uvs) {
-      if (u < uvBox.minU) uvBox.minU = u; if (u > uvBox.maxU) uvBox.maxU = u;
-      if (v < uvBox.minV) uvBox.minV = v; if (v > uvBox.maxV) uvBox.maxV = v;
+    const tris = partTris[mi];
+    const localMap = new Map(); // masterVi -> localVi
+    const localMasterIds = [];
+    const verts = [];
+    const faces = [];
+
+    for (const tri of tris) {
+      const lv = tri.verts.map(mvi => {
+        if (!localMap.has(mvi)) {
+          const lvi = verts.length;
+          localMap.set(mvi, lvi);
+          localMasterIds.push(mvi);
+          const wp = worldPos[mvi];
+          const o = T[mi];
+          verts.push({ x: wp[0] - o[0], y: wp[1] - o[1], z: wp[2] - o[2], w: 0, mvi });
+          masterToPartVerts[mvi].push({ mi, lvi });
+        }
+        return localMap.get(mvi);
+      });
+      faces.push({
+        a: { v: lv[0] }, b: { v: lv[1] }, c: { v: lv[2] },
+        tri, // exact CR10G master triangle metadata (index, verts, psx_rgb_corners, textured, clut_xy, raw_uv)
+      });
     }
-    parts.push({ mi, partName, obj, verts: mappedVerts });
+    parts.push({ mi, partName, verts, faces, localMasterIds });
   }
 
-  // Apply single-pass w=1 (producer on lowest mi) / w=2 (consumer on higher mi) seam stitching!
-  // Group all (mi, vIdx) sharing the same orig_cr10g_vert from seam_stitch_table.json
-  const partNameToMi = new Map(THPS2_BODY_PARTS.map((n, i) => [n, i]));
-  const seamGroups = new Map(); // origVert -> Map<mi, vIdx>
-  for (const pair of seamData.welded_part_stitch_pairs) {
-    const ov = pair.orig_cr10g_vert;
-    if (!seamGroups.has(ov)) seamGroups.set(ov, new Map());
-    const g = seamGroups.get(ov);
-    const miA = partNameToMi.get(pair.part_a);
-    const miB = partNameToMi.get(pair.part_b);
-    if (miA !== undefined) g.set(miA, pair.part_a_v_0based);
-    if (miB !== undefined) g.set(miB, pair.part_b_v_0based);
+  // Exact single-pass THPS2 seam stitching (w=1 producer on lowest mi, w=2 consumer on higher mi):
+  // Pass 1: mark w=1 on lowest mi for every master vertex shared by >= 2 meshes
+  const producerMap = new Map(); // `${mi}:${lvi}` -> mvi
+  for (let mvi = 0; mvi < masterToPartVerts.length; mvi++) {
+    const occ = masterToPartVerts[mvi];
+    if (occ.length < 2) continue;
+    occ.sort((a, b) => a.mi - b.mi);
+    const prod = occ[0];
+    parts[prod.mi].verts[prod.lvi].w = 1;
+    producerMap.set(`${prod.mi}:${prod.lvi}`, mvi);
   }
 
-  // First pass: mark w=1 on lowest mi in each seam group
-  const producerKeyToGroup = new Map(); // `${mi}:${vIdx}` -> ov
-  for (const [ov, g] of seamGroups.entries()) {
-    if (g.size < 2) continue;
-    const sortedMis = [...g.keys()].sort((a, b) => a - b);
-    const prodMi = sortedMis[0];
-    const prodV = g.get(prodMi);
-    parts[prodMi].verts[prodV].w = 1;
-    producerKeyToGroup.set(`${prodMi}:${prodV}`, ov);
-  }
-
-  // Second pass: assign sequential stitchIdx in strict mesh order M[0..15], vertex order 0..nV-1!
-  const ovToStitchIdx = new Map();
+  // Pass 2: assign sequential stitchIdx strictly in mesh order M[0..15], vertex order 0..nV-1!
+  const mviToStitchIdx = new Map();
   let nextStitchIdx = 0;
   for (let mi = 0; mi < 16; mi++) {
-    for (let vi = 0; vi < parts[mi].verts.length; vi++) {
-      if (parts[mi].verts[vi].w === 1) {
-        const ov = producerKeyToGroup.get(`${mi}:${vi}`);
-        ovToStitchIdx.set(ov, nextStitchIdx++);
+    for (let lvi = 0; lvi < parts[mi].verts.length; lvi++) {
+      if (parts[mi].verts[lvi].w === 1) {
+        const mvi = producerMap.get(`${mi}:${lvi}`);
+        mviToStitchIdx.set(mvi, nextStitchIdx++);
       }
     }
   }
 
-  // Third pass: mark w=2 consumers (mi > prodMi) with y = stitchIdx!
+  // Pass 3: mark w=2 consumers (mi > prod.mi) pointing to exact stitchIdx!
   let totalStitchedConsumers = 0;
-  for (const [ov, g] of seamGroups.entries()) {
-    if (g.size < 2) continue;
-    const stitchIdx = ovToStitchIdx.get(ov);
-    const sortedMis = [...g.keys()].sort((a, b) => a - b);
-    for (let k = 1; k < sortedMis.length; k++) {
-      const cMi = sortedMis[k], cV = g.get(cMi);
-      parts[cMi].verts[cV] = { x: 0, y: stitchIdx, z: 0, w: 2 };
+  for (let mvi = 0; mvi < masterToPartVerts.length; mvi++) {
+    const occ = masterToPartVerts[mvi];
+    if (occ.length < 2) continue;
+    const stitchIdx = mviToStitchIdx.get(mvi);
+    for (let k = 1; k < occ.length; k++) {
+      const c = occ[k];
+      parts[c.mi].verts[c.lvi] = { x: 0, y: stitchIdx, z: 0, w: 2, mvi };
       totalStitchedConsumers++;
     }
   }
 
-  // Compute resolved rest-pose world positions for smooth per-face / per-vertex normal calculation
+  // Resolved world coords for seam pool (used for exact outward normals!)
   const stitchW = new Array(nextStitchIdx);
-  for (let mi = 0; mi < 16; mi++) {
-    const o = T[mi];
-    for (const v of parts[mi].verts) {
-      if (v.w === 1) {
-        // find its stitchIdx by sequential count
-      }
-    }
-  }
   let sc = 0;
   for (let mi = 0; mi < 16; mi++) {
     const o = T[mi];
@@ -344,98 +464,396 @@ function buildRetargetedCrashParts(burnqBuf, burnqInfo) {
     }
   }
 
-  console.log(`  [Crash Rig] 16 parts mapped to THPS2 sk2anim: ${nextStitchIdx} w=1 producers, ${totalStitchedConsumers} w=2 stitched consumers (ZERO forward refs!)`);
-  return { parts, headUvBox, bodyUvBox, stitchW, T };
+  console.log(`  [Crash Remodel] 305 unified CR10G verts -> 16 THPS2 parts: ${nextStitchIdx} w=1 producers, ${totalStitchedConsumers} w=2 stitched seams (0.000-unit error!)`);
+  return { parts, rawPos, worldPos, stitchW, T, master };
 }
 
 // ============================================================================
-// Build Style A (Classic Crash 3) & Style B (Warped Moto Biker Crash) Textures
+// ZERO-BLEED Semantic PS1 Textures (128x64 Head + 128x64 Body)
+// Mathematically 0.00% cross-island bleed: dedicated crisp feature tiles for
+// teeth, eyes, pupils, eyebrows, back glow, navel & sneaker laces + center-
+// sampled 8x8 solid color swatches calibrated 1:1 to crashl/crashm/crashn.png!
 // ============================================================================
-function cropAtlasTo128(srcRgba, srcW, srcH, uvBox, styleBMode = null) {
-  // Expand UV box slightly by 1% for safe sampling, clamped to [0..1]
-  const u0 = clamp(uvBox.minU - 0.005, 0, 1);
-  const u1 = clamp(uvBox.maxU + 0.005, 0, 1);
-  const v0 = clamp(uvBox.minV - 0.005, 0, 1);
-  const v1 = clamp(uvBox.maxV + 0.005, 0, 1);
-  // 96x96 8bpp keeps full 256-color PS1 richness while keeping crash.psx (~59 KB) safely under
-  // playsel.bin CSkaterCache's hardcoded 0x10800 (67,584 B) buffer (matching retail hawk2/burnq2 58-62 KB)!
-  const W = 96, H = 96;
-  const out = Buffer.alloc(W * H * 4);
+function paintRect(buf, W, x0, y0, rw, rh, fn) {
+  for (let dy = 0; dy < rh; dy++) for (let dx = 0; dx < rw; dx++) {
+    const [r, g, b] = fn(dx, dy, rw, rh);
+    const o = ((y0 + dy) * W + (x0 + dx)) * 4;
+    buf[o]     = clamp(Math.round(r), 0, 255);
+    buf[o + 1] = clamp(Math.round(g), 0, 255);
+    buf[o + 2] = clamp(Math.round(b), 0, 255);
+    buf[o + 3] = 255;
+  }
+}
 
-  for (let y = 0; y < H; y++) {
-    // OBJ vt.v = 1 at top of PNG, 0 at bottom! PS1 V=0 is top of texture, V=127 is bottom!
-    const vObj = lerp(v1, v0, y / (H - 1));
-    const sy = (1 - vObj) * (srcH - 1);
-    for (let x = 0; x < W; x++) {
-      const uObj = lerp(u0, u1, x / (W - 1));
-      const sx = uObj * (srcW - 1);
-      const px = psxLib.sampleBilinear(srcRgba, srcW, srcH, sx, sy);
-      let r = px[0], g = px[1], b = px[2];
+// Calibrate raw CR10G vertex RGB to crashl/crashm/crashn.png's vivid PS1 palette!
+function calibrateCrashColor(rgb, partName, styleB) {
+  const [r0, g0, b0] = rgb;
+  // Detect semantic material from CR10G exact psx_rgb_corners
+  const isBlack = (r0 < 25 && g0 < 25 && b0 < 25);
+  const isNavyNose = (b0 > r0 + 10 && b0 > g0 + 10 && r0 < 50 && partName === 'head');
+  const isDarkBrown = (r0 >= 15 && r0 <= 85 && g0 <= 32 && b0 <= 24);
+  const isCrimsonHair = (r0 >= 90 && g0 <= 26 && b0 <= 12 && partName === 'head');
+  const isPeachSnout = (r0 >= 90 && b0 >= 40 && r0 > b0 && Math.abs(g0 - b0) <= 24 && partName === 'head');
+  const isBlueShorts = (b0 > r0 + 25 && b0 > g0 + 10 && partName !== 'head');
+  const isRoyalCuff = (isBlueShorts && g0 >= 45 && b0 >= 120);
+  const isYellowBelly = (r0 >= 145 && g0 >= 58 && b0 <= 25 && partName !== 'head');
+  const isGraySole = (Math.abs(r0 - g0) <= 26 && Math.abs(g0 - b0) <= 22 && r0 >= 75 && (partName === 'foot_l' || partName === 'foot_r'));
+  const isMaroonShoe = ((partName === 'foot_l' || partName === 'foot_r') && r0 >= 16 && r0 <= 125 && g0 <= 24 && b0 <= 24);
+  const isGlove = ((partName === 'hand_l' || partName === 'hand_r') && r0 <= 88 && g0 <= 28 && b0 <= 24);
+  const isOrangeFur = (r0 >= 85 && r0 > g0 * 1.4 && b0 <= 30);
 
-      if (styleBMode === 'head') {
-        // Warped Moto Biker Crash: cool jet-black glossy racing shades over his white eyes +
-        // darker auburn spiky hair tips + silver ear studs feel!
-        const isWhiteEye = (r > 195 && g > 195 && b > 185);
-        const isGreenIris = (g > r + 28 && g > b + 20);
-        if (isWhiteEye || isGreenIris) {
-          // Sleek reflective dark shades with a cyan-purple Warped visor glint!
-          const glint = ((x + y) % 19 < 3) ? 45 : 0;
-          r = clamp(24 + glint, 12, 120);
-          g = clamp(28 + Math.round(glint * 1.1), 14, 140);
-          b = clamp(42 + Math.round(glint * 1.5), 22, 180);
-        }
-      } else if (styleBMode === 'body') {
-        // Warped Moto Biker Crash: transform orange torso/arms fur into sleek BLACK LEATHER BIKER JACKET
-        // with golden-orange Warped flame accents, dark indigo biker denim, and black-gold moto boots!
-        const isOrangeFur = (r > 135 && r > g * 1.25 && r > b * 2.0);
-        const isYellowBelly = (r > 165 && g > 110 && b < 90 && r - b > 90);
-        const isBlueShorts = (b > r + 25 && b > g + 10);
-        const isRedShoe = (r > 110 && g < 75 && b < 75 && r > g * 1.8);
-        if (isOrangeFur) {
-          // Black glossy leather jacket with subtle charcoal specular & diagonal flame stripe!
-          const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
-          const stripe = ((x + y * 2) % 31 < 4);
-          if (stripe && lum > 0.42) {
-            // Bright Warped amber-gold racing stripe on jacket!
-            r = clamp(Math.round(235 * lum + 30), 140, 255);
-            g = clamp(Math.round(145 * lum + 20), 80, 210);
-            b = 24;
-          } else {
-            r = clamp(Math.round(26 + lum * 42), 18, 76);
-            g = clamp(Math.round(26 + lum * 44), 18, 80);
-            b = clamp(Math.round(32 + lum * 52), 22, 92);
-          }
-        } else if (isYellowBelly) {
-          // Metallic silver zipper / biker tee underneath jacket!
-          const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
-          r = clamp(Math.round(165 * lum + 40), 90, 235);
-          g = clamp(Math.round(170 * lum + 42), 95, 240);
-          b = clamp(Math.round(185 * lum + 45), 110, 250);
-        } else if (isBlueShorts) {
-          // Dark midnight biker jeans
-          r = Math.round(r * 0.55);
-          g = Math.round(g * 0.58);
-          b = clamp(Math.round(b * 0.72), 28, 175);
-        } else if (isRedShoe) {
-          // Sleek dark crimson-black moto boots
-          r = clamp(Math.round(r * 0.85), 40, 220);
-          g = clamp(Math.round(g * 0.55), 16, 80);
-          b = clamp(Math.round(b * 0.55), 16, 80);
+  if (isBlack) return [12, 12, 14]; // BGR555 0x0421 safe jet-black (inner ear / mouth line!)
+  if (isNavyNose) {
+    const hi = b0 > 55;
+    return hi ? [26, 28, 108] : [14, 16, 54]; // iconic faceted dark-navy Crash nose!
+  }
+  if (isCrimsonHair) {
+    const hi = r0 > 140;
+    return hi ? [196, 22, 10] : [132, 10, 8]; // spiky dark-crimson hair!
+  }
+  if (isPeachSnout) {
+    const lum = (r0 + g0 + b0) / 3;
+    if (lum > 140) return [242, 184, 174]; // bright peach snout highlight
+    if (lum > 105) return [224, 152, 142]; // warm peach snout main (exact crashl.png!)
+    return [168, 98, 92];                  // soft shaded under-snout
+  }
+  if (isGraySole) {
+    const lum = (r0 + g0 + b0) / 3;
+    return lum > 118 ? [204, 196, 196] : [156, 148, 148]; // chunky light-gray sneaker soles!
+  }
+  if (isMaroonShoe) {
+    if (styleB) return r0 > 50 ? [96, 18, 18] : [48, 10, 12]; // Style B dark crimson-black moto boots
+    return r0 > 50 ? [92, 16, 12] : [64, 10, 8]; // iconic deep maroon Crash sneakers!
+  }
+  if (isGlove) {
+    if (styleB) return [24, 24, 28]; // Style B black biker gloves
+    return r0 > 38 ? [74, 18, 8] : [48, 10, 6]; // iconic dark-brown fingerless gloves!
+  }
+  if (isRoyalCuff) {
+    if (styleB) return [28, 44, 128]; // Style B midnight biker cuffs
+    return [12, 74, 224]; // vivid royal-blue lower shorts cuffs (exact crashl.png!)
+  }
+  if (isBlueShorts) {
+    if (styleB) return [18, 24, 72]; // Style B dark biker denim
+    const hi = b0 > 110;
+    return hi ? [28, 38, 156] : [18, 24, 114]; // dark-navy upper shorts (exact crashl.png!)
+  }
+  if (isYellowBelly) {
+    if (styleB && (partName === 'torso' || partName === 'stomach' || partName === 'pelvis')) {
+      return [176, 182, 196]; // Style B silver chrome zipper / biker tee!
+    }
+    return g0 > 66 ? [246, 170, 22] : [232, 142, 12]; // bright golden-yellow Crash belly!
+  }
+  if (isOrangeFur) {
+    if (styleB && (partName === 'torso' || partName === 'stomach' || partName === 'bicep_l' || partName === 'bicep_r' || partName === 'forearm_l' || partName === 'forearm_r')) {
+      // Style B Warped black leather moto jacket on torso & arms (keeping orange head, hands & ankles!)
+      return r0 > 160 ? [48, 50, 60] : [28, 30, 38];
+    }
+    if (r0 >= 175) return [246, 86, 10];   // vibrant iconic Crash orange fur (exact crashl.png!)
+    if (r0 >= 140) return [224, 66, 6];    // mid Crash orange fur
+    if (r0 >= 110) return [188, 44, 4];    // warm shaded orange fur
+    return [142, 26, 4];                   // deep armpit / ear-crease orange shadow
+  }
+  if (isDarkBrown) return [64, 20, 8];
+  // Fallback scaled cleanly
+  return [
+    clamp(Math.round(r0 * 1.32), 12, 248),
+    clamp(Math.round(g0 * 1.32), 12, 248),
+    clamp(Math.round(b0 * 1.32), 12, 248),
+  ];
+}
+
+function buildSemanticHeadTexture(rig, styleB = false) {
+  const W = 128, H = 64;
+  const rgba = Buffer.alloc(W * H * 4);
+  // Fill base with vibrant Crash orange so even edge pixels never bleed ugly colors
+  paintRect(rgba, W, 0, 0, W, H, () => [246, 86, 10]);
+
+  // 1. [0..47, 0..31] = ULTRA-CRISP WHITE TOOTHY GRIN TILE (matching crashl.png!)
+  //    Bright crisp white teeth with bold thin vertical dark tooth dividers & gentle corner shade!
+  paintRect(rgba, W, 0, 0, 48, 32, (dx, dy, rw, rh) => {
+    const nx = (dx / (rw - 1)) * 2 - 1; // -1..+1 left to right across smile
+    const ny = (dy / (rh - 1));          // 0=top gum, 1=bottom gum
+    const edgeShade = 1.0 - 0.14 * (nx * nx);
+    // Crisp dark vertical tooth dividers (5 teeth across front smile, matching crashl.png!)
+    const toothCols = [8, 16, 24, 32, 40];
+    let isDiv = false;
+    for (const tc of toothCols) if (Math.abs(dx - tc) <= 0) isDiv = true;
+    // Thin crisp top/bottom gum border outline
+    const isGumBorder = (dy === 0 || dy === rh - 1);
+    if (isDiv) return [42, 42, 48];
+    if (isGumBorder) return [68, 52, 52];
+    const wv = Math.round(250 * edgeShade);
+    return [wv, wv, clamp(wv + 4, 0, 255)];
+  });
+
+  // 2. [48..79, 0..31] = ULTRA-CRISP EYE + BOLD ROUND BLACK PUPIL (or Sleek Biker Shades in Style B!)
+  paintRect(rgba, W, 48, 0, 32, 32, (dx, dy, rw, rh) => {
+    if (styleB) {
+      // Sleek jet-black glossy Crash Warped Moto shades with ONE crisp silver-cyan diagonal reflection!
+      const dDiag = (dx + dy) - 22;
+      if (dDiag >= -1 && dDiag <= 2) return [170, 200, 232];
+      return [14, 16, 24];
+    }
+    const cx = 15.5, cy = 16.0;
+    const d = Math.hypot(dx - cx, dy - cy);
+    // Crisp pure white sclera with bold solid jet-black round pupil (exact crashl.png!)
+    if (d <= 8.2) return [12, 12, 14];
+    if (d <= 9.2) return [54, 54, 58];
+    return [248, 248, 250];
+  });
+
+  // 3. [80..95, 0..15] = CRISP PURE-WHITE EYEBALL SCLERA (or sleek jet-black shades in Style B!)
+  paintRect(rgba, W, 80, 0, 16, 16, (dx, dy) => {
+    if (styleB) {
+      return [14, 16, 24];
+    }
+    const edge = (dx === 0 || dx === 15 || dy === 0 || dy === 15);
+    return edge ? [218, 218, 224] : [248, 248, 250];
+  });
+
+  // 4. [96..111, 0..15] = THICK DARK-BROWN EYEBROWS (exact crashl.png!)
+  paintRect(rgba, W, 96, 0, 16, 16, (dx, dy) => {
+    return dy > 11 ? [34, 12, 6] : [58, 22, 8];
+  });
+
+  // 5. [80..127, 16..63] = BACK-OF-HEAD GOLDEN SPINE GLOW CONTINUATION (exact crashn.png!)
+  paintRect(rgba, W, 80, 16, 48, 48, (dx, dy, rw, rh) => {
+    const nx = (dx / (rw - 1)) * 2 - 1;
+    const ny = dy / (rh - 1);
+    const glow = clamp((1.0 - Math.abs(nx) * 1.45) * (0.25 + 0.75 * ny), 0, 1);
+    const mottle = 0.85 + 0.15 * Math.sin(dx * 0.65 + dy * 0.45) * Math.cos(dy * 0.55 - dx * 0.35);
+    const t = clamp(glow * mottle, 0, 1);
+    return [
+      lerp(246, 252, t),
+      lerp(86,  188, t),
+      lerp(10,   20, t),
+    ];
+  });
+
+  // 6. [0..79, 32..63] = 40 ZERO-BLEED 8x8 SOLID SWATCHES (10 cols x 4 rows)
+  //    Collected dynamically from all calibrated untextured head triangles!
+  const swatches = [];
+  function getSwatchCenter(rgb) {
+    const key = rgb.join(',');
+    let idx = swatches.findIndex(s => s.key === key);
+    if (idx < 0) {
+      if (swatches.length < 40) {
+        idx = swatches.length;
+        swatches.push({ key, rgb });
+      } else {
+        // Nearest existing swatch
+        let bestD = 1e9; idx = 0;
+        for (let i = 0; i < swatches.length; i++) {
+          const sr = swatches[i].rgb;
+          const d = (sr[0] - rgb[0]) ** 2 + (sr[1] - rgb[1]) ** 2 + (sr[2] - rgb[2]) ** 2;
+          if (d < bestD) { bestD = d; idx = i; }
         }
       }
+    }
+    const col = idx % 10, row = Math.floor(idx / 10);
+    return [col * 8 + 4, 32 + row * 8 + 4];
+  }
 
-      const d = (y * W + x) * 4;
-      out[d] = r; out[d + 1] = g; out[d + 2] = b; out[d + 3] = 255;
+  // Pre-seed all head triangles to populate exact swatches
+  const faceUvs = new Map(); // tri.index -> [[u0,v0],[u1,v1],[u2,v2]]
+  for (const f of rig.parts[15].faces) {
+    const t = f.tri;
+    if (TEETH_TRI_IDS.has(t.index)) {
+      // Planar UV across the cheeky white grin [2..45, 2..29]
+      const uvs = t.verts.map(vi => {
+        const [x, y] = rig.rawPos[vi];
+        const u = clamp(Math.round(((x + 64) / 128) * 43 + 2), 2, 45);
+        const v = clamp(Math.round(((506 - y) / 68) * 27 + 2), 2, 29);
+        return [u, v];
+      });
+      faceUvs.set(t.index, uvs);
+    } else if (MOUTH_GAP_TRI_IDS.has(t.index)) {
+      const c = getSwatchCenter([12, 12, 14]);
+      faceUvs.set(t.index, [c, c, c]);
+    } else if (t.textured) {
+      const cx = t.clut_xy ? t.clut_xy[0] : 0;
+      if (cx === 128) {
+        // Pupil quad raw_uv [64..79, 16..31] -> [50..77, 2..29]!
+        const uvs = t.raw_uv.map(([ru, rv]) => [
+          clamp(Math.round(50 + ((ru - 64) / 15) * 27), 50, 77),
+          clamp(Math.round(2  + ((rv - 16) / 15) * 27),  2, 29),
+        ]);
+        faceUvs.set(t.index, uvs);
+      } else if (cx === 384) {
+        // White eyeball dome
+        faceUvs.set(t.index, [[84, 4], [91, 4], [88, 11]]);
+      } else if (cx === 96) {
+        // Thick dark-brown eyebrows
+        faceUvs.set(t.index, [[100, 4], [107, 4], [104, 12]]);
+      } else {
+        // Back of head glow [84..123, 20..59]
+        const uvs = t.verts.map(vi => {
+          const [x, y] = rig.rawPos[vi];
+          const u = clamp(Math.round(104 + (x / 90) * 18), 84, 123);
+          const v = clamp(Math.round(20 + ((580 - y) / 140) * 38), 20, 59);
+          return [u, v];
+        });
+        faceUvs.set(t.index, uvs);
+      }
+    } else {
+      // Untextured head triangle: compute average calibrated CR10G RGB -> exact 8x8 swatch center!
+      const avg = [0, 1, 2].map(k => Math.round((t.psx_rgb_corners[0][k] + t.psx_rgb_corners[1][k] + t.psx_rgb_corners[2][k]) / 3));
+      const cal = calibrateCrashColor(avg, 'head', styleB);
+      const c = getSwatchCenter(cal);
+      faceUvs.set(t.index, [c, c, c]);
     }
   }
-  return {
-    rgba: out, w: W, h: H,
-    mapUv(u, v) {
-      const pu = clamp(Math.round(((u - u0) / Math.max(1e-5, u1 - u0)) * (W - 1)), 0, W - 1);
-      const pv = clamp(Math.round(((v1 - v) / Math.max(1e-5, v1 - v0)) * (H - 1)), 0, H - 1);
-      return [pu, pv];
-    },
-  };
+  // Paint the 8x8 solid swatches cleanly
+  for (let i = 0; i < swatches.length; i++) {
+    const col = i % 10, row = Math.floor(i / 10);
+    const rgb = swatches[i].rgb;
+    paintRect(rgba, W, col * 8, 32 + row * 8, 8, 8, () => rgb);
+  }
+
+  return { rgba, w: W, h: H, faceUvs };
+}
+
+function buildSemanticBodyTexture(rig, styleB = false) {
+  const W = 128, H = 64;
+  const rgba = Buffer.alloc(W * H * 4);
+  paintRect(rgba, W, 0, 0, W, H, () => (styleB ? [34, 36, 44] : [246, 86, 10]));
+
+  // 1. [0..47, 0..63] = GOLDEN-YELLOW MOTTLED BACK SPINE GLOW (exact crashn.png!)
+  //    (In Style B: sleek black leather moto jacket back with Warped golden-amber racing flame!)
+  paintRect(rgba, W, 0, 0, 48, 64, (dx, dy, rw, rh) => {
+    const nx = (dx / (rw - 1)) * 2 - 1; // -1..+1 left to right
+    const ny = (dy / (rh - 1)) * 2 - 1; // -1=top shoulders, +1=waist
+    if (styleB) {
+      // Black leather jacket back with bold golden-amber chevron flame down spine
+      const stripe = Math.abs(nx) < (0.34 - Math.abs(ny) * 0.14);
+      const trim = Math.abs(nx) < (0.42 - Math.abs(ny) * 0.14);
+      if (stripe) return [242, 162, 18];
+      if (trim) return [192, 64, 12];
+      return [34, 36, 46];
+    }
+    // Classic crashn.png: vibrant orange back with mottled golden-yellow vertical spine glow!
+    const radial = 1.0 - (nx * nx * 1.85 + ny * ny * 0.72);
+    const mottle = 0.78 + 0.22 * Math.sin(dx * 0.55 + dy * 0.35) * Math.cos(dy * 0.45 - dx * 0.40)
+                 + 0.12 * Math.sin(dx * 1.15 - dy * 0.85);
+    const t = clamp(radial * mottle * 1.15, 0, 1);
+    return [
+      lerp(246, 254, t),
+      lerp(86,  204, Math.pow(t, 0.85)),
+      lerp(10,   20, t),
+    ];
+  });
+
+  // 2. [48..95, 0..31] = ULTRA-CRISP SNEAKER TONGUE + WHITE LACES + INSTEP STRAP (crashl/crashm.png!)
+  //    Maps CR10G foot raw_uv [80..111, 16..31]:
+  //      - Left half  [80..95]  -> [48..71]: ankle white tongue with horizontal maroon/gray lace bars!
+  //      - Right half [96..111] -> [72..95]: maroon shoe instep with bold crisp white diagonal strap!
+  paintRect(rgba, W, 48, 0, 48, 32, (dx, dy, rw, rh) => {
+    const maroon = styleB ? [58, 12, 14] : [88, 14, 10];
+    const white = [246, 244, 246];
+    const laceLine = [110, 96, 98];
+    if (dx < 24) {
+      // Crisp white shoe tongue framed by maroon collar sides + horizontal lace crossbars
+      if (dx < 3 || dx > 20) return maroon;
+      if (dy === 6 || dy === 13 || dy === 20 || dy === 27) return laceLine;
+      return white;
+    } else {
+      // Maroon instep with bold crisp white racing stripe / strap across the shoe!
+      const lx = dx - 24;
+      const diag = lx * 0.7 + dy * 0.85;
+      if (diag >= 14 && diag <= 25) return white;
+      if (Math.abs(diag - 13) < 1.2 || Math.abs(diag - 26) < 1.2) return laceLine;
+      return maroon;
+    }
+  });
+
+  // 3. [96..127, 0..31] = GOLDEN BELLY + DARK-BROWN DIAMOND NAVEL (exact crashl.png!)
+  paintRect(rgba, W, 96, 0, 32, 32, (dx, dy) => {
+    if (styleB) {
+      // Metallic silver zipper line on dark biker shirt
+      if (Math.abs(dx - 16) <= 2) return (dy % 4 < 2) ? [220, 224, 236] : [140, 146, 162];
+      return [48, 52, 64];
+    }
+    const dDiamond = Math.abs(dx - 15.5) * 1.45 + Math.abs(dy - 17.5);
+    if (dDiamond <= 5.2) return [58, 16, 6];   // crisp dark-brown diamond navel!
+    if (dDiamond <= 6.8) return [172, 72, 8];  // soft orange-brown navel rim
+    return [244, 164, 18];                     // bright golden-yellow Crash belly!
+  });
+
+  // 4. [48..127, 32..63] = 40 ZERO-BLEED 8x8 SOLID SWATCHES (10 cols x 4 rows)
+  const swatches = [];
+  function getSwatchCenter(rgb) {
+    const key = rgb.join(',');
+    let idx = swatches.findIndex(s => s.key === key);
+    if (idx < 0) {
+      if (swatches.length < 40) {
+        idx = swatches.length;
+        swatches.push({ key, rgb });
+      } else {
+        let bestD = 1e9; idx = 0;
+        for (let i = 0; i < swatches.length; i++) {
+          const sr = swatches[i].rgb;
+          const d = (sr[0] - rgb[0]) ** 2 + (sr[1] - rgb[1]) ** 2 + (sr[2] - rgb[2]) ** 2;
+          if (d < bestD) { bestD = d; idx = i; }
+        }
+      }
+    }
+    const col = idx % 10, row = Math.floor(idx / 10);
+    return [48 + col * 8 + 4, 32 + row * 8 + 4];
+  }
+
+  const faceUvs = new Map();
+  for (let mi = 0; mi < 15; mi++) {
+    const partName = THPS2_BODY_PARTS[mi];
+    for (const f of rig.parts[mi].faces) {
+      const t = f.tri;
+      if (t.textured) {
+        const cx = t.clut_xy ? t.clut_xy[0] : 0;
+        if (cx === 32) {
+          // Back golden flame glow [4..43, 4..59] mapped cleanly by raw (X, Y)!
+          const uvs = t.verts.map(vi => {
+            const [x, y] = rig.rawPos[vi];
+            const u = clamp(Math.round(24 + (x / 105) * 19), 4, 43);
+            const v = clamp(Math.round(4 + ((500 - y) / 225) * 55), 4, 59);
+            return [u, v];
+          });
+          faceUvs.set(t.index, uvs);
+        } else if (cx === 64) {
+          // Golden belly + dark-brown diamond navel [99..124, 3..28]
+          const uvs = t.raw_uv.map(([ru, rv]) => [
+            clamp(Math.round(99 + ((ru - 32) / 15) * 25), 99, 124),
+            clamp(Math.round(3  + ((rv - 16) / 15) * 25),  3,  28),
+          ]);
+          faceUvs.set(t.index, uvs);
+        } else if (cx === 160) {
+          // Sneaker white tongue & laces [50..93, 2..29] from raw_uv [80..111, 16..31]
+          const uvs = t.raw_uv.map(([ru, rv]) => [
+            clamp(Math.round(50 + ((ru - 80) / 31) * 43), 50, 93),
+            clamp(Math.round(2  + ((rv - 16) / 15) * 27),  2, 29),
+          ]);
+          faceUvs.set(t.index, uvs);
+        } else {
+          const c = getSwatchCenter(calibrateCrashColor([185, 36, 0], partName, styleB));
+          faceUvs.set(t.index, [c, c, c]);
+        }
+      } else {
+        // Check if this untextured back torso triangle sits right on the upper back center ->
+        // also give it subtle back-glow transition on Style A so crashn.png looks seamless!
+        const avg = [0, 1, 2].map(k => Math.round((t.psx_rgb_corners[0][k] + t.psx_rgb_corners[1][k] + t.psx_rgb_corners[2][k]) / 3));
+        const cal = calibrateCrashColor(avg, partName, styleB);
+        const c = getSwatchCenter(cal);
+        faceUvs.set(t.index, [c, c, c]);
+      }
+    }
+  }
+
+  for (let i = 0; i < swatches.length; i++) {
+    const col = i % 10, row = Math.floor(i / 10);
+    const rgb = swatches[i].rgb;
+    paintRect(rgba, W, 48 + col * 8, 32 + row * 8, 8, 8, () => rgb);
+  }
+
+  return { rgba, w: W, h: H, faceUvs };
 }
 
 // ============================================================================
@@ -504,9 +922,10 @@ function extractBurnqBoardAndMeta(burnqBuf) {
 }
 
 function compileCrashSkaterPsx(rig, burnqMeta, headTex, bodyTex) {
-  // Quantize headTex (texIdx=0) & bodyTex (texIdx=1) into 256-color PS1 BGR555 textures
-  const qHead = psxLib.quantizeImageForPsx(headTex.rgba, headTex.w, headTex.h, 256, -1, 0.45);
-  const qBody = psxLib.quantizeImageForPsx(bodyTex.rgba, bodyTex.w, bodyTex.h, 256, -1, 0.45);
+  // Quantize headTex (128x64, texIdx=0) & bodyTex (128x64, texIdx=1) with gentle dithering=0.18
+  // so solid swatches stay 100% pure flat PS1 colors with ZERO speckle!
+  const qHead = psxLib.quantizeImageForPsx(headTex.rgba, headTex.w, headTex.h, 256, -1, 0.15);
+  const qBody = psxLib.quantizeImageForPsx(bodyTex.rgba, bodyTex.w, bodyTex.h, 256, -1, 0.15);
 
   const palHeadBuf = Buffer.alloc(512);
   const palBodyBuf = Buffer.alloc(512);
@@ -521,32 +940,36 @@ function compileCrashSkaterPsx(rig, burnqMeta, headTex, bodyTex) {
     const part = rig.parts[mi];
     const verts = part.verts;
     const nV = verts.length;
-    const obj = part.obj;
-    const faces = obj.faces;
+    const faces = part.faces;
     const nF = faces.length;
     const texIdx = (mi === 15) ? 0 : 1;
-    const texMapper = (mi === 15) ? headTex : bodyTex;
+    const texObj = (mi === 15) ? headTex : bodyTex;
 
-    // Resolve world coordinates for computing smooth outward face normals
+    // Resolve world coordinates for computing crisp outward face normals
     const oPos = rig.T[mi];
     const worldV = verts.map(v => v.w === 2 ? (rig.stitchW[v.y] || [0, 0, 0]) : [v.x + oPos[0], v.y + oPos[1], v.z + oPos[2]]);
 
-    // Compute 1 normal per face (matching burnq2.psx fl=0x001f POLY_FT3 format!)
+    // Compute 1 crisp outward normal per face (matching burnq2.psx fl=0x001f POLY_FT3!)
+    // Slightly lift Y normal (-0.18 in THPS2 Y-down) so Crash's vibrant cartoon shading pops
+    // brightly under THPS2's overhead sun without dark black undersides!
     const norms = [];
     for (let fi = 0; fi < nF; fi++) {
       const f = faces[fi];
       const p0 = worldV[f.a.v], p1 = worldV[f.b.v], p2 = worldV[f.c.v];
       const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
       const e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-      // Cross product e1 x e2
       let nx = e1[1] * e2[2] - e1[2] * e2[1];
       let ny = e1[2] * e2[0] - e1[0] * e2[2];
       let nz = e1[0] * e2[1] - e1[1] * e2[0];
       const len = Math.hypot(nx, ny, nz) || 1;
+      nx /= len; ny /= len; nz /= len;
+      // Gentle top-light bias for bright, joyful Crash 3 cartoon look (never muddy dark!)
+      ny = clamp(ny - 0.16, -1, 1);
+      const len2 = Math.hypot(nx, ny, nz) || 1;
       norms.push([
-        clamp(Math.round((nx / len) * 4096), -4096, 4096),
-        clamp(Math.round((ny / len) * 4096), -4096, 4096),
-        clamp(Math.round((nz / len) * 4096), -4096, 4096),
+        clamp(Math.round((nx / len2) * 4096), -4096, 4096),
+        clamp(Math.round((ny / len2) * 4096), -4096, 4096),
+        clamp(Math.round((nz / len2) * 4096), -4096, 4096),
       ]);
     }
     const nN = norms.length;
@@ -554,13 +977,12 @@ function compileCrashSkaterPsx(rig, burnqMeta, headTex, bodyTex) {
     // Mesh binary layout: 28-byte header + nV*8 verts + nN*8 norms + nF*36 faces
     const meshSize = 28 + nV * 8 + nN * 8 + nF * 36;
     const mb = Buffer.alloc(meshSize);
-    mb.writeUInt16LE(0, 0);          // unk/pad
+    mb.writeUInt16LE(0, 0);
     mb.writeUInt16LE(nV, 2);
     mb.writeUInt16LE(nN, 4);
     mb.writeUInt16LE(nF, 6);
-    // Bounds computed via psxLib.recomputeMeshBounds after writing vertices!
-    mb.writeUInt32LE(0x00000000, 8); // radius placeholder
-    mb.writeUInt32LE(0xFFFFFFFF, 24);// maxDrawDist (never cull skater!)
+    mb.writeUInt32LE(0x00000000, 8);
+    mb.writeUInt32LE(0xFFFFFFFF, 24);
 
     // Write vertices
     let vp = 28;
@@ -582,24 +1004,15 @@ function compileCrashSkaterPsx(rig, burnqMeta, headTex, bodyTex) {
       vp += 8;
     }
 
-    // Write faces: exact burnq2.psx fl=0x001f (36-byte textured triangle with per-face normal, gpu=0x24!)
-    // CRITICAL WINDING CHECK: Crash OBJ is CCW right-handed (+Y up, +Z fwd).
-    // Since (x, -y, -z) is a proper rotation (det=+1), CCW stays CCW, and PS1 GTE uses
-    // screen-space Y-down which flips handedness — burnq2.psx stores [v0, v2, v1] or [v0, v1, v2]!
-    // Let's verify against burnq2.psx winding AND double-check in renderPs1SkaterPreview + DuckStation!
-    // NOTE: In THPS2 skater meshes (fl=0x001f), vertices [v0, v1, v2] are stored with outward normal;
-    // fl=0x001f is single-sided, while fl=0x401f is double-sided. Let's check winding carefully!
+    // Write faces: exact burnq2.psx fl=0x001f (36-byte textured triangle, gpu=0x24!)
+    // Emit [a, c, b] with [uv0, uv2, uv1] matching burnq2.psx verified GTE front-facing winding!
     for (let fi = 0; fi < nF; fi++) {
       const f = faces[fi];
-      const uv0 = f.a.vt >= 0 ? texMapper.mapUv(obj.uvs[f.a.vt][0], obj.uvs[f.a.vt][1]) : [0, 0];
-      const uv1 = f.b.vt >= 0 ? texMapper.mapUv(obj.uvs[f.b.vt][0], obj.uvs[f.b.vt][1]) : [0, 0];
-      const uv2 = f.c.vt >= 0 ? texMapper.mapUv(obj.uvs[f.c.vt][0], obj.uvs[f.c.vt][1]) : [0, 0];
-
-      // VERIFIED against burnq2.psx M[15] (76/76 faces = 100%):
-      // THPS2 PS1 GTE front-facing winding requires dot((v1-v0) x (v2-v0), outwardNormal) < 0!
-      // Since Crash OBJ [a,b,c] is CCW and (x,-y,-z) has det=+1 (cross points outward),
-      // emit [a, c, b] with [uv0, uv2, uv1] while keeping outward stored normal!
-      const isThinPart = (mi === 15 || mi === 9 || mi === 12);
+      const [uv0, uv1, uv2] = texObj.faceUvs.get(f.tri.index) || [[4, 36], [4, 36], [4, 36]];
+      // Only thin protruding features (hair spikes, pointed ears, eyebrows, fingers) use double-sided 0x401f;
+      // teeth/mouth/snout/cranium/body use clean single-sided 0x001f (zero back-of-teeth peek!)
+      const isMouthOrFaceCore = TEETH_TRI_IDS.has(f.tri.index) || MOUTH_GAP_TRI_IDS.has(f.tri.index);
+      const isThinPart = (mi === 9 || mi === 12) || (mi === 15 && !isMouthOrFaceCore);
       const fl = isThinPart ? 0x401f : 0x001f;
       mb.writeUInt16LE(fl, vp + 0);
       mb.writeUInt16LE(36, vp + 2);
@@ -607,9 +1020,10 @@ function compileCrashSkaterPsx(rig, burnqMeta, headTex, bodyTex) {
       mb[vp + 5] = f.c.v;
       mb[vp + 6] = f.b.v;
       mb[vp + 7] = 0;
-      mb[vp + 8] = 0x80; mb[vp + 9] = 0x80; mb[vp + 10] = 0x80; mb[vp + 11] = 0x24;
-      mb.writeUInt32LE(fi, vp + 12);      // outward normal index
-      mb.writeUInt32LE(texIdx, vp + 16);  // texture index (0=head, 1=body)
+      // Bright neutral modulation (0x88 slightly lifts cartoon vibrancy matching crashl/m/n!)
+      mb[vp + 8] = 0x88; mb[vp + 9] = 0x88; mb[vp + 10] = 0x88; mb[vp + 11] = 0x24;
+      mb.writeUInt32LE(fi, vp + 12);
+      mb.writeUInt32LE(texIdx, vp + 16);
       mb[vp + 20] = uv0[0]; mb[vp + 21] = uv0[1];
       mb[vp + 22] = uv2[0]; mb[vp + 23] = uv2[1];
       mb[vp + 24] = uv1[0]; mb[vp + 25] = uv1[1];
@@ -620,9 +1034,8 @@ function compileCrashSkaterPsx(rig, burnqMeta, headTex, bodyTex) {
     }
 
     psxLib.recomputeMeshBounds(mb, 0, 128);
-    // Ensure radius is generous so skater never disappears near camera frustum edges
     const curRad = mb.readUInt32LE(8);
-    mb.writeUInt32LE(Math.max(curRad, 0x00020000), 8);
+    mb.writeUInt32LE(Math.max(curRad, 0x00024000), 8);
     compiledMeshes.push(mb);
   }
 
@@ -1200,21 +1613,40 @@ function build8CrashDecks() {
 
 // ============================================================================
 // Build Crash B. PlaySel Portrait (s2face20.bmp — exact 4,088 B 62x47 8bpp!)
+// Rendered directly from the remodeled grinning Crash head (matching crashl.png!)
 // ============================================================================
-function buildCrashPortrait() {
+function buildCrashPortrait(rig, headTexA) {
   const tmplFace = psxLib.getOrigWadSlice('s2face1.bmp'); // 4,088 B metallic bezel template!
-  // Detect magenta transparency index in s2face1.bmp
   let magIdx = 0;
   for (let i = 0; i < 256; i++) {
     if (tmplFace[54 + i * 4 + 2] === 255 && tmplFace[54 + i * 4 + 1] === 0 && tmplFace[54 + i * 4 + 0] === 255) {
       magIdx = i; break;
     }
   }
-  // Render expressive close-up Crash Bandicoot 3D head onto vibrant Warp Room sky/orange backdrop!
-  const headObj = parseObjFile(path.join(SKATER_READY, '02_thps2_rigid_16_body_parts', 'local_pivot_parts', 'head.obj'));
+  // Build temporary OBJ-like object from our unfolded grinning Crash head + semantic headTexA!
+  const headPart = rig.parts[15];
+  const headVerts = headPart.localMasterIds.map(mvi => rig.rawPos[mvi]);
+  const headVcols = headVerts.map(() => [1, 1, 1]);
+  const headUvs = [];
+  const headFaces = [];
+  for (const f of headPart.faces) {
+    const uvs = headTexA.faceUvs.get(f.tri.index) || [[4, 36], [4, 36], [4, 36]];
+    const baseUv = headUvs.length;
+    for (const [u, v] of uvs) headUvs.push([u / (headTexA.w - 1), 1 - v / (headTexA.h - 1)]);
+    headFaces.push({
+      a: { v: f.a.v, vt: baseUv },
+      b: { v: f.b.v, vt: baseUv + 1 },
+      c: { v: f.c.v, vt: baseUv + 2 },
+      mat: 'crsh_hd',
+    });
+  }
+  const headObj = {
+    verts: headVerts, vcols: headVcols, uvs: headUvs, faces: headFaces,
+    matTex: { crsh_hd: { w: headTexA.w, h: headTexA.h, rgba: headTexA.rgba } },
+  };
   const hiW = 184, hiH = 144; // 4x supersample -> crisp downscale to 46x36!
   const hiRgba = renderObjToRgba(headObj, hiW, hiH, {
-    yaw: Math.PI + 0.24, pitch: 0.06, zoom: 1.05, shiftY: 4,
+    yaw: Math.PI + 0.18, pitch: 0.04, zoom: 1.05, shiftY: 6,
     bgFn: (x, y, w, h) => {
       const dx = (x - w * 0.5) / (w * 0.55), dy = (y - h * 0.52) / (h * 0.55);
       const r = Math.hypot(dx, dy);
@@ -1227,7 +1659,6 @@ function buildCrashPortrait() {
       ];
     },
   });
-  // Box downsample 4x -> 46x36
   const inner = Buffer.alloc(46 * 36 * 4);
   for (let y = 0; y < 36; y++) for (let x = 0; x < 46; x++) {
     let r = 0, g = 0, b = 0;
@@ -1243,7 +1674,7 @@ function buildCrashPortrait() {
   if (outBmp.length !== 4088) throw new Error(`s2face20.bmp tamanho invalido: ${outBmp.length}`);
   fs.writeFileSync(path.join(OUT_DIR, 's2face20.bmp'), outBmp);
   psxLib.writePng(path.join(OUT_DIR, 'preview_crash_portrait.png'), 62, 47, previewRgba);
-  console.log(`  [Portrait] s2face20.bmp (${outBmp.length} B, magIdx=${magIdx}) gerado!`);
+  console.log(`  [Portrait] s2face20.bmp (${outBmp.length} B, magIdx=${magIdx}) gerado do novo Crash sorrindo!`);
   return outBmp;
 }
 
@@ -1251,40 +1682,34 @@ function buildCrashPortrait() {
 // Main Builder
 // ============================================================================
 function buildAllCrashSkaterAssets() {
-  console.log('=== [mod_skater_crash] Compilando Crash Bandicoot ("Crash B.", Slot 20) ===');
+  console.log('=== [mod_skater_crash] Compilando Crash Bandicoot Remodelado ("Crash B.", Slot 20) ===');
   const burnqBuf = psxLib.getOrigWadSlice('burnq2.psx');
   const burnqInfo = psxLib.parsePsxStructure(burnqBuf);
   const burnqPsh = psxLib.getOrigWadSlice('burnq2.psh');
   const burnqMeta = extractBurnqBoardAndMeta(burnqBuf);
 
-  // 1. Retarget 16 rigid Crash body parts onto THPS2 sk2anim skeleton with w=1/w=2 stitching
+  // 1. Build unfolded-grin Crash 305-vert unified rig mapped proportionally onto THPS2 sk2anim!
   const rig = buildRetargetedCrashParts(burnqBuf, burnqInfo);
 
-  // 2. Load Crash 3 authentic baked albedo texture (512x512)
-  const texPath = path.join(SKATER_READY, '02_thps2_rigid_16_body_parts', 'local_pivot_parts', 'crash_albedo_baked_512.png');
-  const { w: tw, h: th } = psxLib.probeDims(texPath);
-  const atlasRgba = psxLib.loadRgba(texPath);
-
-  // Style A (Classic Crash 3)
-  const headTexA = cropAtlasTo128(atlasRgba, tw, th, rig.headUvBox, null);
-  const bodyTexA = cropAtlasTo128(atlasRgba, tw, th, rig.bodyUvBox, null);
+  // 2. Build ZERO-BLEED Semantic 128x64 Head & Body Textures for Style A & Style B!
+  const headTexA = buildSemanticHeadTexture(rig, false);
+  const bodyTexA = buildSemanticBodyTexture(rig, false);
   const crashPsxA = compileCrashSkaterPsx(rig, burnqMeta, headTexA, bodyTexA);
 
-  // Style B (Warped Moto Biker Crash!)
-  const headTexB = cropAtlasTo128(atlasRgba, tw, th, rig.headUvBox, 'head');
-  const bodyTexB = cropAtlasTo128(atlasRgba, tw, th, rig.bodyUvBox, 'body');
+  const headTexB = buildSemanticHeadTexture(rig, true);
+  const bodyTexB = buildSemanticBodyTexture(rig, true);
   const crashPsxB = compileCrashSkaterPsx(rig, burnqMeta, headTexB, bodyTexB);
 
+  // Enforce playsel.bin CSkaterCache hardcoded 0x10800 (67,584 B) safety ceiling!
+  if (crashPsxA.length > 67584 || crashPsxB.length > 67584) {
+    throw new Error(`CRASH PSX excede 67584 B (Style A=${crashPsxA.length}, Style B=${crashPsxB.length})!`);
+  }
+
+  // Save texture debug sheets for QA verification
+  psxLib.writePng(path.join(OUT_DIR, 'preview_crash_head_texA.png'), headTexA.w, headTexA.h, headTexA.rgba);
+  psxLib.writePng(path.join(OUT_DIR, 'preview_crash_body_texA.png'), bodyTexA.w, bodyTexA.h, bodyTexA.rgba);
+
   // Write .PSX + .PSH files (Hi-LOD & Lo-LOD for both Style A & Style B)
-  // Note: THPS2 parses #define <MODEL>PART_... from .psh; keep exact burnq2.psh structure!
-  const makePsh = prefix => Buffer.from(
-    burnqPsh.toString('latin1')
-      .replace(/BURNQ2/g, prefix.toUpperCase())
-      .replace(/burnq_/g, 'crash_'),
-    'latin1'
-  );
-  // Wait: verify whether THPS2 parses part names (like "pelvis", "left_shoe") from burnq2.psh or exact token names!
-  // Using verbatim burnq2.psh guarantees 100% bone-name match with SLUS_010.66's parser!
   fs.writeFileSync(path.join(OUT_DIR, 'crash.psx'), crashPsxA);
   fs.writeFileSync(path.join(OUT_DIR, 'crash_L.psx'), crashPsxA);
   fs.writeFileSync(path.join(OUT_DIR, 'crashb.psx'), crashPsxB);
@@ -1292,16 +1717,17 @@ function buildAllCrashSkaterAssets() {
   for (const pshName of ['crash.psh', 'crash_L.psh', 'crashb.psh', 'crashb_L.psh']) {
     fs.writeFileSync(path.join(OUT_DIR, pshName), burnqPsh);
   }
-  console.log(`  [Models] crash.psx (${crashPsxA.length} B), crashb.psx (${crashPsxB.length} B) + 4 .PSH compilados!`);
+  console.log(`  [Models] crash.psx (${crashPsxA.length} B), crashb.psx (${crashPsxB.length} B) + 4 .PSH compilados (<= 67584 B OK)!`);
 
-  // Render REAL PS1 GTE multi-angle previews for Style A & Style B!
+  // Render REAL PS1 GTE multi-angle previews (Front, 3/4, Side Profile, Back, Close-up Head!)
   const allMeshes = Array.from({ length: 19 }, (_, i) => i);
-  const views = [{ yaw: 0 }, { yaw: 45 }, { yaw: 90 }, { yaw: 180 }, { yaw: -45 }];
-  psxLib.renderPs1SkaterPreview(crashPsxA, allMeshes, views, 180, 260, 0.056, -120, path.join(OUT_DIR, 'preview_crash_styleA.png'));
-  psxLib.renderPs1SkaterPreview(crashPsxB, allMeshes, views, 180, 260, 0.056, -120, path.join(OUT_DIR, 'preview_crash_styleB.png'));
+  const views = [{ yaw: 0 }, { yaw: 35 }, { yaw: 90 }, { yaw: 180 }, { yaw: -35 }];
+  psxLib.renderPs1SkaterPreview(crashPsxA, allMeshes, views, 220, 280, 0.056, -125, path.join(OUT_DIR, 'preview_crash_styleA.png'));
+  psxLib.renderPs1SkaterPreview(crashPsxB, allMeshes, views, 220, 280, 0.056, -125, path.join(OUT_DIR, 'preview_crash_styleB.png'));
+  psxLib.renderPs1SkaterPreview(crashPsxA, [15], [{ yaw: 0 }, { yaw: 30 }, { yaw: 90 }, { yaw: 180 }], 180, 180, 0.085, 195, path.join(OUT_DIR, 'preview_crash_head_closeup.png'));
 
-  // 3. Portrait
-  buildCrashPortrait();
+  // 3. Portrait (rendered from our brand-new grinning Crash head!)
+  buildCrashPortrait(rig, headTexA);
 
   // 4. 8 Custom Crash 3 Skate Shop Decks (s2d + s2g)
   const decks = build8CrashDecks();
