@@ -244,14 +244,15 @@ const guideTxt = `==============================================================
      * XDelta patch  : THPS2_MOD_NTSC-U.xdelta
      * Clique em "Apply patch" e renomeie o resultado para "THPS2_MOD.bin" ao lado de "THPS2_MOD.cue".
 
-4. COMO JOGAR NO EMULADOR (CONFIGURACAO RECOMENDADA SEM LAG E SEM SUMIR OBJETOS)
+4. COMO JOGAR NO EMULADOR (CONFIGURACAO RECOMENDADA ZERO ARTEFATOS E ZERO LAG)
    - DuckStation (Recomendado): File -> Start File -> selecione "THPS2_MOD.cue"
-     * Para zero input lag e zero desaparecimento do skatista/objetos das fases:
+     * Para zero input lag, zero fendas/linhas vazias no chao (School II / NY City) e zero sumico de ceu/objetos:
        - Copie o perfil "SLUS-01066.ini" (incluso neste ZIP!) para a pasta "gamesettings" do DuckStation, OU configure:
-         * PGXP Depth Buffer     : DESATIVADO (evita sumir skatista/rampas na Ordering Table do PS1)
-         * Widescreen Hack       : DESATIVADO / Aspect Ratio 4:3 (evita sumir objetos nas bordas)
-         * Max Queued Frames     : 2 (evita atraso de resposta no controle)
-         * PGXP CPU Mode         : ATIVADO (estabiliza geometria 3D sem quebrar profundidade)
+         * PGXP Geometry Correction: DESATIVADO (o motor M3dAsm do THPS2 ja subdivide poligonos proximos em inteiros na CPU MIPS; ativar PGXP cria desalinhamento subpixel e abre fendas/linhas brancas no chao da School II e NY City!)
+         * PGXP Depth Buffer       : DESATIVADO (evita sumir ceu, skatista e rampas na Ordering Table do PS1)
+         * Widescreen Hack         : DESATIVADO / Aspect Ratio 4:3 (evita sumir objetos e paredes nas bordas)
+         * Line Detect Mode        : Disabled | Texture Filter: Nearest | Resolution Scale: 5x (1080p)
+         * Max Queued Frames       : 2 | Optimal Frame Pacing: ATIVADO (zero input lag)
        - Se voce usa controle DualShock 4 / DualSense via Bluetooth + DS4Windows:
          * Ative o HidHide ocultando o controle HID fisico (liberando apenas o DS4Windows.exe),
            configure BTPollRate = 4ms (250Hz nativo PS4), Idle Disconnect = 0 (desativado) e
@@ -271,17 +272,19 @@ ResolutionScale = 5
 Multisamples = 1
 PerSampleShading = false
 DownsampleMode = Disabled
+DitheringMode = Scaled
 TextureFilter = Nearest
 SpriteTextureFilter = Nearest
 LineDetectMode = Disabled
 MaxQueuedFrames = 2
-PGXPEnable = true
-PGXPCPU = true
+PGXPEnable = false
+PGXPCPU = false
 PGXPVertexCache = false
-PGXPTextureCorrection = true
-PGXPColorCorrection = true
+PGXPTextureCorrection = false
+PGXPColorCorrection = false
 PGXPDepthBuffer = false
 PGXPCulling = false
+PGXPPreserveProjFP = false
 PGXPTolerance = -1
 WidescreenHack = false
 ForceRoundTextureCoordinates = false

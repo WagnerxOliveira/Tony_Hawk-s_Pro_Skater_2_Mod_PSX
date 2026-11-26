@@ -10,9 +10,9 @@ Toda compilação da ISO executa obrigatoriamente `node Scripts/audit_game.js`, 
 
 | Estágio | Alvo Auditado | Invariantes Verificadas |
 | :---: | :--- | :--- |
-| **1** | `SLUS_010.66` (Header & MIPS) | Tamanho `864.256 B`, header NTSC-U `+0x4C`, exatamente **248/248 palavras cirúrgicas** (hooks + 70 relocações `g_LevelTable` + motor THPS1 + despacho `CCar 215/216` + `InitHeap 0x800EB000`), bootstrapper `0x800E2680..0x800E27FF` bit-a-bit, ausência de `0x0000FFF8` em `0x8005F320` e **0 diffs inesperados** no código MIPS. |
+| **1** | `SLUS_010.66` (Header & MIPS) | Tamanho `864.256 B`, header NTSC-U `+0x4C`, exatamente **293/293 palavras cirúrgicas** (hooks + 70 relocações `g_LevelTable` + motor THPS1 + 6 hooks `.TRG SecretFlag` + `g_MovieTable[4..15]` `vlc=16896/ringSec=16` + despacho `CCar 215/216` + `InitHeap 0x800EB000`), bootstrapper `0x800E2680..0x800E27FF` bit-a-bit, ausência de `0x0000FFF8` em `0x8005F320` e **0 diffs inesperados** no código MIPS. |
 | **2** | Strings, `printf` & `.FNT` | Todas as **217 strings** modificadas sem overflow de slot NUL (incl. Silvio Santos + 32 linhas PT-BR de Lulao/Bolsonaro + `"Kickflip"` restaurado em `0x800D50F8`), especificadores `printf` idênticos e zero bytes fora do `.FNT`. |
-| **3** | `CD.HED` & `CD.WAD` (`1.531` entradas) | `CD.HED` 1.521/1.531 entradas Redump + 10 modelos/texturas nos mesmos setores (0 deslocamento de offsets); 2/2 hooks em `playsel.bin`, **`levelsel.bin`/`levelsel.pre`/`options.bin` bit-a-bit (13+8 relocs + carrossel 20 fases + anti-OOM `+0x2F7C`)**, `s2bio.fnt`/`player.pre` PT-BR sincronizados, 6 bancos `.VAB/.SFX` dos 9 gritos e 28 `.PSX` + ativos 3D do Lulão. |
+| **3** | `CD.HED` & `CD.WAD` (`1.531` entradas) | `CD.HED` 1.521/1.531 entradas Redump + 10 modelos/texturas nos mesmos setores (0 deslocamento de offsets); 2/2 hooks em `playsel.bin`, **`levelsel.bin`/`levelsel.pre`/`options.bin` bit-a-bit (13+8 relocs + carregador 5 bursts contíguos 40 BMPs + skip `FileIO_Kick` + vídeos preview restaurados)**, `s2bio.fnt`/`player.pre` PT-BR sincronizados, 6 bancos `.VAB/.SFX` dos 9 gritos e 28 `.PSX` + ativos 3D do Lulão. |
 | **4** | Retratos `s2face*.bmp` & `options.pre` | **Validação cruzada dinâmica contra `SLUS_010.66`:** verifica `s2face1,2,3,4,9,10,11` (`4.088 B`, header intacto, chaves magenta `#FF00FF` exatas e presença em `options.pre`), exige **`s2face7.bmp` (Bucky Lasek) 100% original Redump** e `0` bytes extras alterados em `options.pre`. |
 | **5** | **28 Modelos 3D `.PSX`** & Mundo 3D | Audita todos os 4 `.PSX` de cada um dos 7 skatistas + `skhan_l.psx` original Redump + `items.psx` (`X` + Garrafa 51 + Aura Aditiva), `skhan_o/o2` (Barril 51+Lulão + Haddad 3D), `sksl2_o/l/l2` (Dilma 3D + Vento Estocado 3D), `c_kart.psx` (Bolsonaro 3D) e `skven_o/l` (Garrafa Pitú 3D). |
 | **6** | ISO-9660, **`VOICES.DAT` & `THPS1.WAD`** | **48/48 arquivos originais** Redump + **49º `VOICES.DAT`** (`LBA 317893`, `1.174 set.`, **17 setores residentes `0..16`** incl. `THPS1_ENGINE 20 KB` bit-a-bit, 41 clips menu, `LULAO_GPBANK` 14×2, `BOLSO_GPBANK` 14×2, `LULAO_CASHART`, trava anti-chiado `vLOUT/vROUT`, OOM Guard `freeList[1]`) + **50º `THPS1.WAD`** (`LBA 319067`, contíguo logo após `VOICES.DAT`, `683 set.` / `1,33 MB`, **33 arquivos prioritários** validados com headers `BM`/`_TRG`/`0x00020004`). |
@@ -54,14 +54,15 @@ Além da auditoria estática, todas as mudanças críticas são comprovadas em e
 
 ## 4. Guia de Emulação Perfeita (DuckStation + DualShock 4 Bluetooth)
 
-### Perfil Otimizado `SLUS-01066.ini` (Incluso em `THPS2_MOD_Patcher_e_Guia.zip`)
-Copie `SLUS-01066.ini` para a pasta `gamesettings/` do DuckStation. As 4 chaves abaixo evitam os bugs clássicos de emulação do THPS2:
+### Perfil Otimizado Zero-Artefatos `SLUS-01066.ini` (Incluso em `THPS2_MOD_Patcher_e_Guia.zip`)
+Copie `SLUS-01066.ini` para a pasta `gamesettings/` do DuckStation. As chaves abaixo foram provadas em teste A/B/C/D ao vivo e eliminam **100%** das linhas brancas vazias no chão (*School II*, *NY City*), céu sumindo e objetos desaparecendo:
 
 | Parâmetro | Valor Recomendado | Por Quê? |
 | :--- | :---: | :--- |
-| `PGXPDepthBuffer` | **`false`** | O THPS2 gerencia profundidade via Ordering Table nativa do PS1; ativar Depth Buffer faz o skatista e rampas sumirem! |
+| `PGXPEnable` + `PGXPCPU` | **`false`** | O motor `M3dAsm` do THPS2 (`0x800956B8..0x80097F00`) subdivide polígonos próximos em inteiros na CPU MIPS; ativar PGXP desalinha quads subdivididos dos vizinhos e abre **linhas brancas vazias no chão de School II e NY City**! |
+| `PGXPDepthBuffer` + `PGXPCulling` | **`false`** | O THPS2 gerencia profundidade via Ordering Table nativa do PS1; ativar Depth Buffer faz o **céu, skatista e rampas sumirem**! |
 | `WidescreenHack` / `AspectRatio` | **`false`** / **`4:3`** | Evita frustum culling prematuro de paredes e objetos nas bordas da tela. |
-| `PGXPEnable` + `PGXPCPU` | **`true`** | Estabiliza polígonos 3D (elimina tremor de vértices PS1) sem quebrar a profundidade. |
+| `ResolutionScale` + `TextureFilter` | **`5`** (`1080p`) + **`Nearest`** | Máxima nitidez 5× HD sem borramento `Scale2x` e sem artefatos de costura (`LineDetectMode = Disabled`, `Multisamples = 1`, `ForceRoundTextureCoordinates = false`). |
 | `MaxQueuedFrames` + `OptimalFramePacing` | **`2`** + **`true`** | Elimina input lag perceptível nos comandos de manobras/ollie. |
 
 ### Controle DualShock 4 / DualSense via Bluetooth no Windows (Zero Desconexões)

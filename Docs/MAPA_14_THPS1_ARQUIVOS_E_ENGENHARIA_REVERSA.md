@@ -230,31 +230,7 @@ Seguindo rigorosamente a mecânica de desbloqueio e a interface de Seleção de 
 | **17** | `19` | **THPS1** | **Roswell** | New Mexico (Área 51) | Competição (Medalha) | `$60.000` acumulados |
 | **18** | `9` | **THPS2** | **Skate Heaven** | Secret Level (Bônus) | Carreira Bônus | `6` Medalhas conquistadas |
 | **19** | `10` | **THPS2** | **Custom Park** | Park Editor (`sked`) | Free Skate / Single | Sempre disponível fora da Carreira |
-
-### Mapa da Arena Residente MIPS (`0x800E6000..0x800EAFFF` — `VOICES.DAT` Setores `7..16`, `20.480 B`)
-
-| Endereço RAM | Tamanho | Estrutura / Código Residente | Papel no Motor de 20 Fases |
-| :--- | :---: | :--- | :--- |
-| `0x800E6000..0x800E7D0F` | `7.440 B` | `g_ExtLevelTable[20]` | Cópia expandida de `0x800B8444` (stride `0x174`): slots `0..10` do THPS2 intactos + slots `11..19` das 9 fases THPS1 (incl. o campo nativo `+0x50 primBufDelta` descoberto em `0x80050118`, que libera até `72 KB` extras em `Heap[1]` nas fases mais densas como *School*, *Downtown*, *Downhill Jam* e *Streets SF*!). Todas as **70 referências em `SLUS_010.66`**, **13 em `levelsel.bin`** e **8 em `options.bin`** foram relocadas para cá! |
-| `0x800E7D20..0x800E7D6F` | `80 B` | `g_DisplayOrderWords[20]` | Ordem intercalada do carrossel: `[0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 10]`. |
-| `0x800E7D70..0x800E7D83` | `20 B` | `g_SlotOfLevel[20]` | Mapa inverso instantâneo `levelId → displaySlot`. |
-| `0x800E7D90..0x800E7DDF` | `80 B` | `g_LoadOrderWords[20]` | Ordem sequencial por LBA (`0..19`) usada por `CLevelRend::Queue` e `CLevelMap::Queue` para carregar os 40 bitmaps do Level Select em **apenas 2 seeks de CD** (+ patch anti-OOM `+0x2F7C` desativando o vídeo preview de 96 KB no Level Select)! |
-| `0x800E8000..0x800E840F` | `1.040 B` | `g_ExtLightTable[20]` | Tabela expandida de iluminação direcional (stride `52 B`). |
-| `0x800E8410..0x800E854F` | `320 B` | `g_ExtShadowTable[20]` | Tabela expandida de cor/intensidade de sombra (stride `16 B`). |
-| `0x800E8550..0x800E8A4F` | `1.280 B` | `g_ExtHighScoreTable[20]` | Tabela expandida de recordes (*High Scores*, stride `64 B`), com 6 hooks seguros (`0x8002E988`, `0x8002F098`, `0x80030038`, `0x80032E78`, `0x80032F08`, `0x8003306C`), mantendo `0..10` nativos para compatibilidade de Memory Card! |
-| `0x800E8A50..0x800E8F5F` | `1.296 B` | `g_Thps1Hed[33+1]` | Índice residente em RAM de `THPS1.WAD` (33 entradas prioritárias + sentinela `0xFFFFFFFF`). |
-| `0x800E9000..0x800E96DF` | `1.760 B` | `g_Thps1Strings` | Strings residentes: nomes das 9 fases, cidades, `.TRG`, `t1rend/t1levl`, todos os objetivos THPS1 e textos curtos de HUD. |
-| `0x800E96E0..0x800E96FF` | `32 B` | Estado de Runtime | `g_Thps1BaseLba`, `g_VoicesTotalSectors (1174)`, scratch `off/sz`. |
-| `0x800E9700..0x800E9ECF` | `2.000 B` | `g_ExtCareer[20 × 100 B]` | Progresso completo (flags de metas, medalhas, bits de `$100` Cash coletados) dos 20 skatistas nas 9 fases THPS1 (`11..19`), limpo automaticamente em `Career_InitAll @ 0x80023988`. |
-| `0x800EA000..0x800EAFFF` | `4.096 B` | `THPS1_CODE` | **28 rotinas MIPS R3000A** (`3.316 B` usados / `780 B` livres): `Hook_CdWadFallback`, contagem unificada de medalhas/ouro/metas/cash, cap de 5 objetivos (`GoalListLoopCheck`), botão `View Goals`, prêmios de competição, pódio, percentual no Level Select, High Scores e despacho de veículos de *Streets SF* (`Hook_Car215_SetModel @ 0x80061A58 → c_van` e `Hook_Car216_SetModel @ 0x80061A70 → c_cabl1` preservando `c_bus` e o metrô `c_cable` de NY City no THPS2!). |
-| `0x800EB000..0x801FFFFF` | `~1,10 MB` | `NewHeapStart` | Heap dinâmica principal do THPS2 (`InitHeap @ 0x800A294C/50` e `HeapStartPtr @ 0x800E2674`). |
-
----
-
-## 7. Anatomia dos 6 Pacotes `.PRE` do THPS1 (**58 Sub-Arquivos Desempacotados**)
-
-Cada pacote `.PRE` do THPS1 começa com `uint32 numFiles`, seguido sequencialmente por cada entrada: `nome ASCII (null-terminated, pad 4 B) + uint32 rawSize + bytes do arquivo (pad 4 B)`. Todos os 6 pacotes foram extraídos em `EXTRAIDOS_ARQUIVOS_THPS1/05_Pacotes_PRE/Desempacotados/`:
-
+false
 ### `sprites.pre` (`CD.WAD[0]`, 14.356 B, **4 sub-arquivos**)
 | # | Sub-Arquivo | Tamanho | Pasta Extraída |
 | :---: | :--- | :---: | :--- |

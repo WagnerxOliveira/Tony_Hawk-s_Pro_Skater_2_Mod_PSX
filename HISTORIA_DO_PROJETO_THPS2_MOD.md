@@ -361,18 +361,80 @@ O teste automatizado ao vivo em todas as 9 fases no DuckStation provou mais uma 
 
 ---
 
-## Capítulo 14 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 14 — Seleção de Fases Instantânea (5 Bursts Contíguos de `CdRead`), Restauração dos Vídeos Preview Inferiores & Erradicação Definitiva das Linhas Vazias e Sumiço de Céu/Objetos!
+
+Com todas as 19 fases intercaladas rodando em 3D no Modo Carreira, apareceram **dois problemas de qualidade visual e fluidez** perceptíveis ao jogar no dia a dia:
+1. **Na Seleção de Fases (*Level Select*):** as fotos do mapa (em cima) e do render (embaixo) demoravam uma eternidade para carregar (~16–18 segundos exibindo `LOADING...`!) e o clássico **vídeo preview animado na caixinha `VIDEO`** embaixo tinha ficado desligado para evitar OOM.
+2. **Durante as partidas 3D (especialmente em *School II*, *NY City* e nas fases densas do THPS1):** surgiam **linhas/fendas brancas vazias atravessando o chão** (deixando ver o vazio do fundo da fase!), **céu desaparecendo** e **objetos/paredes sumindo** conforme a câmera girava.
+
+Em vez de "chutar" soluções, abrimos o capô completo da GPU do PS1, do motor gráfico `M3dAsm` da Neversoft, do leitor CD-ROM 2× e da `Heap[1]` ao vivo no DuckStation GDB — e desvendamos **cada causa raiz até o último bit!**
+
+### 1. Por que a Seleção de Fases Demorava ~18 Segundos? (A Guerra dos 80 Seeks!)
+No Capítulo 13, tínhamos expandido `CLevelRend` e `CLevelMap` de 11 para 20 fases, mantendo a fila assíncrona original do `FileIO` do THPS2 (`40` requisições separadas: 20 renders + 20 mapas). Quando cronometramos ao vivo no GDB, descobrimos a verdadeira vilã:
+- A cada **1 único arquivo `.BMP`** lido pelo `FileIO` (`~10 KB`), o motor de música **`COMPILED.XA`** (no meio do disco, `LBA ~100.000`) retomava o controle do laser entre uma foto e outra!
+- Resultado: o leitor CD-ROM fazia **~80 saltos gigantes de ponta a ponta do disco** (*CD.WAD* @ `LBA 9.931` ↔ *COMPILED.XA* @ `LBA 100.000` ↔ *THPS1.WAD* @ `LBA 319.067`), consumindo `0,42 s` por foto — **~18 segundos** mostrando `LOADING...`!
+- **A Solução Cirúrgica (`Hook_LevelSelFastRend` & `Hook_LevelSelFastMap` em `Scripts/thps1_engine_mod.js`):**
+  - Mapeamos todos os **40 arquivos `.BMP`** no disco e confirmamos que eles formam **4 blocos 100% contíguos sem nenhum setor vazio entre si**:
+    - `s2rend01..11.bmp`: `CD.WAD` setores `9553..9607` (**55 setores**, passo exato de `5` set. = `10.240 B`);
+    - `t1rend00..08.bmp`: `THPS1.WAD` setores `0..44` (**45 setores**, passo exato de `5` set.);
+    - `s2levl00..10.bmp`: `CD.WAD` setores `9476..9541` (**66 setores**, passo exato de `6` set. = `12.288 B`);
+    - `t1levl00..08.bmp`: `THPS1.WAD` setores `45..98` (**54 setores**, passo exato de `6` set.).
+  - Substituímos as 40 filas lentas do `FileIO` por **uma única rotina MIPS compacta orientada por tabela (`Helper_RunFastBurstGroup`, em `THPS1_CODE`)** que pausa `COMPILED.XA` apenas uma vez, aloca um único buffer temporário de `112.640 B` (`55` setores) no topo da `Heap[1]`, lê os **220 setores totais em 5 rajadas contíguas de `CdRead` 2×** (~1,5 segundo real!) e envia todas as **40 imagens direto para a VRAM** (aplicando inclusive o escurecimento de fase bloqueada `0x8005E39C` nas fases fechadas!) **antes mesmo do Frame 1 do Level Select aparecer na tela!**
+  - **Resultado imediato:** no **Frame 1** da Seleção de Fases, **todas as 40/40 fotos (mapas superiores e renders inferiores) já estão 100% nítidas na VRAM — ZERO `LOADING...`!**
+
+```mermaid
+flowchart LR
+    subgraph ANTES["❌ Antes: Fila Assíncrona FileIO (~18 segundos)"]
+        A1["40 leituras individuais<br/>FileIO_Queue()"] --> A2["~80 seeks de laser<br/>CD.WAD ↔ COMPILED.XA ↔ THPS1.WAD"] --> A3["18 s exibindo 'LOADING...'<br/>+ Vídeo inferior desligado"]
+    end
+    subgraph DEPOIS["✅ Agora: 5 Bursts Contíguos CdRead (~1,5 s) + Vídeo Ativo"]
+        B1["Pausa XA 1× + Buffer 110 KB<br/>5 rajadas CdRead (220 set.)"] --> B2["40/40 BMPs na VRAM<br/>antes do Frame 1!"] --> B3["0 s de 'LOADING...'<br/>+ HANGAR.STR..EDITOR.STR rodando!<br/>(90,8 KB livres na Heap[1])"]
+    end
+```
+
+### 2. Restaurando o Vídeo Preview Inferior (`HANGAR.STR..EDITOR.STR`) Sem OOM — e o Bug Oculto do `FileIO_Kick`!
+Com as fotos instantâneas funcionando, faltava trazer de volta o vídeo animado na janelinha `VIDEO` embaixo — sem disparar a temida barra vermelha de OOM na `Heap[1]`:
+1. **Auditoria Matemática dos 5.005 Frames de Todos os 11 Vídeos `.STR` de Preview:**
+   - Originalmente, a Neversoft deixou em `g_MovieTable[4..15]` (`0x800C1CB4`) um orçamento gigante herdado de vídeos tela-cheia: `2 × 33.792 B` (`vlcBufSize`) + `48 setores = 98.304 B` (`ringSec`) + `16.896 B` (fatias) = **`182,8 KB`**, estourando os `150,8 KB` contíguos da `Heap[1]`!
+   - Medimos o cabeçalho MDEC BS v2 de **todos os 5.005 frames** dos 11 vídeos `176×48 @ 15 fps` (`HANGAR.STR`, `SCHOOL.STR`, `MAR.STR`, `NY.STR`, `VENICE.STR`, `SS.STR`, `PHILLY.STR`, `BULLRING.STR`, `B1.STR`, `HEAVEN.STR`, `EDITOR.STR`): cada frame ocupa exatamente **5 setores (`10 KB`)** e o pico absoluto de saída MDEC VLC em todo o disco é apenas **`15.876 B`** (*Philly*)!
+   - Redimensionando `g_MovieTable[4..15]` para **`vlcBufSize = 16.896 B`** (`+1.020 B` de folga acima do pior frame do jogo!) e **`ringSec = 16` setores (`32 KB` = 3,2 frames completos de antecipação)**, o consumo de `Movie_AllocBuffers` despencou de **`182,8 KB` → `81,5 KB` (`-101,3 KB` economizados!)**, deixando **`90,8 KB` contíguos livres na `Heap[1]`** enquanto o vídeo toca!
+2. **Caçando o Bug Secreto do `FileIO_Kick` (`levelsel.bin +0x0ABC`):**
+   - No primeiro teste ao vivo com o vídeo reativado, `HANGAR.STR` decodificou 10 frames e de repente parou. O rastreio no GDB revelou uma pérola escondida na engine da Neversoft: `FileIO_Kick (0x8005A3B8)` — chamado ao fim de `LevelSel::ctor` (`+0x0ABC`) — **não verifica se a fila está vazia!** Ele liga `FileIO->active = 1` incondicionalmente e manda `CDWAD_Read` reler entradas antigas residuais deixadas na RAM pela tela de Seleção de Skatistas (`playsel`), o que disparava `Movie_FreeBuffers (0x8007AFE4)` no meio do vídeo!
+   - Bastou **1 única instrução `nop` em `levelsel.bin +0x0ABC`** (fora do `.rel`) + reduzir o atraso inicial de `32 → 10` frames (`+0x2AD4`) e restaurar `+0x2F7C`: **`HANGAR.STR` (avançou `curFrm 59 → 104`, `+45 frames` contínuos) e `SCHOOL.STR` (`curFrm 62`) passaram a rodar perfeitamente na caixinha `VIDEO`**, alternando suavemente para o render estático do *Warehouse (THPS1)* com **0 bytes de leak na `Heap[1]`** (`154.420 B` restaurados ao byte exato!).
+
+### 3. Erradicando 100% das Linhas Vazias no Chão (*School II* / *NY City*), Céu Sumindo e Objetos Desaparecendo!
+Para resolver os defeitos gráficos nas fases 3D sem achismos, montamos um **experimento científico A/B/C/D no frame exato `1:59` de *School II* e *NY City*** e medimos o consumo real do buffer de polígonos **`PrimBuf`** em todas as fases do THPS2 e THPS1:
+
+1. **A Causa Raiz das Linhas Brancas/Vazias no Chão (*M3dAsm* × PGXP):**
+   - Desmontando o motor 3D da Neversoft (`M3dAsm` em `0x800956B8..0x80097F00`), comprovamos que o THPS2 faz **duas coisas incompatíveis com o PGXP do DuckStation**:
+     1. Empacota coordenadas de tela `(X, Y)` de 16 bits por *bit-shifting* em registradores inteiros da CPU MIPS (`sra/sll/srl/or`) imediatamente antes do `mtc2`;
+     2. **Subdivide dinamicamente quads próximos da câmera em sub-quads `2×2` / `4×4` em aritmética inteira na CPU** (`0x80096588`) para evitar distorção de textura nativamente no PS1!
+   - Quando um piso grande cruza o limiar de subdivisão (exatamente no pátio inicial `1:59` de *School II* e no asfalto de *NY City*), o quad distante mantém vértices em ponto flutuante do **PGXP**, enquanto o quad vizinho subdividido cai em coordenadas inteiras quantizadas do PS1 — **abrindo uma fenda branca brilhante atravessando todo o chão mostrando o vazio atrás da fase!**
+   - Provamos visualmente lado a lado no mesmo frame `1:59` de *School II*:
+     - Com `PGXPEnable = true` (mesmo desligando `PGXPCPU`, ligando `PGXPPreserveProjFP` ou ligando `PGXPVertexCache`): **a linha branca vazia continua aparecendo!**
+     - Com **`PGXPEnable = false` + `D3D12 5×` + `WidescreenHack = false` + `LineDetectMode = Disabled` + `4:3`**: **CHÃO 100% SÓLIDO, ZERO LINHAS VAZIAS, CÉU E OBJETOS 100% ÍNTEGROS E NITIDEZ 5× HD!**
+   - Além disso, descobrimos que o `settings.ini` global do emulador tinha chaves tóxicas para THPS2 (`PGXPDepthBuffer = true`, que faz o céu e objetos desaparecerem; `WidescreenHack = true`, que recorta paredes/objetos nas bordas; `LineDetectMode = AggressiveTriangles`; `TextureFilter = Scale2x`). Atualizamos tanto o perfil local `SLUS-01066.ini` quanto o modelo distribuído na Release (`THPS2_MOD_Patcher_e_Guia.zip`) para sobrescrever explicitamente todas essas chaves com o **Perfil Dourado Zero-Artefatos (`PGXPEnable = false`, `PGXPDepthBuffer = false`, `WidescreenHack = false`, `5× HD Nearest`, `4:3`)**!
+2. **A Causa Raiz Interna de Polígonos/Objetos Cortados no THPS1 (`PrimBuf` a `99,6%`!) + 6 Hooks `.TRG SecretFlag`:**
+   - A medição ao vivo do `PrimBuf` revelou que **School (THPS1)** (`99,6%`: `61.044 / 61.280 B`) e **Downtown (THPS1)** (`98,4%`: `60.320 / 61.280 B`) estavam raspando o teto do buffer de polígonos (cortando geometria em ângulos abertos!), mesmo ainda tendo **`~50 KB` livres sobrando na `Heap[1]`!**
+   - Recalibramos `primBufDelta` em `Scripts/thps1_engine_mod.js` (*School* e *Downtown*: `-36000 → -20000` = `77.280 B`; *Downhill Jam*: `-34000 → -24000` = `73.280 B`; *Streets SF*: `-34000 → -28000` = `69.280 B`). Na revalidação ao vivo:
+     - **THPS1 School:** caiu de `99,6%` → **`77,5%`** (`59.912 / 77.280 B`, `+22,6 KB` livres na `Heap[1]`);
+     - **THPS1 Downtown:** caiu de `98,4%` → **`79,6%`** (o pico real subiu para **`61.496 B` > teto antigo `61.280 B`**, provando que havia clipping real antes e que agora sobram `+15,7 KB` de `PrimBuf` e `+23,5 KB` na `Heap[1]`!).
+   - Por fim, conectamos os **6 pontos finais de `.TRG` `SecretFlagSet` / `SecretFlagGet` / `TrigHasGoal`** (`0x80046F20`, `0x80046F88`, `0x80046FE0`, `0x8004D91C`, `0x8004D984`, `0x8004D9FC`) aos hooks `Entry_SecretFlagSet` / `Entry_TrigHasGoal`, garantindo que áreas secretas do THPS1 nunca leiam ou escrevam fora dos limites de `SCareerSkater`.
+
+---
+
+## Capítulo 15 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
     subgraph RAM["🧠 Mapa da Main RAM do PS1 (2 MB: 0x80000000..0x801FFFFF)"]
         K["0x80000000..0x8000FFFF — Kernel BIOS PS1"]
-        E["0x80010000..0x800E267F — SLUS_010.66<br/>248 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font"]
+        E["0x80010000..0x800E267F — SLUS_010.66<br/>293 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font + Preview STR 81.5 KB"]
         B["0x800E2680..0x800E27FF — Mod_BootInit (17 set.) & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
         L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache 48/80KB + Streamer SPU 2 KB Anti-Chiado vLOUT/vROUT + SpawnLetter + CarHitVoice + PsxUpload)"]
         S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Vento Estocado + Diploma no Buteco + Roubei)"]
-        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] + g_ExtCareer[20] + g_ExtHighScoreTable + g_Thps1Hed + THPS1_CODE 28 rotinas)"]
+        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] + FastBurst Descriptors + g_ExtCareer[20] + g_ExtHighScoreTable + g_Thps1Hed + THPS1_CODE 30 rotinas)"]
         H["0x800EB000..0x801FFFFF — Heap Dinâmica THPS2 (~1,10 MB) + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK"]
     end
     K --> E --> B --> M --> L --> S --> T --> H
@@ -385,8 +447,10 @@ flowchart TB
 | **Integridade da ISO Compilada** | **319.900 / 319.900 setores** (`717,5 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
 | **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.531 entradas** |
-| **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo** com objetivos originais, **2.301 trilhos** convertidos e **68 nós de moedas → `$100` Cash** para Stats!) + Custom Park |
-| **Hooks & Relocações MIPS R3000A** | **248 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` + `levelsel.bin`/`levelsel.pre` + `options.bin` + **17 setores residentes** em `VOICES.DAT` (`1.174` set.) + **`THPS1.WAD`** (`1,33 MB`, 33 arquivos prioritários) |
+| **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo** com objetivos originais, **2.301 trilhos** convertidos, **68 nós de moedas → `$100` Cash** para Stats e `PrimBuf` folgado `< 80%`) + Custom Park |
+| **Level Select & Vídeos Preview** | **40/40 fotos instantâneas no Frame 1** via **5 bursts contíguos `CdRead` (`~1,5 s` vs `~18 s`, zero `LOADING...`)** + **vídeos preview inferiores restaurados (`vlcBufSize = 16.896 B`, `ringSec = 16`, `90,8 KB` livres na `Heap[1]`, 0 OOM, 0 leak)** |
+| **Renderização 3D Zero-Artefatos** | **Zero linhas vazias/fendas no chão** (*School II* / *NY City*), **zero céu/objetos sumindo** via perfil `SLUS-01066.ini` (`PGXPEnable = false`, `PGXPDepthBuffer = false`, `WidescreenHack = false`, `5× HD Nearest`, `4:3`) + `PrimBuf` ampliado no THPS1 + 6 hooks `.TRG SecretFlag` |
+| **Hooks & Relocações MIPS R3000A** | **293 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` + `levelsel.bin`/`levelsel.pre` + `options.bin` + **17 setores residentes** em `VOICES.DAT` (`1.174` set.) + **`THPS1.WAD`** (`1,33 MB`, 33 arquivos prioritários) |
 | **Skatistas Personalizados** | **7 skatistas** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan*) = **28 modelos `.PSX` + 7 retratos `s2face*.bmp`** |
 | **Mundo 3D & Coletáveis Customizados** | Letra 3D **`X`** (`T-A-X-A-S` dinâmico) + **Barris 51 Frente / Lulão Atrás** + **Notas Dinâmicas do Lulão (`$50/$100/$250`)** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D** & **5 Pacotes Vento Estocado 3D** & **Carrinho de Golfe com Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) |
 | **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
@@ -404,10 +468,13 @@ flowchart TB
 - **Registradores `vLOUT` / `vROUT` (`0x1F801D84` / `0x1F801D86`)**: volumes de saída esquerdo e direito do motor de Reverb da SPU do PS1. Zerar esses dois registradores é indispensável sempre que se reutiliza temporariamente a área de trabalho de reverb (`mBASE..0x7FFFF`), pois desligar apenas `SPUCNT bit 7` não interrompe a leitura do reverb.
 - **Frequência de Nyquist & Anti-Aliasing**: a maior frequência representável sem distorção equivale à metade da taxa de amostragem (`3.445 Hz` em `6.890,625 Hz`). Filtrar o áudio antes da reamostragem (*anti-aliasing*) impede que frequências agudas "dobrem" para dentro da voz em forma de chiado metálico.
 - **GTE (*Geometry Transformation Engine*)**: coprocessador 3D do PS1 que projeta triângulos e quads na tela e descarta faces viradas para trás (*back-face culling* via `NCLIP`).
-- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo (como estampar o rosto do Lulão nas notas ou tocar uma fala do Bolsonaro ao atropelar) e devolve o controle perfeitamente ao jogo original.
+- **`M3dAsm` × PGXP**: o renderizador assembly `M3dAsm` da Neversoft (`0x800956B8..0x80097F00`) subdivide polígonos próximos em inteiros na CPU MIPS para evitar distorção de textura. O PGXP do DuckStation tenta reconstruir coordenadas em ponto flutuante, o que desalinha polígonos subdivididos dos vizinhos e abre fendas/linhas brancas no chão (*School II*, *NY City*); desativar o PGXP no perfil `SLUS-01066.ini` devolve chão 100% sólido mantendo resolução `5× HD`.
+- **Burst `CdRead` Contíguo (`Helper_RunFastBurstGroup`)**: técnica de ler dezenas de arquivos consecutivos do CD-ROM em uma única chamada `CdRead` com a música XA pausada uma só vez, eliminando ~80 seeks de laser e derrubando o carregamento do Level Select de `~18 s` para `~1,5 s` (40/40 fotos prontas no Frame 1).
+- **`vlcBufSize` & `ringSec` (`g_MovieTable @ 0x800C1CB4`)**: parâmetros por vídeo que controlam o tamanho dos 2 buffers de saída MDEC VLC e do anel de leitura CD-ROM (em setores de 2 KB). Ajustá-los ao tamanho real dos 11 vídeos `176×48` (`16.896 B` e `16` setores) reduziu o consumo de `182,8 KB` para `81,5 KB`, restaurando os vídeos preview inferiores com `90,8 KB` livres na `Heap[1]`.
+- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, `Hook_LevelSelFastRend`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
 - **Patch `.xdelta`**: arquivo de diferença binária que transforma legalmente a cópia original do usuário no mod completo sem distribuir arquivos comerciais protegidos.
 - **`THPS1.WAD` & `Hook_CdWadFallback`**: 50º arquivo da ISO (`1,33 MB`, 33 ativos prioritários) consultado antes do `CD.HED` original para sobrepor os `.TRG` convertidos do THPS1 e o bonde `c_cabl1.psx` sobre as sobras antigas da Neversoft, deduplicando 43 `.PSX` já idênticos no disco do THPS2.
-- **`primBufDelta` (`g_LevelTable + 0x50`)**: campo nativo assinado da engine Neversoft (`0x80050118`) que ajusta o tamanho do buffer duplo de pacotes GPU por fase (`2 × delta` bytes em `Heap[1]`), permitindo que fases densas do THPS1 (como *School* `471 KB` e *Downtown*) convivam confortavelmente na RAM de 2 MB do PS1.
+- **`primBufDelta` (`g_LevelTable + 0x50`)**: campo nativo assinado da engine Neversoft (`0x80050118`) que ajusta o tamanho do buffer duplo de pacotes GPU por fase (`2 × delta` bytes em `Heap[1]`), mantendo o pico de `PrimBuf` abaixo de `80%` em fases densas como *School* (`77,5%`) e *Downtown* (`79,6%`) sem clipping de polígonos ou OOM.
 
 ---
 

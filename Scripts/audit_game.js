@@ -395,7 +395,7 @@ try {
     if (!lsPreGot.subarray(0x18, 0x18 + lsGot.length).equals(lsGot)) {
       fail('WAD', 'levelsel.pre +0x18 dessincronizado de levelsel.bin!'); ovErr++;
     }
-    if (ovErr === 0) pass('levelsel.bin (idx=33), levelsel.pre (idx=47 +0x18) & options.bin (idx=37): 13+8 relocs g_LevelTable + carrossel intercalado 20 fases + anti-OOM +0x2F7C 100% validos');
+    if (ovErr === 0) pass('levelsel.bin (idx=33), levelsel.pre (idx=47 +0x18) & options.bin (idx=37): 13+8 relocs g_LevelTable + 5 bursts contiguos 40 BMPs + skip FileIO_Kick + videos preview restaurados 100% validos');
   }
   // Verify s2bio.fnt (idx 458) & player.pre (idx 60) ONLY modified s2bio.fnt (+0x14..+0x1187) identically!
   {

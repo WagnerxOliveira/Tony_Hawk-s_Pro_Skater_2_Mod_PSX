@@ -81,18 +81,18 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 | 1 | `0x800C1CD8` | `0x0B24D8` | `\LOGO.STR;1` | Neversoft Logo | 320×192 | **266** | `0x01E000` | Sim | str (2336B) |
 | 2 | `0x800C1CFC` | `0x0B24FC` | `\INTRO.STR;1` | Intro | 320×240 | **1486** | `0x038400` | Sim | str (2336B) |
 | 3 | `0x800C1D20` | `0x0B2520` | `\ATVILOGO.STR;1` | *(preview)* | 320×240 | **208** | `0x025800` | Sim | str (2336B) |
-| 4 | `0x800C1D44` | `0x0B2544` | `\STATIC.STR;1` | *(preview)* | 176×48 | **102** | `0x008400` | Não | data (2048B) |
-| 5 | `0x800C1D68` | `0x0B2568` | `\HANGAR.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 6 | `0x800C1D8C` | `0x0B258C` | `\SCHOOL.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 7 | `0x800C1DB0` | `0x0B25B0` | `\MAR.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 8 | `0x800C1DD4` | `0x0B25D4` | `\NY.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 9 | `0x800C1DF8` | `0x0B25F8` | `\VENICE.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 10 | `0x800C1E1C` | `0x0B261C` | `\SS.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 11 | `0x800C1E40` | `0x0B2640` | `\PHILLY.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 12 | `0x800C1E64` | `0x0B2664` | `\BULLRING.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 13 | `0x800C1E88` | `0x0B2688` | `\B1.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 14 | `0x800C1EAC` | `0x0B26AC` | `\HEAVEN.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
-| 15 | `0x800C1ED0` | `0x0B26D0` | `\EDITOR.STR;1` | *(preview)* | 176×48 | **450** | `0x008400` | Não | data (2048B) |
+| 4 | `0x800C1D44` | `0x0B2544` | `\STATIC.STR;1` | *(preview)* | 176×48 | **102** | `0x004200` | Não | data (2048B) |
+| 5 | `0x800C1D68` | `0x0B2568` | `\HANGAR.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 6 | `0x800C1D8C` | `0x0B258C` | `\SCHOOL.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 7 | `0x800C1DB0` | `0x0B25B0` | `\MAR.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 8 | `0x800C1DD4` | `0x0B25D4` | `\NY.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 9 | `0x800C1DF8` | `0x0B25F8` | `\VENICE.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 10 | `0x800C1E1C` | `0x0B261C` | `\SS.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 11 | `0x800C1E40` | `0x0B2640` | `\PHILLY.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 12 | `0x800C1E64` | `0x0B2664` | `\BULLRING.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 13 | `0x800C1E88` | `0x0B2688` | `\B1.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 14 | `0x800C1EAC` | `0x0B26AC` | `\HEAVEN.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
+| 15 | `0x800C1ED0` | `0x0B26D0` | `\EDITOR.STR;1` | *(preview)* | 176×48 | **450** | `0x004200` | Não | data (2048B) |
 | 16 | `0x800C1EF4` | `0x0B26F4` | `\X\BAILS02.STR;1` | Bails | 320×240 | **685** | `0x025800` | Sim | str (2336B) |
 | 17 | `0x800C1F18` | `0x0B2718` | `\X\HAWK.STR;1` | Tony Hawk | 320×240 | **634** | `0x025800` | Sim | str (2336B) |
 | 18 | `0x800C1F3C` | `0x0B273C` | `\X\BURNQUIS.STR;1` | Silvio Santos | 320×240 | **598** | `0x025800` | Sim | str (2336B) |
