@@ -100,6 +100,7 @@ const scriptsToSync = [
   'mod_collectibles_haddad_dilma.js',
   'mod_lulao_collectibles_v2.js',
   'extract_thps1.js',
+  'mod_thps1_custom_objects.js',
   'port_thps1_levels.js',
   'thps1_engine_mod.js',
   'build_skater_voices.js',

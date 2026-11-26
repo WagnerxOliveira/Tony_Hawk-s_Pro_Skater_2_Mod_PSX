@@ -26,9 +26,9 @@ flowchart TB
     ISO["💿 Tony Hawk's Pro Skater (USA) .BIN/.CUE<br/>SLUS-00860 (1999)"] --> DUMP["dumpsxiso -> 01_ISO_Raiz/ (31 arquivos)"]
     DUMP --> EXT["Scripts/extract_thps1.js<br/>Parser CD.HED ASCII + Desempacotador .PRE"]
     EXT --> TREE["📂 EXTRAIDOS_ARQUIVOS_THPS1/<br/>669 arquivos do CD.WAD + 58 sub-arquivos .PRE<br/>organizados em 9 categorias / 25 subpastas"]
-    TREE --> PORT["Scripts/port_thps1_levels.js<br/>• Converte 2.301 trilhos .TRG (remove Angles+0xFFFF)<br/>• Converte 68 moedas -> $100 Cash (type 26 + bitIdx)<br/>• Renomeia C_Cable -> C_Cabl1 (Bonde SF 11 texturas)<br/>• Gera 18 BMPs Level Select (t1rend00..08 / t1levl00..08)<br/>• Deduplica 43 .PSX idênticos já presentes em CD.WAD"]
-    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,33 MB • 683 setores • 33 arquivos prioritários"]
-    WAD --> ENG["⚡ Motor Residente MIPS (0x800E6000..0x800EAFFF)<br/>• g_ExtLevelTable[20] + g_ExtCareer[20] + g_ExtHighScoreTable[20]<br/>• Hook_CdWadFallback + Hook_Car215/216_SetModel (c_van & c_cabl1)<br/>• 70+13+8 relocações + Carrossel Intercalado 19 fases"]
+    TREE --> PORT["Scripts/port_thps1_levels.js + mod_thps1_custom_objects.js<br/>• Converte 2.301 trilhos .TRG + 68 moedas -> $100 Cash<br/>• Esculpe 6 objetos 3D satiricos (fl=0x2003) nos sk*_o.psx<br/>• Injeta 30 coletaveis Type 5 subtype 33 (5 por fase regular)<br/>• Gera 18 BMPs Level Select + 60 metas + 24 Gaps ao vivo"]
+    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,47 MB • 751 setores • 39 arquivos prioritários"]
+    WAD --> ENG["⚡ Motor Residente MIPS (0x800E6000..0x800EAFFF)<br/>• g_ExtLevelTable[20] (60 metas THPS1) + g_Thps1GapList[24]<br/>• Hook_CdWadFallback + Entry_SetGapList + Entry_GapChecklistGuard<br/>• 70+13+8 relocações + Carrossel Intercalado 19 fases"]
 ```
 
 ---
@@ -121,15 +121,16 @@ Porém, **não era possível simplesmente apontar o THPS2 para essas sobras orig
 3. **Os outros 43 arquivos `.PSX` eram 100% idênticos bit-a-bit ao THPS1 USA!**
 
 ### Solução Cirúrgica: Deduplicação + Prioridade Absoluta em `Hook_CdWadFallback`
-Em vez de duplicar 7,7 MB de geometria já presente no disco, [`Scripts/port_thps1_levels.js`](../Scripts/port_thps1_levels.js) deduplica automaticamente esses 43 `.PSX` idênticos e empacota em **`THPS1.WAD`** (50º arquivo da ISO, imediatamente após `VOICES.DAT`, **zero deslocamento em 48/48 arquivos Redump**) **apenas os 33 arquivos novos ou divergentes** (**`1,33 MB` / `683 setores`** — reduzindo em 85% o tamanho do patch `.xdelta`!):
-- **18 BMPs de Level Select** (`t1rend00..08.bmp` `176×48` + `t1levl00..08.bmp` `212×52`, posicionados **contiguamente no início de `THPS1.WAD`** para carregamento em apenas 2 seeks de laser!),
-- **9 arquivos `.TRG` integralmente convertidos** (2.301 trilhos + 68 moedas → `$100 Cash` + `C_Cable → C_Cabl1`),
+Em vez de duplicar 7,7 MB de geometria já presente no disco, [`Scripts/port_thps1_levels.js`](../Scripts/port_thps1_levels.js) + [`Scripts/mod_thps1_custom_objects.js`](../Scripts/mod_thps1_custom_objects.js) deduplicam automaticamente os `.PSX` idênticos e empacotam em **`THPS1.WAD`** (50º arquivo da ISO, imediatamente após `VOICES.DAT`, **zero deslocamento em 48/48 arquivos Redump**) **apenas os 39 arquivos novos, esculpidos ou divergentes** (**`1,47 MB` / `751 setores`**):
+- **18 BMPs de Level Select** (`t1rend00..08.bmp` `176×48` + `t1levl00..08.bmp` `212×52`, posicionados **contiguamente no início de `THPS1.WAD`** para carregamento instantâneo em 5 bursts `CdRead`!),
+- **9 arquivos `.TRG` integralmente convertidos** (2.301 trilhos + 68 moedas → `$100 Cash` + **30 coletáveis 3D `Type 5 subtype 33` injetados** — 5 por fase regular — + `C_Cable → C_Cabl1`),
+- **6 arquivos `sk*_o.psx` com novos objetos 3D geométricos esculpidos** (`skware_o`, `skschl_o`, `skmall_o`, `skdown_o`, `skjam_o`, `sksf_o`: `+2,8 KB..+3,9 KB` cada, todos em `fl = 0x2003` full-quad + texturas `64×48` 4-bit 16 cores),
 - **4 `.PSX` divergentes do THPS1 USA** (`skware.psx`, `skware_2.psx`, `skware_l.psx`, `skschl.psx`),
 - **2 `.PSX` exclusivos ausentes no THPS2** (`skvans_t.psx` + `c_cabl1.psx` com as 11 texturas reais do bonde de São Francisco).
 
-No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (33 entradas) PRIMEIRO** como sobreposição prioritária (sem nunca chamar `CdSearchFile` em runtime — calcula `thps1BaseLba = g_VoicesBaseLba + 1174` diretamente da RAM!) e só cai para o `CD.HED` original quando o arquivo não está na tabela prioritária.
+No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (39 entradas) PRIMEIRO** como sobreposição prioritária (sem nunca chamar `CdSearchFile` em runtime — calcula `thps1BaseLba = g_VoicesBaseLba + 1174` diretamente da RAM!) e só cai para o `CD.HED` original quando o arquivo não está na tabela prioritária.
 
-### Tabela dos 33 Arquivos Empacotados em `THPS1.WAD`
+### Tabela dos 39 Arquivos Empacotados em `THPS1.WAD`
 
 | # | Arquivo | Hash Neversoft | Offset em `THPS1.WAD` | Tamanho | Setores | Função |
 | :---: | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -151,21 +152,27 @@ No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (33 en
 | 16 | `t1levl06.bmp` | `0X4C3B139B` | `0x00028800` | 12.102 B | 6 | Cartão/Mapa `212×52` 8bpp no painel direito do Level Select |
 | 17 | `t1levl07.bmp` | `0X0F872A16` | `0x0002B800` | 12.102 B | 6 | Cartão/Mapa `212×52` 8bpp no painel direito do Level Select |
 | 18 | `t1levl08.bmp` | `0X4EE6042D` | `0x0002E800` | 12.102 B | 6 | Cartão/Mapa `212×52` 8bpp no painel direito do Level Select |
-| 19 | `skware_t.trg` | `0X15D7D0F6` | `0x00031800` | 10.070 B | 5 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
+| 19 | `skware_t.trg` | `0X15D7D0F6` | `0x00031800` | 10.226 B | 5 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
 | 20 | `skware.psx` | `0XA8020457` | `0x00034000` | 131.124 B | 65 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
 | 21 | `skware_2.psx` | `0X4538DA9D` | `0x00054800` | 120.916 B | 60 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
 | 22 | `skware_l.psx` | `0XB2BB1163` | `0x00072800` | 240.836 B | 118 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 23 | `skschl_t.trg` | `0XC3BA3679` | `0x000AD800` | 25.016 B | 13 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 24 | `skschl.psx` | `0XB27B4B3F` | `0x000B4000` | 481.964 B | 236 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 25 | `skmall_t.trg` | `0X98266C2E` | `0x0012A000` | 26.244 B | 13 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 26 | `skvans_t.trg` | `0X0A6195CD` | `0x00130800` | 6.900 B | 4 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 27 | `skvans_t.psx` | `0X6835F66B` | `0x00132800` | 16.304 B | 8 | Geometria auxiliar de Skate Park Chicago (ausente no THPS2) |
-| 28 | `skdown_t.trg` | `0X9BBAE136` | `0x00136800` | 29.364 B | 15 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 29 | `skjam_t.trg` | `0X8AF0AF98` | `0x0013E000` | 17.708 B | 9 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 30 | `skburn_t.trg` | `0XD90BFFD8` | `0x00142800` | 9.112 B | 5 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 31 | `sksf_t.trg` | `0X9AAF54E0` | `0x00145000` | 31.348 B | 16 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 32 | `skros_t.trg` | `0XC7400461` | `0x0014D000` | 11.960 B | 6 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash) |
-| 33 | `c_cabl1.psx` | `0X85651A4D` | `0x00150000` | 21.004 B | 11 | Bonde de San Francisco (11 texturas originais THPS1) |
+| 23 | `skware_o.psx` | `0XCE59881C` | `0x000AD800` | 13.864 B | 7 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 24 | `skschl_t.trg` | `0XC3BA3679` | `0x000B1000` | 25.168 B | 13 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 25 | `skschl.psx` | `0XB27B4B3F` | `0x000B7800` | 481.964 B | 236 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 26 | `skschl_o.psx` | `0X18346E93` | `0x0012D800` | 25.144 B | 13 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 27 | `skmall_t.trg` | `0X98266C2E` | `0x00134000` | 26.392 B | 13 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 28 | `skmall_o.psx` | `0X43A834C4` | `0x0013A800` | 33.288 B | 17 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 29 | `skvans_t.trg` | `0X0A6195CD` | `0x00143000` | 6.900 B | 4 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 30 | `skvans_t.psx` | `0X6835F66B` | `0x00145000` | 16.304 B | 8 | Geometria auxiliar de Skate Park Chicago (ausente no THPS2) |
+| 31 | `skdown_t.trg` | `0X9BBAE136` | `0x00149000` | 29.516 B | 15 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 32 | `skdown_o.psx` | `0X4034B9DC` | `0x00150800` | 16.452 B | 9 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 33 | `skjam_t.trg` | `0X8AF0AF98` | `0x00155000` | 17.860 B | 9 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 34 | `skjam_o.psx` | `0X517EF772` | `0x00159800` | 28.148 B | 14 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 35 | `skburn_t.trg` | `0XD90BFFD8` | `0x00160800` | 9.112 B | 5 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 36 | `sksf_t.trg` | `0X9AAF54E0` | `0x00163000` | 31.496 B | 16 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 37 | `sksf_o.psx` | `0X41210C0A` | `0x0016B000` | 15.976 B | 8 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 38 | `skros_t.trg` | `0XC7400461` | `0x0016F000` | 11.960 B | 6 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`) |
+| 39 | `c_cabl1.psx` | `0X85651A4D` | `0x00172000` | 21.004 B | 11 | Bonde de San Francisco (11 texturas originais THPS1) |
 
 ---
 
@@ -188,19 +195,49 @@ Na engine Neversoft, todo corrimão ou borda de *grind* é uma cadeia ligada de 
   - **Byte alto** (`lhu v0, 2(v1); srl v0, v0, 8`): índice único de persistência do bit de coleta (`coinIdx = 0..63`) salvo no array `cashBits[2]` de cada fase!
 - Portanto, ao reescrever cada moeda para **`((coinIdx << 8) | 26)`**, cada moeda do THPS1 nasce automaticamente como uma **nota de `$100` nativa do THPS2** (exibindo inclusive o rosto do Lulão via `Hook_PsxUpload` e disparando `"Roubei mais 100!"` + fala aleatória zero-stall quando o Lulão está jogando!), soma diretamente em `totalCashEarned` e `currentCashSpendable` do skatista, persiste em `g_ExtCareer[skater]` para não renascer após coletada e **compra Stats, Manobras e Shapes no Skate Shop junto com o dinheiro do THPS2!**
 
-### Resumo das 9 Fases Convertidas (Objetivos Originais, Trilhos e Moedas → `$100` Cash)
+### Resumo das 9 Fases Convertidas (**60 Objetivos Satíricos Completos `G0..G9`**, **30 Objetos 3D Esculpidos**, Trilhos e Moedas → `$100` Cash)
 
-| ID THPS2 | Fase THPS1 | Tipo | Trilhos Convertidos | Moedas → `$100` (Ativas AutoExec / Total Nós) | Cash em Moedas | Objetivos Originais do THPS1 Preservados |
-| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
-| `11` | **Warehouse** (*Woodland Hills*) | Carreira | **65** | 3 ativas (+3 teste dev) / 6 nós | **$300 ($600)** | 1) High Score - 5,000 (\$150); 2) Pro Score - 15,000 (\$250); 3) Collect S-K-A-T-E (\$200); 4) Smash the Boxes (\$200); 5) Get the Secret Tape (\$200) |
-| `12` | **School** (*Miami*) | Carreira | **393** | 11 ativas / 11 nós | **$1.100** | 1) High Score - 7,500 (\$200); 2) Pro Score - 25,000 (\$350); 3) Collect S-K-A-T-E (\$250); 4) Grind 5 Lunch Tables (\$300); 5) Get the Secret Tape (\$300) |
-| `13` | **Mall** (*New York*) | Carreira | **286** | 15 ativas / 15 nós | **$1.500** | 1) High Score - 10,000 (\$300); 2) Pro Score - 30,000 (\$500); 3) Collect S-K-A-T-E (\$400); 4) Smash 5 Mall Signs (\$400); 5) Get the Secret Tape (\$400) |
-| `14` | **Skate Park** (*Chicago*) | Comp | **134** | 0 (Comp) | **$0 (Prêmio Medalha)** | Competição: Medalhas Ouro / Prata / Bronze (3 baterias) |
-| `15` | **Downtown** (*Minneapolis*) | Carreira | **465** | 16 ativas / 16 nós | **$1.600** | 1) High Score - 15,000 (\$500); 2) Pro Score - 40,000 (\$800); 3) Collect S-K-A-T-E (\$600); 4) Smash 5 Signs (\$600); 5) Get the Secret Tape (\$700) |
-| `16` | **Downhill Jam** (*Phoenix*) | Carreira | **136** | 14 ativas (+1 inativa) / 15 nós | **$1.400 ($1.500)** | 1) High Score - 20,000 (\$600); 2) Pro Score - 40,000 (\$900); 3) Collect S-K-A-T-E (\$700); 4) Open 5 Valves (\$700); 5) Get the Secret Tape (\$800) |
-| `17` | **Burnside** (*Portland*) | Comp | **193** | 0 (Comp) | **$0 (Prêmio Medalha)** | Competição: Medalhas Ouro / Prata / Bronze (3 baterias) |
-| `18` | **Streets** (*San Francisco*) | Carreira | **516** | 5 ativas / 5 nós | **$500** | 1) High Score - 25,000 (\$800); 2) Pro Score - 50,000 (\$1200); 3) Collect S-K-A-T-E (\$900); 4) Ollie 5 Cop Cars (\$900); 5) Get the Secret Tape (\$1000) |
-| `19` | **Roswell** (*New Mexico*) | Comp | **113** | 0 (Comp) | **$0 (Prêmio Medalha)** | Competição: Medalhas Ouro / Prata / Bronze (3 baterias) |
+| ID THPS2 | Fase THPS1 | Tipo | Trilhos | Moedas → `$100` | Objeto 3D Esculpido (`G5`, 5× por fase) | Lista Completa de 10 Objetivos (`G0..G9`) |
+| :---: | :--- | :---: | :---: | :---: | :--- | :--- |
+| `11` | **Warehouse** (*Woodland Hills*) | Carreira (10) | **65** | 6 nós (`$600`) | **3D Mandioca da Dilma** (`0x5111A101`, `48v/40f`, `+3.252 B` em `skware_o.psx`) | 1) Nota Baixa - 5,000 (\$150); 2) Nota Pro - 15,000 (\$250); 3) Nota Lula - 35,000 (\$400); 4) Formar T-A-X-A-S (\$200); 5) Quebrar 5 Caixas Taxa (\$250); 6) 5 Mandiocas da Dilma (\$300); 7) 50-50 Trilhao da Taxa (\$300); 8) 3 Voos Canal da Janja (\$350); 9) Pinga 51 Secreta (\$350); 10) 100% Bolsa Mandioca! (\$500) |
+| `12` | **School** (*Miami*) | Carreira (10) | **393** | 11 nós (`$1.100`) | **3D Triplex do Guarujá** (`0x5112A102`, `40v/30f`, `+2.844 B` em `skschl_o.psx`) | 1) Merenda - 7,500 (\$200); 2) Nota MEC - 25,000 (\$350); 3) Sem Diploma - 55,000 (\$500); 4) Formar T-A-X-A-S (\$250); 5) Grind 5 Mesas do MEC (\$300); 6) 5 Triplex do Guaruja (\$400); 7) Kickflip Canteiro L (\$400); 8) 3 Saltos Sem-Diploma (\$450); 9) Pinga 51 Secreta (\$400); 10) 100% Triplex Quitado! (\$600) |
+| `13` | **Mall** (*New York*) | Carreira (10) | **286** | 15 nós (`$1.500`) | **3D Mala do Mensalão** (`0x5113A103`, `64v/48f`, `+3.540 B` em `skmall_o.psx`) | 1) Shopee - 10,000 (\$300); 2) Shein Pro - 30,000 (\$500); 3) Taxa 92% - 65,000 (\$700); 4) Formar T-A-X-A-S (\$400); 5) Quebrar 5 Placas Taxa (\$400); 6) 5 Malas do Mensalao (\$500); 7) Grind Atrio do BNDES (\$500); 8) 3 Saltos Isencao Zero (\$550); 9) Pinga 51 Secreta (\$500); 10) 100% Mensalao Pago! (\$750) |
+| `14` | **Skate Park** (*Chicago*) | Comp | **134** | Comp (Medalha) | — *(Competição)* | Competição: Medalhas Ouro / Prata / Bronze (3 baterias) |
+| `15` | **Downtown** (*Minneapolis*) | Carreira (10) | **465** | 16 nós (`$1.600`) | **3D Cofre do Escândalo INSS** (`0x5115A104`, `48v/35f`, `+3.080 B` em `skdown_o.psx`) | 1) Taxa INSS - 15,000 (\$450); 2) Sigilo 100 - 40,000 (\$700); 3) Pro INSS - 85,000 (\$950); 4) Formar T-A-X-A-S (\$550); 5) 5 Placas do Sigilo (\$600); 6) 5 Cofres Roubo INSS (\$700); 7) Tailslide Borda INSS (\$700); 8) 3 Saltos do Desconto (\$750); 9) Pinga 51 Secreta (\$700); 10) 100% INSS na Conta! (\$1000) |
+| `16` | **Downhill Jam** (*Phoenix*) | Carreira (10) | **136** | 15 nós (`$1.500`) | **3D Pedalinho de Atibaia** (`0x5116A105`, `78v/58f`, `+3.948 B` em `skjam_o.psx`) | 1) Represa - 20,000 (\$550); 2) Sitio Pro - 45,000 (\$850); 3) Atibaia - 95,000 (\$1100); 4) Formar T-A-X-A-S (\$650); 5) 5 Torneiras Petrolao (\$700); 6) 5 Pedalinhos Atibaia (\$800); 7) Heelflip Lago Sitio (\$800); 8) 3 Voos da Inflacao (\$850); 9) Pinga 51 Secreta (\$800); 10) 100% Sitio de Amigo! (\$1200) |
+| `17` | **Burnside** (*Portland*) | Comp | **193** | Comp (Medalha) | — *(Competição)* | Competição: Medalhas Ouro / Prata / Bronze (3 baterias) |
+| `18` | **Streets** (*San Francisco*) | Carreira (10) | **516** | 5 nós (`$500`) | **3D Picanha da Promessa** (`0x5118A106`, `48v/45f`, `+3.384 B` em `sksf_o.psx`) | 1) Abobora - 25,000 (\$750); 2) Picanha - 55,000 (\$1100); 3) Churrasco - 110,000 (\$1400); 4) Formar T-A-X-A-S (\$850); 5) Pular 5 Viaturas PF (\$900); 6) 5 Picanhas Promessa (\$1000); 7) Nosegrind Hubba PF (\$1000); 8) 3 Fugas da PF (\$1050); 9) Pinga 51 Secreta (\$1000); 10) 100% Picanha e 51! (\$1500) |
+| `19` | **Roswell** (*New Mexico*) | Comp | **113** | Comp (Medalha) | — *(Competição)* | Competição: Medalhas Ouro / Prata / Bronze (3 baterias) |
+
+### 5.3 Tabela dos 24 Gaps Ao Vivo do THPS1 (`g_Thps1GapList @ 0x800E7E60`, `Entry_SetGapList @ 0x80083848`)
+Cada uma das 6 fases regulares do THPS1 recebeu **4 Gaps reais verificados** contra opcodes `0x00C9 EndGap` dentro do próprio `.TRG` (`1× gt=2` para a meta **Trick+Gap `G6`** + `3× gt=1` para a meta **Multi-Gap `G7`**), ativados dinamicamente em `Game_StartLevel @ 0x80083848` (`Entry_SetGapList`) e protegidos contra escrita fora de faixa na tabela de 11 níveis por `Entry_GapChecklistGuard @ 0x80024CD4`:
+
+| # | Fase | Gap ID (`.TRG`) | Tipo | Pontos | Nome Satírico no HUD |
+| :---: | :--- | :---: | :---: | :---: | :--- |
+| 1 | [11] Warehouse | `21000` | `G6` Trick+Gap | `300` | `[TRILHAO DA TAXA]` |
+| 2 | [11] Warehouse | `11000` | `G7` Multi-Gap | `250` | `[CANAL DA JANJA]` |
+| 3 | [11] Warehouse | `1006` | `G7` Multi-Gap | `200` | `[RAMPA DO ICMS]` |
+| 4 | [11] Warehouse | `1007` | `G7` Multi-Gap | `300` | `[PULO DO HALFPIPE]` |
+| 5 | [12] School | `2010` | `G6` Trick+Gap | `250` | `[CANTEIRO DO L]` |
+| 6 | [12] School | `2009` | `G7` Multi-Gap | `250` | `[MINI SALTO DO MEC]` |
+| 7 | [12] School | `2011` | `G7` Multi-Gap | `250` | `[RAMPA DO ENEM]` |
+| 8 | [12] School | `22002` | `G7` Multi-Gap | `500` | `[CORRIMAO DA GREVE]` |
+| 9 | [13] Mall | `22301` | `G6` Trick+Gap | `500` | `[ATRIO DO BNDES]` |
+| 10 | [13] Mall | `2305` | `G7` Multi-Gap | `200` | `[VOO DA ALFANDEGA]` |
+| 11 | [13] Mall | `2306` | `G7` Multi-Gap | `200` | `[JARDIM DO IMPOSTO]` |
+| 12 | [13] Mall | `2310` | `G7` Multi-Gap | `300` | `[FONTE DA PROPINA]` |
+| 13 | [15] Downtown | `21200` | `G6` Trick+Gap | `250` | `[BORDA DO INSS]` |
+| 14 | [15] Downtown | `1100` | `G7` Multi-Gap | `200` | `[RAMPA SINDICATO]` |
+| 15 | [15] Downtown | `1106` | `G7` Multi-Gap | `250` | `[PULO NO TAXI DO L]` |
+| 16 | [15] Downtown | `1108` | `G7` Multi-Gap | `300` | `[SALTO ESCRITORIO]` |
+| 17 | [16] Downhill Jam | `2609` | `G6` Trick+Gap | `300` | `[LAGO DE ATIBAIA]` |
+| 18 | [16] Downhill Jam | `2611` | `G7` Multi-Gap | `150` | `[INFLACAO 25%]` |
+| 19 | [16] Downhill Jam | `2603` | `G7` Multi-Gap | `250` | `[INFLACAO 50%]` |
+| 20 | [16] Downhill Jam | `2604` | `G7` Multi-Gap | `500` | `[INFLACAO 100%]` |
+| 21 | [18] Streets SF | `23002` | `G6` Trick+Gap | `500` | `[HUBBA DA PF]` |
+| 22 | [18] Streets SF | `3311` | `G7` Multi-Gap | `300` | `[CANTEIRO DA FUGA]` |
+| 23 | [18] Streets SF | `3314` | `G7` Multi-Gap | `500` | `[RAMPA DO HABEAS]` |
+| 24 | [18] Streets SF | `3320` | `G7` Multi-Gap | `500` | `[KICKER DO INDULTO]` |
 
 ---
 
@@ -211,26 +248,51 @@ Seguindo rigorosamente a mecânica de desbloqueio e a interface de Seleção de 
 | Slot Carrossel | ID Interno | Jogo | Fase | Localização | Modo | Requisito de Desbloqueio |
 | :---: | :---: | :---: | :--- | :--- | :---: | :--- |
 | **0** | `0` | **THPS2** | **The Hangar** | Mullet Falls, MT | Carreira (10 metas) | Desbloqueada no início (`$0`) |
-| **1** | `11` | **THPS1** | **Warehouse** | Woodland Hills, CA | Carreira (5 metas) | `$1.000` acumulados |
+| **1** | `11` | **THPS1** | **Warehouse** | Woodland Hills, CA | Carreira (10 metas) | `$1.000` acumulados |
 | **2** | `1` | **THPS2** | **School II** | Southern California | Carreira (10 metas) | `$2.000` acumulados |
-| **3** | `12` | **THPS1** | **School** | Miami, FL | Carreira (5 metas) | `$3.500` acumulados |
+| **3** | `12` | **THPS1** | **School** | Miami, FL | Carreira (10 metas) | `$3.500` acumulados |
 | **4** | `2` | **THPS2** | **Marseille** | France | Competição (Medalha) | `$5.500` acumulados |
-| **5** | `13` | **THPS1** | **Mall** | New York, NY | Carreira (5 metas) | `1` Medalha conquistada |
+| **5** | `13` | **THPS1** | **Mall** | New York, NY | Carreira (10 metas) | `1` Medalha conquistada |
 | **6** | `3` | **THPS2** | **NY City** | New York | Carreira (10 metas) | `$9.500` acumulados |
 | **7** | `14` | **THPS1** | **Skate Park** | Chicago, IL | Competição (Medalha) | `$13.500` acumulados |
 | **8** | `4` | **THPS2** | **Venice Beach** | California | Carreira (10 metas) | `2` Medalhas conquistadas |
-| **9** | `15` | **THPS1** | **Downtown** | Minneapolis, MN | Carreira (5 metas) | `$21.000` acumulados |
+| **9** | `15` | **THPS1** | **Downtown** | Minneapolis, MN | Carreira (10 metas) | `$21.000` acumulados |
 | **10** | `5` | **THPS2** | **Skatestreet** | Ventura, CA | Competição (Medalha) | `$25.000` acumulados |
-| **11** | `16` | **THPS1** | **Downhill Jam** | Phoenix, AZ | Carreira (5 metas) | `3` Medalhas conquistadas |
+| **11** | `16` | **THPS1** | **Downhill Jam** | Phoenix, AZ | Carreira (10 metas) | `3` Medalhas conquistadas |
 | **12** | `6` | **THPS2** | **Philadelphia** | Pennsylvania | Carreira (10 metas) | `$34.000` acumulados |
 | **13** | `17` | **THPS1** | **Burnside** | Portland, OR | Competição (Medalha) | `$42.000` acumulados |
 | **14** | `7` | **THPS2** | **The Bullring** | Mexico | Competição (Medalha) | `4` Medalhas conquistadas |
-| **15** | `18` | **THPS1** | **Streets** | San Francisco, CA | Carreira (5 metas) | `5` Medalhas conquistadas |
+| **15** | `18` | **THPS1** | **Streets** | San Francisco, CA | Carreira (10 metas) | `5` Medalhas conquistadas |
 | **16** | `8` | **THPS2** | **Chopper Drop** | Hawaii (Bônus) | Carreira Bônus | `$55.000` acumulados |
 | **17** | `19` | **THPS1** | **Roswell** | New Mexico (Área 51) | Competição (Medalha) | `$60.000` acumulados |
 | **18** | `9` | **THPS2** | **Skate Heaven** | Secret Level (Bônus) | Carreira Bônus | `6` Medalhas conquistadas |
 | **19** | `10` | **THPS2** | **Custom Park** | Park Editor (`sked`) | Free Skate / Single | Sempre disponível fora da Carreira |
-false
+
+### Mapa da Arena Residente MIPS (`0x800E6000..0x800EAFFF` — `VOICES.DAT` Setores `7..16`, `20.480 B`)
+
+| Endereço RAM | Tamanho | Estrutura / Código Residente | Papel no Motor de 20 Fases |
+| :--- | :---: | :--- | :--- |
+| `0x800E6000..0x800E7D0F` | `7.440 B` | `g_ExtLevelTable[20]` | Cópia expandida de `0x800B8444` (stride `0x174`): slots `0..10` do THPS2 intactos + slots `11..19` das 9 fases THPS1 (**60 objetivos satíricos completos `G0..G9`** nas 6 fases regulares + `gapMin/gapMax` disjuntos + `+0x50 primBufDelta` calibrado: `+12000` *Warehouse*, `-20000` *School*, `-18000` *Downtown*, `-24000` *Downhill Jam*, `-28000` *Mall*/*Streets SF*). Todas as **70 referências em `SLUS_010.66`**, **13 em `levelsel.bin`** e **8 em `options.bin`** foram relocadas para cá! |
+| `0x800E7D20..0x800E7D6F` | `80 B` | `g_DisplayOrderWords[20]` | Ordem intercalada do carrossel: `[0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 10]`. |
+| `0x800E7D70..0x800E7D83` | `20 B` | `g_SlotOfLevel[20]` | Mapa inverso instantâneo `levelId → displaySlot`. |
+| `0x800E7DE0..0x800E7E5F` | `128 B` | `FastBurst Descriptors` | Tabelas de ordem contígua em disco + 5 descritores de rajada `CdRead` para carregar **40/40 fotos no Frame 1 (~1,5 s, zero `LOADING...`)**, com **vídeos preview inferiores restaurados** (`vlcBufSize=16896`, `ringSec=16`, `90,8 KB` livres na `Heap[1]`). |
+| `0x800E7E60..0x800E7FFF` | `416 B` | `g_Thps1GapList[24+1]` | **24 Gaps ao vivo do THPS1** (`300 B` usados / `116 B` livres: 4 por fase regular, `1× G6 Trick+Gap` + `3× G7 Multi-Gap`), selecionados dinamicamente por `Entry_SetGapList @ 0x80083848`. |
+| `0x800E8000..0x800E840F` | `1.040 B` | `g_ExtLightTable[20]` | Tabela expandida de iluminação direcional (stride `52 B`). |
+| `0x800E8410..0x800E854F` | `320 B` | `g_ExtShadowTable[20]` | Tabela expandida de cor/intensidade de sombra (stride `16 B`). |
+| `0x800E8550..0x800E8A4F` | `1.280 B` | `g_ExtHighScoreTable[20]` | Tabela expandida de recordes (*High Scores*, stride `64 B`), com 6 hooks seguros mantendo `0..10` nativos para compatibilidade de Memory Card! |
+| `0x800E8A50..0x800E8C7F` | `560 B` | `g_Thps1Hed[39+1]` | Índice residente em RAM de `THPS1.WAD` (**39 entradas prioritárias** + sentinela `0xFFFFFFFF`, suporte até 46 entradas). |
+| `0x800E8C80..0x800E96DF` | `2.656 B` | `g_Thps1Strings` (2 segmentos) | Pool compacto byte-packed em 2 segmentos (`0x800E9000..0x800E96DF` primário + `0x800E8C80..0x800E8FFF` spill, `2.214 B` usados / `442 B` livres): nomes das 9 fases, **60 títulos satíricos pixel-validados em `s2goal.fnt`**, rótulos HUD e **24 nomes de Gaps**. |
+| `0x800E96E0..0x800E96FF` | `32 B` | Estado de Runtime | `g_Thps1BaseLba`, `g_VoicesTotalSectors (1174)`, scratch `off/sz`. |
+| `0x800E9700..0x800E9ECF` | `2.000 B` | `g_ExtCareer[20 × 100 B]` | Progresso completo (flags das **10 metas/fase**, medalhas, `secretFlags` via 6 hooks `.TRG`, bits de `$100` Cash) dos 20 skatistas nas 9 fases THPS1 (`11..19`), limpo em `Career_InitAll @ 0x80023988`. |
+| `0x800EA000..0x800EAFFF` | `4.096 B` | `THPS1_CODE` | **32 rotinas MIPS R3000A** (`3.980 B` usados / `116 B` livres): `Hook_CdWadFallback`, `Hook_LevelSelFastRend/FastMap`, contagem unificada **10 metas × 10% = 100%**, `Entry_SetGapList @ 0x80083848`, `Entry_GapChecklistGuard @ 0x80024CD4`, botão `View Goals`, prêmios/pódio de competição, High Scores, 6 hooks `.TRG SecretFlag` e despacho `Hook_Car215/216_SetModel`. |
+| `0x800EB000..0x801FFFFF` | `~1,10 MB` | `NewHeapStart` | Heap dinâmica principal do THPS2 (`InitHeap @ 0x800A294C/50` e `HeapStartPtr @ 0x800E2674`). |
+
+---
+
+## 7. Anatomia dos 6 Pacotes `.PRE` do THPS1 (**58 Sub-Arquivos Desempacotados**)
+
+Cada pacote `.PRE` do THPS1 começa com `uint32 numFiles`, seguido sequencialmente por cada entrada: `nome ASCII (null-terminated, pad 4 B) + uint32 rawSize + bytes do arquivo (pad 4 B)`. Todos os 6 pacotes foram extraídos em `EXTRAIDOS_ARQUIVOS_THPS1/05_Pacotes_PRE/Desempacotados/`:
+
 ### `sprites.pre` (`CD.WAD[0]`, 14.356 B, **4 sub-arquivos**)
 | # | Sub-Arquivo | Tamanho | Pasta Extraída |
 | :---: | :--- | :---: | :--- |
@@ -1093,8 +1155,13 @@ A tabela a seguir cataloga **100% dos 669 arquivos** extraídos de `CD.HED`/`CD.
 ## 9. Verificação Ao Vivo no DuckStation (Prova Empírica Completa)
 
 - **Carrossel Intercalado 19 Fases:** percorrido ao vivo na ordem exata `[0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 0]` com **40/40 bitmaps carregados** sem corrupção de VRAM, badges `LEVEL GOALS: 0%` funcionais e desbloqueio progressivo comprovado (apenas *The Hangar* liberada com `$0`; *Warehouse* liberada ao atingir `$1.000`, mantendo *School II* trancada até `$2.000`).
-- **Warehouse (`ID 11`) — Objetivos Originais + Moedas → `$100` Cash → Compra de Stats:**
-  - *Warehouse Checklist* exibiu exatamente os **5 objetivos originais do THPS1** (`High Score - 5,000`, `Pro Score - 15,000`, `Collect S-K-A-T-E`, `Smash the Boxes`, `Get the Secret Tape`).
-  - As 3 moedas ativas da fase nasceram como **notas de `$100`** (`mesh=9`) estampadas com o rosto do Lulão; ao coletar a primeira, disparou `ROUBEI MAIS 100!`, somou `$1.000 → $1.100` (`totalCashEarned` e `currentCashSpendable`), gravou `g_ExtCareer[2].cashBits[0] = 0x1` e o saldo apareceu imediatamente no **Skate Shop** para compra de Stats!
-  - Recorde de fim de partida (`LENDA NOOB: 8000`) exibido limpo via `g_ExtHighScoreTable`.
-- **Smoke-Test 3D ao Vivo em Todas as 9/9 Fases do THPS1 + Regressão THPS2:** todas as 9 fases (*Warehouse*, *School*, *Mall*, *Skate Park Chicago*, *Downtown*, *Downhill Jam*, *Burnside*, *Streets SF* com bonde `c_cabl1.psx` de 11 texturas + van `c_van.psx` despachados via `Hook_Car215/216_SetModel` e *Roswell*) + *The Hangar* (regressão) carregaram e renderizaram em 3D real a 60 FPS com 0 travamentos, 0 exceções MIPS e 0 `FatalError`, preservando 100% intactos os recursos do THPS2 e do Lulão!
+- **6/6 Fases Regulares do THPS1 com 10/10 Objetivos Satíricos, 6 Objetos 3D Esculpidos e 24 Gaps Ao Vivo (60 FPS, Zero Travamento):**
+  - **60/60 títulos de checklist** comprovados ao vivo via `○ VEJA NOOB!` em todas as 6 telas (*Warehouse*, *School*, *Mall*, *Downtown*, *Downhill Jam* e *Streets*): alinhamento exato medido pixel a pixel em `s2goal.fnt` com folga `>= 14 px` até a coluna `$cash`!
+  - **6/6 novos objetos 3D geométricos (`fl = 0x2003`, texto legível esquerda→direita sem artefatos)** comprovados visualmente em jogo + banners HUD de coleta ao vivo (`"1 OF 5 MANDIOCAS"`, `"1 OF 5 TRIPLEX"`, `"1 OF 5 MALAS $$$"`):
+    - `[11] Warehouse` (**3D Mandioca da Dilma**): `G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=84,2%, Heap[1]=158,6 KB`
+    - `[12] School` (**3D Triplex do Guarujá**): `G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=84,2%, Heap[1]=19,5 KB`
+    - `[13] Mall` (**3D Mala do Mensalão**): `G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=66,7%, Heap[1]=51,5 KB`
+    - `[15] Downtown` (**3D Cofre do Escândalo INSS**): `G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=66,4%, Heap[1]=15,3 KB`
+    - `[16] Downhill Jam` (**3D Pedalinho de Atibaia**): `G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=70,0%, Heap[1]=50,6 KB`
+    - `[18] Streets SF` (**3D Picanha da Promessa**): `G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=62,7%, Heap[1]=13,3 KB`
+- **Smoke-Test 3D ao Vivo em Todas as 9/9 Fases do THPS1 + Regressão THPS2:** todas as 9 fases (incluindo as 3 competições *Skate Park Chicago*, *Burnside* e *Roswell*) + *The Hangar* (regressão) carregaram e renderizaram em 3D real a 60 FPS com 0 travamentos, 0 exceções MIPS e 0 `FatalError`, preservando 100% intactos os recursos do THPS2 e do Lulão!

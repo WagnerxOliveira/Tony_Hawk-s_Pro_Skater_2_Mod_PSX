@@ -998,8 +998,46 @@ try {
       if (en.name.endsWith('.trg') && slice.subarray(0, 4).toString('ascii') !== '_TRG') { fail('THPS1', `${en.name} nao e _TRG valido!`); t1Err++; }
       if (en.name.endsWith('.psx') && slice.readUInt32LE(0) !== 0x00020004) { fail('THPS1', `${en.name} nao e PSX 0x00020004 valido!`); t1Err++; }
     }
+    // Verify all 6 sculpted 3D satirical THPS1 objects (0x5111A101..0x5118A106) + 30 injected Type 5 subtype 33 nodes + 60 goals + 24 gaps!
+    const customObjChecks = [
+      ['skware_o.psx', 0x5111A101, 'Mandioca da Dilma'],
+      ['skschl_o.psx', 0x5112A102, 'Triplex do Guaruja'],
+      ['skmall_o.psx', 0x5113A103, 'Mala do Mensalao'],
+      ['skdown_o.psx', 0x5115A104, 'Cofre do INSS'],
+      ['skjam_o.psx',  0x5116A105, 'Pedalinho de Atibaia'],
+      ['sksf_o.psx',   0x5118A106, 'Picanha da Promessa'],
+    ];
+    for (const [oName, expHash, label] of customObjChecks) {
+      const en = thps1Man.entries.find(e => e.name === oName);
+      if (!en) { fail('THPS1', `Objeto 3D esculpido ${oName} (${label}) ausente em THPS1.WAD!`); t1Err++; continue; }
+      const b = thps1Iso.subarray(en.relOffset, en.relOffset + en.size);
+      const ptrMeta = b.readUInt32LE(4);
+      const nObj = b.readUInt32LE(8);
+      const meshListOff = 12 + nObj * 36;
+      const nMesh = b.readUInt32LE(meshListOff);
+      const lastMeshPtr = b.readUInt32LE(meshListOff + 4 + (nMesh - 1) * 4);
+      let cur = ptrMeta;
+      while (cur + 4 <= b.length) {
+        const tag = b.readUInt32LE(cur);
+        if (tag === 0xFFFFFFFF) { cur += 4; break; }
+        cur += 8 + b.readUInt32LE(cur + 4);
+      }
+      const lastHash = b.readUInt32LE(cur + (nMesh - 1) * 4);
+      const maxDist = b.readUInt32LE(lastMeshPtr + 24);
+      if (lastHash !== expHash || maxDist !== 0xFFFF7FFF) {
+        fail('THPS1', `${oName} (${label}) invalido: hash=0x${lastHash.toString(16)} (exp 0x${expHash.toString(16)}), maxDist=0x${maxDist.toString(16)}`);
+        t1Err++;
+      }
+    }
+    const { THPS1_DEFS, THPS1_GAPS } = require('./thps1_engine_mod');
+    const totalThps1Goals = THPS1_DEFS.reduce((s, d) => s + (d.goals ? d.goals.length : 0), 0);
+    const totalInjectedCol = thps1Man.levels.reduce((s, l) => s + ((l.trgStats && l.trgStats.g5Injected) || 0), 0);
+    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 39) {
+      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/39 arquivos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, files=${thps1Man.totalFiles}`);
+      t1Err++;
+    }
     if (t1Err === 0) {
-      pass(`THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): ${thps1Man.totalFiles} arquivos prioritarios (18 BMPs + 9 TRGs convertidos + 6 PSXs) 100% validos e contiguos apos VOICES.DAT`);
+      pass(`THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): ${thps1Man.totalFiles} arquivos (18 BMPs + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 6 PSXs base) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
     }
   }
 

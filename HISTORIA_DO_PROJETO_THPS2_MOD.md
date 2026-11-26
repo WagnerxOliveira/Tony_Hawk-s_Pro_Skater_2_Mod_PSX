@@ -423,18 +423,83 @@ Para resolver os defeitos gráficos nas fases 3D sem achismos, montamos um **exp
 
 ---
 
-## Capítulo 15 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 15 — As 60 Metas Satíricas & Os 6 Objetos 3D Esculpidos do Zero nas Fases do THPS1 (*Mandioca da Dilma*, *Triplex*, *Mensalão*, *INSS*, *Pedalinho* & *Picanha* a 60 FPS!)
+
+No Capítulo 13, trouxemos todas as 9 fases do THPS1 para dentro do motor do THPS2; no Capítulo 14, aceleramos o Level Select de 18 s para 1,5 s e eliminamos todos os artefatos visuais. Porém, quem abria a lista de objetivos de uma fase regular do THPS1 (`○ VEJA NOOB!`) ainda encontrava o padrão de 1999: apenas **5 objetivos originais** — metade da folha em branco em comparação às **10 metas completas** das fases do THPS2!
+
+Chegou a hora de elevar as **6 fases regulares do THPS1** (*Warehouse*, *School*, *Mall*, *Downtown*, *Downhill Jam* e *Streets SF*) exatamente ao mesmo patamar épico e satírico das fases do THPS2: **listas 100% preenchidas (60 novos objetivos criativos = `10 × 6`, `10%` cada = `100%`)**, **6 novos objetos 3D verdadeiramente geométricos esculpidos sob medida e injetados diretamente nas fases (30 coletáveis no mundo)**, **24 Gaps reais ao vivo** e **zero travamento (60 FPS travados)**!
+
+### 1. Como a Engine do THPS2 Transforma Metas em Objetos 3D Reais (Os 3 Motores Nativos)
+Em vez de improvisar "gambiarras" fora do motor, usamos **100% da arquitetura nativa de 10 objetivos do THPS2** — a mesma que controla *The Hangar*, *School II* e *Venice Beach*:
+1. **Objetivo `G5` (`type = 3`, Coletáveis 3D no Mundo):**
+   - Ao carregar uma fase, `Career_InitLevel (0x800252EC)` varre o arquivo `.TRG` da fase, conta automaticamente quantos nós `Type 5` com **`subtype = 33` (`0x0021`)** existem (nossos **5 coletáveis exclusivos por fase**) e grava o total em `1076($gp)`.
+   - Para desenhar cada item girando no cenário, `PowerUp_Spawn (0x80035D78)` lê o campo **`goals[G5].p1`** da `g_ExtLevelTable` como um **hash 32-bit de malha 3D** dentro do arquivo de objetos da fase (`sk*_o.psx`)!
+2. **Objetivo `G6` (`type = 5`, Trick + Gap) & Objetivo `G7` (`type = 2`, 3× Multi-Gap):**
+   - No THPS2, todos os *Gaps* da fase vêm de um ponteiro global **`g_GapList @ 0x800D70A8`** (entradas de 12 bytes: `{ u16 f0, u16 gt, i16 gapId, u16 pts, char* name }`), filtrados pela faixa `[gapMin (+0x78), gapMax (+0x7C)]` da fase: **`gt = 2`** alimenta o desafio **Trick+Gap (`G6`)** e **`gt = 1`** alimenta o desafio **Multi-Gap (`G7`)**!
+   - Criamos **`g_Thps1GapList @ 0x800E7E60`** (`300 B / 416 B`) com **24 Gaps reais auditados** diretamente contra opcodes `0x00C9 EndGap` dentro dos `.TRG` originais do THPS1 (**4 por fase regular**: `1× G6` + `3× G7`), todos com nomes satíricos (`[TRILHAO DA TAXA]`, `[CANAL DA JANJA]`, `[CANTEIRO DO L]`, `[ATRIO DO BNDES]`, `[BORDA DO INSS]`, `[LAGO DE ATIBAIA]`, `[HUBBA DA PF]`).
+   - Adicionamos **2 hooks cirúrgicos em `THPS1_CODE`**:
+     - **`Entry_SetGapList @ 0x80083848`** (em `Game_StartLevel`): inspeciona `$s1` (`levelId`); se `>= 11`, aponta `g_GapList` para `0x800E7E60`; se `< 11`, preserva intacta a tabela vanilla `0x800BC52C` do THPS2!
+     - **`Entry_GapChecklistGuard @ 0x80024CD4`** (em `Career_GapAward_Start`): protege a tabela fixa de 11 fases do Gap Checklist (`0x800BBC1C`) contra escrita fora de faixa nas fases `11..19`.
+3. **Objetivo `G9` (`type = 7`, 100% Metas & Dinheiro):**
+   - Disparado automaticamente pela engine em `0x8002454C` quando o jogador conclui as 9 metas anteriores **e** coleta todas as notas de `$100` (antigas moedas) da fase!
+
+### 2. Esculpindo 6 Objetos 3D Satíricos do Zero (`Scripts/mod_thps1_custom_objects.js`) — e a Lei Secreta do `fl = 0x2003` no Hardware PS1!
+Para criar cada objeto com silhueta inconfundível, baixo custo de polígonos (para nunca pesar nos 60 FPS do PS1!) e arte nítida de longe e de perto, escrevemos um escultor 3D procedural completo com texturas pixel-art `64×48` em **4-bit (16 cores)** — acrescentando apenas **`+2,8 KB` a `+3,9 KB`** por arquivo `sk*_o.psx` em `THPS1.WAD` (zero deslocamento no `CD.WAD`!):
+
+| Fase THPS1 | Arquivo & Hash 3D | Novo Objeto 3D Esculpido | Geometria & Custo | Objetivo `G5` (5× no `.TRG`) |
+| :--- | :--- | :--- | :---: | :--- |
+| **`[11] Warehouse`** | `skware_o.psx` • `0x5111A101` | **3D Mandioca da Dilma** *(raiz curva c/ faixa vermelha/ouro `"DILMA"`, ponta cortada creme e 3 folhas verdes)* | `48v / 40f` (`+3.252 B`) | `5 Mandiocas da Dilma` (`MANDIOCAS`) |
+| **`[12] School`** | `skschl_o.psx` • `0x5112A102` | **3D Triplex do Guarujá** *(prédio 3 andares à beira-mar, sacadas douradas, piscina na cobertura e letreiro `"TRIPLEX / GUARUJA"`)* | `40v / 30f` (`+2.844 B`) | `5 Triplex do Guaruja` (`TRIPLEX`) |
+| **`[13] Mall`** | `skmall_o.psx` • `0x5113A103` | **3D Mala do Mensalão** *(maleta executiva entreaberta estourando 3 maços de notas `$$$` e selo `"MENSALAO / $$$ PT $$$"`)* | `64v / 48f` (`+3.540 B`) | `5 Malas do Mensalao` (`MALAS $$$`) |
+| **`[15] Downtown`** | `skdown_o.psx` • `0x5115A104` | **3D Cofre do Escândalo INSS** *(cofre blindado rebitado `"INSS / ROUBO!"`, volante cromado 3D saliente e pirâmide de moedas de ouro)* | `48v / 35f` (`+3.080 B`) | `5 Cofres Roubo INSS` (`COFRES INSS`) |
+| **`[16] Downhill Jam`** | `skjam_o.psx` • `0x5116A105` | **3D Pedalinho de Atibaia** *(pedalinho cisne branco/turquesa `"ATIBAIA"`, pescoço/bico laranja e toldo listrado vermelho/branco)* | `78v / 58f` (`+3.948 B`) | `5 Pedalinhos Atibaia` (`PEDALINHOS`) |
+| **`[18] Streets SF`** | `sksf_o.psx` • `0x5118A106` | **3D Picanha da Promessa** *(corte triangular marmorizado com capa de gordura dourada, espeto inox e bandeira `"PICANHA"`)* | `48v / 45f` (`+3.384 B`) | `5 Picanhas Promessa` (`PICANHAS`) |
+
+```mermaid
+flowchart LR
+    SCULPT["🗿 mod_thps1_custom_objects.js<br/>6 malhas low-poly (fl=0x2003)<br/>+ 6 atlas 64x48 4-bit 16c"] --> OPSX["📦 6 sk*_o.psx em THPS1.WAD<br/>(+2,8 KB .. +3,9 KB cada)<br/>39 arquivos • 1,47 MB • 751 set."]
+    TRG["📍 port_thps1_levels.js<br/>30 nós Type 5 subtype 33<br/>(5 por fase, #1 na frente do spawn!)"] --> OPSX
+    GAPS["⚡ thps1_engine_mod.js<br/>60 metas G0..G9 (pixel-fit s2goal.fnt)<br/>+ 24 Gaps @ 0x800E7E60"] --> PLAY["🎮 DuckStation 6/6 PASS (60 FPS)<br/>PrimBuf 62,7%..84,2% • 0 travamentos<br/>6/6 checklists + 6/6 objetos 3D ao vivo!"]
+    OPSX --> PLAY
+```
+
+> 🔬 **Duas Lições Preciosas de Hardware PS1 Descobertas e Provadas Ao Vivo no DuckStation:**
+> 1. **A Armadilha das Flags `.PSX` (`0x1813` vs `0x2003`):** no primeiro teste em tela real, os 6 objetos apareceram cortados na diagonal em triângulos e tingidos de verde/laranja neon! Por quê? Porque descobrimos na prática o significado exato de dois bits das faces `.PSX` da Neversoft:
+>    - **`0x0010`** **NÃO** é "dupla face" — é **`IS_TRIANGLE` (`POLY_FT3`)**, que ignorava o 4º vértice de cada quad!
+>    - **`0x0800`** é **`USE_RGBs_CHUNK`**, que buscava cores de vértice no bloco `0x73424752` — como nossa malha recém-anexada não tinha entradas lá, lia lixo de memória como cores neon!
+>    - A solução definitiva foi **`fl = 0x2003`** (quad `POLY_FT4` completo com RGB direto neutro `132..148`, transparência `0x7C1F` funcional, zero leitura de `RGBs`), combinada com *auto-winding* externo (`dot(cross(p1-p0, p2-p0), outN) < 0`) e pares de quads costas-com-costas para folhas finas. Na rodada seguinte, **todos os 6 objetos 3D brilharam perfeitos, inteiros e com cores 100% fiéis!**
+> 2. **Orientação UV Esquerda→Direita & Precisão Pixel-a-Pixel na Fonte `s2goal.fnt`:** ajustamos a ordem de vértices da face `+Z` direita-para-esquerda da GTE (deixando `"DILMA"`, `"TRIPLEX / GUARUJA"`, `"MENSALAO / $$$ PT $$$"`, `"INSS / ROUBO!"`, `"ATIBAIA"` e `"PICANHA"` 100% legíveis!) e, ao abrir as telas de checklist ao vivo no DuckStation (`○ VEJA NOOB!`), medimos a largura exata de **todos os 60 títulos** usando os glifos reais de `s2goal.fnt` (`gap >= +14 px` até a coluna `$cash`), eliminando 100% das sobreposições de texto!
+
+### 3. Injeção Cirúrgica dos 30 Coletáveis no `.TRG`, Pool Dual de Strings & Telemetria 60 FPS (Zero Travamentos)
+- **Posicionamento Cirúrgico nos `.TRG` (`Scripts/port_thps1_levels.js`):** em cada uma das 6 fases regulares do THPS1, inserimos 5 novos nós `Type 5 subtype 33` (`24 B` alinhados em `offset % 4 == 2`) imediatamente antes do nó terminador `type = 255` (sem alterar o ID de nenhum nó original!) e conectamos os 5 IDs ao nó `Type 6` pai da Carreira (`n1` Warehouse, `n608` School, `n441` Mall, `n1` Downtown, `n540` Downhill Jam, `n31` Streets SF). O **coletável #1 de cada fase** foi posicionado logo à frente do ponto inicial do skatista (*spawn*) para impactar o jogador já no **Frame 1**!
+- **Pool de Strings Byte-Packed em 2 Segmentos (`0x800E8C80..0x800E96DF`):** para caber todos os 60 novos objetivos + 24 nomes de Gaps sem tirar **1 único byte** da Heap principal (`NewHeapStart = 0x800EB000` intocado!), empacotamos as strings a 1 byte de alinhamento em 2 segmentos (`2.214 B` usados / `442 B` livres) dentro dos mesmos 17 setores residentes de `VOICES.DAT`.
+- **Calibração Final de `PrimBuf` & Prova Empírica Ao Vivo 6/6 no DuckStation:**
+  - Durante o estilhaçamento de vidro no *Warehouse*, `PrimBuf` encostou em `92,9%` — elevamos `primBufDelta` de `Warehouse` para `+12000` (ainda sobrando **`158,6 KB`** livres na `Heap[1]`!) e ajustamos `Downtown` para `-18000`.
+  - Resultado medido ao vivo em todas as **6 fases regulares** (mais os 6 screenshots de checklist completo 10/10 e os banners HUD ao vivo `"1 OF 5 MANDIOCAS"`, `"1 OF 5 TRIPLEX"`, `"1 OF 5 MALAS $$$"`):
+
+| Fase THPS1 | Metas / Gaps / Cash | `g_GapList` | Pico `PrimBuf` | Livre `Heap[1]` | Status Ao Vivo |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **`[11] Warehouse`** | `10 metas • G5=5 • G6=1 • G7=3 • 6 Cash` | `0x800E7E60` | **`84,2%`** | `158.608 B` | ✅ **60 FPS • Checklist 10/10 + Mandioca 3D** |
+| **`[12] School`** | `10 metas • G5=5 • G6=1 • G7=3 • 11 Cash` | `0x800E7E60` | **`84,2%`** | `19.452 B` | ✅ **60 FPS • Checklist 10/10 + Triplex 3D** |
+| **`[13] Mall`** | `10 metas • G5=5 • G6=1 • G7=3 • 15 Cash` | `0x800E7E60` | **`66,7%`** | `51.468 B` | ✅ **60 FPS • Checklist 10/10 + Mensalão 3D** |
+| **`[15] Downtown`** | `10 metas • G5=5 • G6=1 • G7=3 • 16 Cash` | `0x800E7E60` | **`66,4%`** | `15.256 B` | ✅ **60 FPS • Checklist 10/10 + Cofre INSS 3D** |
+| **`[16] Downhill Jam`** | `10 metas • G5=5 • G6=1 • G7=3 • 15 Cash` | `0x800E7E60` | **`70,0%`** | `50.564 B` | ✅ **60 FPS • Checklist 10/10 + Pedalinho 3D** |
+| **`[18] Streets SF`** | `10 metas • G5=5 • G6=1 • G7=3 • 5 Cash` | `0x800E7E60` | **`62,7%`** | `13.276 B` | ✅ **60 FPS • Checklist 10/10 + Picanha 3D** |
+
+---
+
+## Capítulo 16 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
     subgraph RAM["🧠 Mapa da Main RAM do PS1 (2 MB: 0x80000000..0x801FFFFF)"]
         K["0x80000000..0x8000FFFF — Kernel BIOS PS1"]
-        E["0x80010000..0x800E267F — SLUS_010.66<br/>293 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font + Preview STR 81.5 KB"]
+        E["0x80010000..0x800E267F — SLUS_010.66<br/>296 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font + Preview STR 81.5 KB"]
         B["0x800E2680..0x800E27FF — Mod_BootInit (17 set.) & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
         L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache 48/80KB + Streamer SPU 2 KB Anti-Chiado vLOUT/vROUT + SpawnLetter + CarHitVoice + PsxUpload)"]
         S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Vento Estocado + Diploma no Buteco + Roubei)"]
-        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] + FastBurst Descriptors + g_ExtCareer[20] + g_ExtHighScoreTable + g_Thps1Hed + THPS1_CODE 30 rotinas)"]
+        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] 60 Metas + g_Thps1GapList[24] + FastBurst + g_ExtCareer[20] + g_Thps1Hed[39] + THPS1_CODE 32 rotinas)"]
         H["0x800EB000..0x801FFFFF — Heap Dinâmica THPS2 (~1,10 MB) + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK"]
     end
     K --> E --> B --> M --> L --> S --> T --> H
@@ -444,23 +509,24 @@ flowchart TB
 
 | Dimensão | Quantidade / Métrica Verificada |
 | :--- | :--- |
-| **Integridade da ISO Compilada** | **319.900 / 319.900 setores** (`717,5 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
+| **Integridade da ISO Compilada** | **319.968 / 319.968 setores** (`717,7 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
 | **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.531 entradas** |
-| **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo** com objetivos originais, **2.301 trilhos** convertidos, **68 nós de moedas → `$100` Cash** para Stats e `PrimBuf` folgado `< 80%`) + Custom Park |
+| **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo**, com **60 novos objetivos satíricos `10 × 6`**, **24 Gaps reais ao vivo**, **2.301 trilhos** convertidos, **68 nós de moedas → `$100` Cash** para Stats e `PrimBuf` saudável `62,7%..84,2%` em 60 FPS) + Custom Park |
 | **Level Select & Vídeos Preview** | **40/40 fotos instantâneas no Frame 1** via **5 bursts contíguos `CdRead` (`~1,5 s` vs `~18 s`, zero `LOADING...`)** + **vídeos preview inferiores restaurados (`vlcBufSize = 16.896 B`, `ringSec = 16`, `90,8 KB` livres na `Heap[1]`, 0 OOM, 0 leak)** |
-| **Renderização 3D Zero-Artefatos** | **Zero linhas vazias/fendas no chão** (*School II* / *NY City*), **zero céu/objetos sumindo** via perfil `SLUS-01066.ini` (`PGXPEnable = false`, `PGXPDepthBuffer = false`, `WidescreenHack = false`, `5× HD Nearest`, `4:3`) + `PrimBuf` ampliado no THPS1 + 6 hooks `.TRG SecretFlag` |
-| **Hooks & Relocações MIPS R3000A** | **293 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` + `levelsel.bin`/`levelsel.pre` + `options.bin` + **17 setores residentes** em `VOICES.DAT` (`1.174` set.) + **`THPS1.WAD`** (`1,33 MB`, 33 arquivos prioritários) |
+| **Renderização 3D Zero-Artefatos** | **Zero linhas vazias/fendas no chão** (*School II* / *NY City*), **zero céu/objetos sumindo** via perfil `SLUS-01066.ini` (`PGXPEnable = false`, `PGXPDepthBuffer = false`, `WidescreenHack = false`, `5× HD Nearest`, `4:3`) + `PrimBuf` calibrado + 6 hooks `.TRG SecretFlag` |
+| **Hooks & Relocações MIPS R3000A** | **296 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` + `levelsel.bin`/`levelsel.pre` + `options.bin` + **17 setores residentes** em `VOICES.DAT` (`1.174` set.) + **`THPS1.WAD`** (`1,47 MB`, **39 arquivos prioritários** incl. 6 `sk*_o.psx` esculpidos) |
 | **Skatistas Personalizados** | **7 skatistas** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan*) = **28 modelos `.PSX` + 7 retratos `s2face*.bmp`** |
-| **Mundo 3D & Coletáveis Customizados** | Letra 3D **`X`** (`T-A-X-A-S` dinâmico) + **Barris 51 Frente / Lulão Atrás** + **Notas Dinâmicas do Lulão (`$50/$100/$250`)** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D** & **5 Pacotes Vento Estocado 3D** & **Carrinho de Golfe com Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) |
+| **Mundo 3D & Coletáveis Customizados** | **THPS2:** Letra 3D **`X`** (`T-A-X-A-S`) + **Barris 51 / Lulão** + **Notas Dinâmicas do Lulão** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D**, **5 Ventos Estocados 3D** & **Carrinho de Golfe Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) • **THPS1 (`30` coletáveis 3D `fl=0x2003`):** **5 Mandiocas da Dilma** (*Warehouse*) + **5 Triplex do Guarujá** (*School*) + **5 Malas do Mensalão** (*Mall*) + **5 Cofres do Escândalo INSS** (*Downtown*) + **5 Pedalinhos de Atibaia** (*Downhill Jam*) + **5 Picanhas da Promessa** (*Streets SF*) |
 | **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
-| **Idioma, Fonte & Documentação** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Lulão + **14 Mapas Técnicos** (incl. enciclopédia completa de 669 arquivos do THPS1 em `MAPA_14`) |
+| **Idioma, Fonte & Documentação** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Lulão + **60 objetivos satíricos THPS1 pixel-validados em `s2goal.fnt`** + **14 Mapas Técnicos** (incl. enciclopédia completa de 669 arquivos do THPS1 em `MAPA_14`) |
 
 ---
 
 ## 📚 Glossário Didático Rápido (Para Quem Está Chegando Agora)
 
 - **`.PSX`**: formato proprietário da Neversoft que guarda modelos 3D (vértices, normais, polígonos) e/ou texturas BGR555 com suas paletas (CLUT).
+- **Flags de Face `.PSX` (`fl = 0x2003` vs `0x1813`)**: em faces texturizadas `.PSX`, o bit `0x0010` significa **`IS_TRIANGLE` (`POLY_FT3`)** e o bit `0x0800` instrui a engine a ler cores do bloco **`RGBs` (`0x73424752`)**. Usar `fl = 0x2003` produz quads `POLY_FT4` completos com RGB direto neutro, transparência `0x7C1F` e zero risco de leitura fora de limites em malhas recém-anexadas.
 - **`CD.HED` / `CD.WAD`**: arquivo índice (`HED`, hashes + posições) e contêiner gigante (`WAD`) com os 1.531 ativos internos do jogo.
 - **CLUT (Color Look-Up Table)**: paleta de 16 cores (4-bit) ou 256 cores (8-bit) usada pelo chip gráfico do PS1. No THPS2, `0x7C1F` (magenta) vira transparência por hardware (`0x0000`) e ativa automaticamente o bit `STP 0x8000` para semi-transparência.
 - **Semi-Transparência Aditiva (`ABR=1`, `fl = 0x10C3`)**: modo da GPU do PS1 em que a cor do polígono é **somada** diretamente ao fundo (`Fundo + Frente`), produzindo brilhos e auras luminosas reais sem custo extra de CPU.
@@ -471,10 +537,11 @@ flowchart TB
 - **`M3dAsm` × PGXP**: o renderizador assembly `M3dAsm` da Neversoft (`0x800956B8..0x80097F00`) subdivide polígonos próximos em inteiros na CPU MIPS para evitar distorção de textura. O PGXP do DuckStation tenta reconstruir coordenadas em ponto flutuante, o que desalinha polígonos subdivididos dos vizinhos e abre fendas/linhas brancas no chão (*School II*, *NY City*); desativar o PGXP no perfil `SLUS-01066.ini` devolve chão 100% sólido mantendo resolução `5× HD`.
 - **Burst `CdRead` Contíguo (`Helper_RunFastBurstGroup`)**: técnica de ler dezenas de arquivos consecutivos do CD-ROM em uma única chamada `CdRead` com a música XA pausada uma só vez, eliminando ~80 seeks de laser e derrubando o carregamento do Level Select de `~18 s` para `~1,5 s` (40/40 fotos prontas no Frame 1).
 - **`vlcBufSize` & `ringSec` (`g_MovieTable @ 0x800C1CB4`)**: parâmetros por vídeo que controlam o tamanho dos 2 buffers de saída MDEC VLC e do anel de leitura CD-ROM (em setores de 2 KB). Ajustá-los ao tamanho real dos 11 vídeos `176×48` (`16.896 B` e `16` setores) reduziu o consumo de `182,8 KB` para `81,5 KB`, restaurando os vídeos preview inferiores com `90,8 KB` livres na `Heap[1]`.
-- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, `Hook_LevelSelFastRend`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
+- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, `Hook_LevelSelFastRend`, `Entry_SetGapList`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
 - **Patch `.xdelta`**: arquivo de diferença binária que transforma legalmente a cópia original do usuário no mod completo sem distribuir arquivos comerciais protegidos.
-- **`THPS1.WAD` & `Hook_CdWadFallback`**: 50º arquivo da ISO (`1,33 MB`, 33 ativos prioritários) consultado antes do `CD.HED` original para sobrepor os `.TRG` convertidos do THPS1 e o bonde `c_cabl1.psx` sobre as sobras antigas da Neversoft, deduplicando 43 `.PSX` já idênticos no disco do THPS2.
-- **`primBufDelta` (`g_LevelTable + 0x50`)**: campo nativo assinado da engine Neversoft (`0x80050118`) que ajusta o tamanho do buffer duplo de pacotes GPU por fase (`2 × delta` bytes em `Heap[1]`), mantendo o pico de `PrimBuf` abaixo de `80%` em fases densas como *School* (`77,5%`) e *Downtown* (`79,6%`) sem clipping de polígonos ou OOM.
+- **`THPS1.WAD` & `Hook_CdWadFallback`**: 50º arquivo da ISO (`1,47 MB`, **39 ativos prioritários** incluindo os 6 `sk*_o.psx` com objetos 3D esculpidos) consultado antes do `CD.HED` original para sobrepor os `.TRG` convertidos do THPS1, coletáveis 3D e o bonde `c_cabl1.psx` sobre as sobras antigas da Neversoft, deduplicando os `.PSX` já idênticos no disco do THPS2.
+- **`g_Thps1GapList` (`0x800E7E60`) & `Entry_SetGapList` (`0x80083848`)**: tabela residente de **24 Gaps reais do THPS1** (4 por fase regular) selecionada automaticamente ao iniciar fases `11..19`, habilitando as metas nativas `G6` (Trick+Gap) e `G7` (Multi-Gap) enquanto `Entry_GapChecklistGuard @ 0x80024CD4` protege o checklist de 11 fases do THPS2.
+- **`primBufDelta` (`g_LevelTable + 0x50`)**: campo nativo assinado da engine Neversoft (`0x80050118`) que ajusta o tamanho do buffer duplo de pacotes GPU por fase (`2 × delta` bytes em `Heap[1]`), mantendo o pico de `PrimBuf` saudável (`62,7%..84,2%`) em todas as fases do THPS1 sem clipping de polígonos ou OOM.
 
 ---
 

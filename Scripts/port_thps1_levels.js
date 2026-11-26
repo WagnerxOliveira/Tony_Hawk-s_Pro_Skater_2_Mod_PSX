@@ -30,6 +30,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { buildAllThps1CustomObjects } = require('./mod_thps1_custom_objects');
 
 const ROOT = path.resolve(__dirname, '..');
 const THPS1_DIR = path.join(ROOT, 'EXTRAIDOS_ARQUIVOS_THPS1');
@@ -105,8 +106,81 @@ const THPS1_LEVELS = [
   },
 ];
 
+// Verified reachable 3D floor-anchored placements (5 per regular THPS1 level = 30 spinning custom 3D goal collectibles!)
+// Collectible #1 of EVERY level sits directly ahead of Re_Start_* (visible immediately on Frame 1!).
+// All Y coordinates follow Neversoft PS1 convention (negative Y = UP; floorY - 140 = exact skater pickup height!).
+const THPS1_G5_SPAWNS = {
+  'skware_t.trg': {
+    parentNode: 1,
+    label: '5 Mandiocas da Dilma',
+    coords: [
+      [ 5842, -1580,  3420], // #1 Right down roll-in ramp (visible Frame 1!)
+      [ 6224,  -170,  9408], // #2 Center halfpipe floor (Ho_SkWare_HP)
+      [ 6440,  -170, 12187], // #3 Big Rail floor (Ho_SkWare_BigRail)
+      [ 3097,  -536, 13246], // #4 Left Kickers (Ho_SkWare_Kickers)
+      [ 6025,  -587, 14376], // #5 Back Wall QP (Ho_SkWare_BackWall)
+    ],
+  },
+  'skschl_t.trg': {
+    parentNode: 608,
+    label: '5 Triplex do Guaruja',
+    coords: [
+      [ -6800, -2930,   6391], // #1 Right ahead of start awning (visible Frame 1!)
+      [ -1812,  -170, -10344], // #2 Main rail courtyard (Ho_Start_School_Rails01)
+      [  5467,  -111,  -2970], // #3 Swimming pool rim (Ho_Start_School_Pool01)
+      [  8383,  -170,  -6087], // #4 Halfpipe plaza (Ho_Start_School_Halfpipe01)
+      [-11718,  -371,  -6274], // #5 Lower schoolyard (Ho_Start_School_Two_Player)
+    ],
+  },
+  'skmall_t.trg': {
+    parentNode: 441,
+    label: '5 Malas do Mensalao',
+    coords: [
+      [-48850, -2960, 22104], // #1 Right ahead of Mall entrance (visible Frame 1!)
+      [-41536, -1870, 22495], // #2 Upstairs Atrium 1 (Ho_Upstairs01_Mall)
+      [-30233, -1762, 22251], // #3 Upstairs Atrium 2 (Ho_Upstairs02_Mall)
+      [-15235,   587, 17991], // #4 Mid Mall slope (Ho_Slope_Mall)
+      [  3564,  3679,  8841], // #5 Dancing Waters fountain (Ho_Dancing_Waters_Mall)
+    ],
+  },
+  'skdown_t.trg': {
+    parentNode: 1,
+    label: '5 Cofres do Escandalo INSS',
+    coords: [
+      [  7400,  -170,   340], // #1 Right down the starting street (visible Frame 1!)
+      [   340,  -153,  -174], // #2 Taxi Avenue center (Ho_SkDown_Taxi)
+      [ -3817,    -7, -6493], // #3 Fountain Park (Ho_SkDown_Fountain)
+      [ -1054,  -170,   953], // #4 Bus Stop plaza (Ho_SkDown_BusStop)
+      [  4025, -2196,  3774], // #5 Rooftop glass deck (Re_Start_Roof)
+    ],
+  },
+  'skjam_t.trg': {
+    parentNode: 540,
+    label: '5 Pedalinhos de Atibaia',
+    coords: [
+      [-26725, -1955, 41801], // #1 Right ahead of top ramp (Ho_Top, visible Frame 1!)
+      [-36099,  -205, 38047], // #2 Upper Canyon rails (Ho_Rails)
+      [-43706,  2615, 44072], // #3 Dam spillway (Ho_Dam)
+      [-44017,  5094, 52460], // #4 Mid canyon pipe (Ho_Dew)
+      [-43695,  7164, 63808], // #5 Ski jump launch (Ho_Skijump)
+    ],
+  },
+  'sksf_t.trg': {
+    parentNode: 31,
+    label: '5 Picanhas da Promessa',
+    coords: [
+      [ -7450, -1980, 16380], // #1 Right down starting SF hill (visible Frame 1!)
+      [  3203,  -243,  3977], // #2 Hubba Hideout plaza (Re_Start_Hubba_Hideout)
+      [ -8881,   206,  1706], // #3 Embarcadero fountain (Re_Start_Embarcadero)
+      [-14414,   151, -2351], // #4 Pagoda square (Ho_Start_Near_Pagoda)
+      [-17011,  -551, 20398], // #5 Chinatown arch (Re_Start_Chinatown)
+    ],
+  },
+};
+
 /**
- * Convert THPS1 _TRG v2.0 buffer -> THPS2 _TRG v2.0 buffer with full self-verification.
+ * Convert THPS1 _TRG v2.0 buffer -> THPS2 _TRG v2.0 buffer with full self-verification
+ * AND optional injection of 5 G5 custom 3D goal collectibles (Type 5, subtype 33 = 0x0021).
  */
 function convertThps1Trg(srcBuf, fname) {
   if (srcBuf.subarray(0, 4).toString('ascii') !== '_TRG') {
@@ -114,13 +188,23 @@ function convertThps1Trg(srcBuf, fname) {
   }
   const vMaj = srcBuf.readUInt16LE(4);
   const vMin = srcBuf.readUInt16LE(6);
-  const numNodes = srcBuf.readUInt32LE(8);
+  const oldNumNodes = srcBuf.readUInt32LE(8);
   const oldOffs = [];
-  for (let i = 0; i < numNodes; i++) oldOffs.push(srcBuf.readUInt32LE(12 + i * 4));
+  for (let i = 0; i < oldNumNodes; i++) oldOffs.push(srcBuf.readUInt32LE(12 + i * 4));
 
-  const headerSize = 12 + numNodes * 4;
+  const g5Spec = THPS1_G5_SPAWNS[fname.toLowerCase()] || null;
+  const addCount = g5Spec ? g5Spec.coords.length : 0;
+  // Original last node is ALWAYS type=255 terminator -> insert our 5 new subtype-33 nodes right BEFORE it!
+  if (addCount > 0 && srcBuf.readUInt16LE(oldOffs[oldNumNodes - 1]) !== 255) {
+    throw new Error(`${fname}: expected final terminator node (type=255) at idx ${oldNumNodes - 1}`);
+  }
+  const newNumNodes = oldNumNodes + addCount;
+  const newG5NodeIds = [];
+  for (let k = 0; k < addCount; k++) newG5NodeIds.push((oldNumNodes - 1) + k);
+
+  const headerSize = 12 + newNumNodes * 4;
   let curOff = headerSize;
-  const newOffs = new Array(numNodes);
+  const newOffs = new Array(newNumNodes);
   const chunks = [];
 
   let railsConverted = 0;
@@ -128,30 +212,28 @@ function convertThps1Trg(srcBuf, fname) {
   let skateLetters = 0;
   let secretTapes = 0;
   let cableRenamed = 0;
+  let g5Injected = 0;
 
-  for (let i = 0; i < numNodes; i++) {
+  const limitBeforeTerm = addCount > 0 ? oldNumNodes - 1 : oldNumNodes;
+
+  for (let i = 0; i < limitBeforeTerm; i++) {
     const o = oldOffs[i];
-    const end = (i + 1 < numNodes) ? oldOffs[i + 1] : srcBuf.length;
+    const end = (i + 1 < oldNumNodes) ? oldOffs[i + 1] : srcBuf.length;
     const type = srcBuf.readUInt16LE(o);
 
     if (type === 10 || type === 11) {
-      // THPS1 RailDef / RailPoint:
-      //   u16 type, u16 nLinks, u16 links[nLinks], pad-to-abs-4, i32 x,y,z, u16 ang[3], u16 terrain, u16 0xFFFF
-      // THPS2 RailDef / RailPoint:
-      //   u16 type, u16 nLinks, u16 links[nLinks], pad-to-abs-4, i32 x,y,z, u16 terrain
+      // THPS1 RailDef / RailPoint -> THPS2 RailDef / RailPoint (strip 6-byte Angles + trailing 0xFFFF)
       const nLinks = srcBuf.readUInt16LE(o + 2);
       const oldPosOff = (o + 4 + nLinks * 2 + 3) & ~3;
       const x = srcBuf.readInt32LE(oldPosOff);
       const y = srcBuf.readInt32LE(oldPosOff + 4);
       const z = srcBuf.readInt32LE(oldPosOff + 8);
-      const terrain = srcBuf.readUInt16LE(oldPosOff + 18); // skip 6-byte Angles!
-      // Verify trailing 0xFFFF
+      const terrain = srcBuf.readUInt16LE(oldPosOff + 18);
       const rem = end - (oldPosOff + 20);
       if (rem !== 2 || srcBuf.readUInt16LE(oldPosOff + 20) !== 0xFFFF) {
         throw new Error(`${fname} node #${i} (type ${type}): unexpected trailing bytes rem=${rem}`);
       }
 
-      // Align start to 2 bytes (always 2-byte aligned already)
       newOffs[i] = curOff;
       const prePos = 4 + nLinks * 2;
       const newPosAbs = (curOff + prePos + 3) & ~3;
@@ -171,6 +253,31 @@ function convertThps1Trg(srcBuf, fname) {
       chunks.push(outNode);
       curOff += outNode.length;
       railsConverted++;
+    } else if (g5Spec && i === g5Spec.parentNode && type === 6) {
+      // Append our 5 new G5 subtype-33 node IDs to the Career PowerUp spawn parent (Type 6)!
+      // Layout: u16 type(6), u16 nLinks, u16 links[nLinks], pad-to-abs-4, u32 checksum(0), script (8600 0100 0300 ffff)
+      const oldNLinks = srcBuf.readUInt16LE(o + 2);
+      const oldCmdAligned = (o + 4 + oldNLinks * 2 + 3) & ~3;
+      const scriptTail = Buffer.from(srcBuf.subarray(oldCmdAligned, end));
+      // Align node start to 2 bytes (always 2-byte aligned)
+      if (curOff & 1) { chunks.push(Buffer.alloc(1, 0)); curOff += 1; }
+      newOffs[i] = curOff;
+      const newNLinks = oldNLinks + addCount;
+      const preCmd = 4 + newNLinks * 2;
+      const newCmdAligned = (curOff + preCmd + 3) & ~3;
+      const padCmd = newCmdAligned - (curOff + preCmd);
+      const outNode = Buffer.alloc(preCmd + padCmd + scriptTail.length, 0);
+      outNode.writeUInt16LE(6, 0);
+      outNode.writeUInt16LE(newNLinks, 2);
+      for (let k = 0; k < oldNLinks; k++) {
+        outNode.writeUInt16LE(srcBuf.readUInt16LE(o + 4 + k * 2), 4 + k * 2);
+      }
+      for (let k = 0; k < addCount; k++) {
+        outNode.writeUInt16LE(newG5NodeIds[k], 4 + (oldNLinks + k) * 2);
+      }
+      scriptTail.copy(outNode, preCmd + padCmd);
+      chunks.push(outNode);
+      curOff += outNode.length;
     } else {
       // Preserve exact (offset % 4) parity so EVERY internal 4-byte aligned Pos/u32 stays bit-exact!
       const oldParity = o & 3;
@@ -188,7 +295,6 @@ function convertThps1Trg(srcBuf, fname) {
         const rawSub = nodeCopy.readUInt16LE(2);
         const sub = rawSub & 0xFF;
         if (sub === 21 || sub === 22 || sub === 23) {
-          // Convert THPS1 spinning coin/token -> THPS2 $100 Cash bill (type 26) with unique sequential bit!
           if (coinsConverted >= 64) {
             throw new Error(`${fname}: more than 64 coins (${coinsConverted})!`);
           }
@@ -218,30 +324,62 @@ function convertThps1Trg(srcBuf, fname) {
     }
   }
 
+  // Append our 5 new G5 custom 3D collectible PowerUp nodes (Type 5, subtype 33 = 0x0021) BEFORE type=255 terminator!
+  // Exact byte-for-byte format of THPS2 Hangar #319..#323 (at offset % 4 == 2, 24 bytes each):
+  //   u16 5, u16 33 (0x0021), u16 0 (nLinks), i32 x, i32 y, i32 z, u16 0, u16 1, u16 0xFFFF
+  if (addCount > 0) {
+    for (let k = 0; k < addCount; k++) {
+      const pad = (2 - (curOff & 3) + 4) & 3;
+      if (pad) { chunks.push(Buffer.alloc(pad, 0)); curOff += pad; }
+      newOffs[newG5NodeIds[k]] = curOff;
+      const [x, y, z] = g5Spec.coords[k];
+      const pNode = Buffer.alloc(24, 0);
+      pNode.writeUInt16LE(5, 0);
+      pNode.writeUInt16LE(33, 2); // subtype 33 -> Career G5 custom 3D collectible from sk*_o.psx!
+      pNode.writeUInt16LE(0, 4);  // nLinks = 0 (offset +6 is exact 4-byte aligned!)
+      pNode.writeInt32LE(x, 6);
+      pNode.writeInt32LE(y, 10);
+      pNode.writeInt32LE(z, 14);
+      pNode.writeUInt16LE(0, 18);
+      pNode.writeUInt16LE(1, 20);
+      pNode.writeUInt16LE(0xFFFF, 22);
+      chunks.push(pNode);
+      curOff += pNode.length;
+      g5Injected++;
+    }
+    // Emit original final terminator node (type=255) at newNumNodes - 1!
+    const termOrigOff = oldOffs[oldNumNodes - 1];
+    const termParity = termOrigOff & 3;
+    const padT = (termParity - (curOff & 3) + 4) & 3;
+    if (padT) { chunks.push(Buffer.alloc(padT, 0)); curOff += padT; }
+    newOffs[newNumNodes - 1] = curOff;
+    const termCopy = Buffer.from(srcBuf.subarray(termOrigOff, srcBuf.length));
+    chunks.push(termCopy);
+    curOff += termCopy.length;
+  }
+
   // Assemble final buffer
   const hdr = Buffer.alloc(headerSize);
   hdr.write('_TRG', 0, 'ascii');
   hdr.writeUInt16LE(vMaj, 4);
   hdr.writeUInt16LE(vMin, 6);
-  hdr.writeUInt32LE(numNodes, 8);
-  for (let i = 0; i < numNodes; i++) hdr.writeUInt32LE(newOffs[i], 12 + i * 4);
+  hdr.writeUInt32LE(newNumNodes, 8);
+  for (let i = 0; i < newNumNodes; i++) hdr.writeUInt32LE(newOffs[i], 12 + i * 4);
   const outBuf = Buffer.concat([hdr, ...chunks]);
 
-  // Self-verify converted TRG with exact THPS2 Trig_GetPos / Rail_GetFlags / Career_GetCashBitIndex rules!
+  // Self-verify converted TRG with exact THPS2 Trig_GetPos / Rail_GetFlags / Career_GetCashBitIndex / Subtype33 rules!
   const seenCashBits = new Set();
-  for (let i = 0; i < numNodes; i++) {
+  let seenG5 = 0;
+  for (let i = 0; i < newNumNodes; i++) {
     const o = outBuf.readUInt32LE(12 + i * 4);
-    const nextO = (i + 1 < numNodes) ? outBuf.readUInt32LE(12 + (i + 1) * 4) : outBuf.length;
+    const nextO = (i + 1 < newNumNodes) ? outBuf.readUInt32LE(12 + (i + 1) * 4) : outBuf.length;
     const tp = outBuf.readUInt16LE(o);
     if (tp === 10 || tp === 11) {
       const nl = outBuf.readUInt16LE(o + 2);
       const posAbs = (o + 4 + nl * 2 + 3) & ~3;
       const ter = outBuf.readUInt16LE(posAbs + 12);
-      if (posAbs + 14 !== nextO && posAbs + 16 !== nextO) {
-        // Allow up to 2 bytes parity padding before next node
-        if (nextO - (posAbs + 14) > 3) {
-          throw new Error(`VERIFY FAIL ${fname} rail #${i}: posAbs=${posAbs} nextO=${nextO}`);
-        }
+      if (nextO - (posAbs + 14) > 3) {
+        throw new Error(`VERIFY FAIL ${fname} rail #${i}: posAbs=${posAbs} nextO=${nextO}`);
       }
       if (ter > 15) {
         throw new Error(`VERIFY FAIL ${fname} rail #${i}: bad terrain=${ter}`);
@@ -253,17 +391,21 @@ function convertThps1Trg(srcBuf, fname) {
         const bit = w >>> 8;
         if (seenCashBits.has(bit)) throw new Error(`VERIFY FAIL ${fname}: duplicate cashBit ${bit}`);
         seenCashBits.add(bit);
+      } else if (sub === 33) {
+        if ((o & 3) !== 2) throw new Error(`VERIFY FAIL ${fname}: subtype 33 #${i} bad parity ${o & 3}`);
+        seenG5++;
       }
-    } else {
+    } else if (i < limitBeforeTerm && !(g5Spec && i === g5Spec.parentNode)) {
       if ((o & 3) !== (oldOffs[i] & 3)) {
         throw new Error(`VERIFY FAIL ${fname} node #${i}: parity mismatch!`);
       }
     }
   }
+  if (seenG5 !== addCount) throw new Error(`VERIFY FAIL ${fname}: expected ${addCount} subtype-33 nodes, got ${seenG5}`);
 
   return {
     buf: outBuf,
-    stats: { numNodes, railsConverted, coinsConverted, skateLetters, secretTapes, cableRenamed },
+    stats: { numNodes: newNumNodes, railsConverted, coinsConverted, skateLetters, secretTapes, cableRenamed, g5Injected },
   };
 }
 
@@ -335,6 +477,12 @@ function main() {
   console.log('=== THPS1 -> THPS2 Automated Level Converter & THPS1.WAD Packer ===\n');
   fs.mkdirSync(STAGE_DIR, { recursive: true });
 
+  // 0. Sculpt & inject all 6 bespoke 3D satirical goal objects into sk*_o.psx (staged in build/thps1_converted/)!
+  const customObjResults = buildAllThps1CustomObjects();
+  const customObjMap = new Map();
+  for (const r of customObjResults) customObjMap.set(r.spec.oPsx.toLowerCase(), r.buf);
+  console.log('');
+
   const wadEntries = []; // { name, hash, buf }
   const seenHashes = new Map();
   function addFile(name, buf) {
@@ -348,27 +496,29 @@ function main() {
   }
 
   const levelReports = [];
-  let totalRails = 0, totalCoins = 0, totalPsx = 0;
+  let totalRails = 0, totalCoins = 0, totalPsx = 0, totalG5 = 0;
 
   for (const lv of THPS1_LEVELS) {
     const lvDir = path.join(FASES_DIR, lv.dir);
     const files = fs.readdirSync(lvDir).sort();
 
-    // 1. Convert .TRG
+    // 1. Convert .TRG (+ inject 5 G5 custom 3D collectible PowerUp subtype-33 nodes on regular levels!)
     const trgSrc = fs.readFileSync(path.join(lvDir, lv.trg));
     const { buf: trgOut, stats } = convertThps1Trg(trgSrc, lv.trg);
     fs.writeFileSync(path.join(STAGE_DIR, lv.trg), trgOut);
     addFile(lv.trg, trgOut);
     totalRails += stats.railsConverted;
     totalCoins += stats.coinsConverted;
+    totalG5 += stats.g5Injected || 0;
 
-    // 2. Pack all .PSX files of this level (1P, 2P, _l, _o, _h, _t, etc.)
+    // 2. Pack all .PSX files of this level (using custom sculpted sk*_o.psx whenever built!)
     const psxNames = [];
     for (const f of files) {
       if (!f.toLowerCase().endsWith('.psx')) continue;
-      const pbuf = fs.readFileSync(path.join(lvDir, f));
+      const low = f.toLowerCase();
+      const pbuf = customObjMap.has(low) ? customObjMap.get(low) : fs.readFileSync(path.join(lvDir, f));
       addFile(f, pbuf);
-      psxNames.push(f.toLowerCase());
+      psxNames.push(low);
       totalPsx++;
     }
 
@@ -393,7 +543,7 @@ function main() {
     });
     console.log(
       `  [${lv.idx}] ${lv.name.padEnd(13)} (id=${lv.id2}): ` +
-      `TRG=${trgOut.length}B (rails=${stats.railsConverted}, coins->$100=${stats.coinsConverted}, SKATE=${stats.skateLetters}, tape=${stats.secretTapes}) ` +
+      `TRG=${trgOut.length}B (rails=${stats.railsConverted}, coins->$100=${stats.coinsConverted}, G5-3D=${stats.g5Injected}, SKATE=${stats.skateLetters}, tape=${stats.secretTapes}) ` +
       `| PSX=${psxNames.length} | BMPs=${rendName},${levlName}`
     );
   }
@@ -470,6 +620,7 @@ function main() {
       totalRailsConverted: totalRails,
       totalCoinsConvertedTo100Cash: totalCoins,
       totalCashFromCoins: totalCoins * 100,
+      totalCustom3DGoalCollectibles: totalG5,
     },
     levels: levelReports,
     entries: manifestEntries,

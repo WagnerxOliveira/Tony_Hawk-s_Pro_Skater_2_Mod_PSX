@@ -66,13 +66,15 @@ const THPS1_ADDR = {
   T1DiscOrder:       0x800E7E00, //  9 B (padded 16 B): exact THPS1.WAD sector order [11..19]
   FastBurstRendDesc: 0x800E7E10, //  2 * 16 B = 32 B -> 0x800E7E30 (burst descriptors for CLevelRend)
   FastBurstMapDesc:  0x800E7E30, //  3 * 16 B = 48 B -> 0x800E7E60 (burst descriptors for CLevelMap)
+  Thps1GapList:      0x800E7E60, // 24+1 * 12 B = 300 B -> 0x800E7F8C (live THPS1 G6/G7 gap table, 116 B free!)
 
   ExtLightTable:     0x800E8000, // 20 * 52 = 1,040 B -> 0x800E8410
   ExtShadowTable:    0x800E8410, // 20 * 16 = 320 B   -> 0x800E8550
   ExtSkyTable:       0x800E8550, // 20 * 64 = 1,280 B -> 0x800E8A50
-  Thps1Hed:          0x800E8A50, // up to 108 * 12 = 1,296 B -> 0x800E8F60
+  Thps1Hed:          0x800E8A50, // up to 46 * 12 = 552 B -> 0x800E8C78 (currently 39 entries = 472 B!)
+  Thps1StringsSpill: 0x800E8C80, // 896 B overflow string pool -> 0x800E9000 (ZERO NewHeapStart shift!)
 
-  Thps1Strings:      0x800E9000, // ~1,760 B -> 0x800E96DF
+  Thps1Strings:      0x800E9000, // 1,760 B primary string pool -> 0x800E96E0
   g_Thps1BaseLba:    0x800E96E0,
   g_Thps1Inited:     0x800E96E4,
   g_Thps1ScratchOff: 0x800E96E8,
@@ -117,6 +119,8 @@ const THPS1_ADDR = {
   Entry_Car216_SetModel:      0x800EA100,
   Entry_LevelSelFastRend:     0x800EA108,
   Entry_LevelSelFastMap:      0x800EA110,
+  Entry_SetGapList:           0x800EA118,
+  Entry_GapChecklistGuard:    0x800EA120,
 };
 
 // Display/Progression Order: THPS2 <-> THPS1 strictly interleaved (0..18) + Custom Park (10) at slot 19
@@ -148,98 +152,175 @@ const UNLOCK_REQS = {
   10: { cash: 0,     medals: 0 }, // Slot 19: Custom Park (Free Skate)
 };
 
-// All 9 THPS1 Level Definitions (exact original THPS1 objectives, scores, globe coords, VAB, BMPs, native +0x50 PrimBuf delta)
+// All 9 THPS1 Level Definitions:
+// - ALL 6 regular career THPS1 levels have FULL 10-goal checklists (G0..G9 = 10 x 10% = 100%, identical to THPS2!),
+//   with creative satirical names matching our 6 custom sculpted 3D objects (G5, subtype 33) and live THPS1 Gaps (G6/G7)!
+// - All 3 competition THPS1 levels (14, 17, 19) preserve native Medal Competition mode (isComp = 1).
 const THPS1_DEFS = [
   {
     id: 11, name: 'Warehouse', loc: 'Woodland Hills', vab: 'hangar', isComp: 0, trg: 'SkWare_T',
-    rend: 't1rend00.bmp', levl: 't1levl00.bmp', globeLon: 2668, globeLat: -6, lightFrom: 0, primBufDelta: 0,
-    scores: [5000, 15000, 30000], par: [20000, 7000, 3000],
+    rend: 't1rend00.bmp', levl: 't1levl00.bmp', globeLon: 2668, globeLat: -6, lightFrom: 0, primBufDelta: 12000,
+    gapMin: 1000, gapMax: 1099,
+    scores: [5000, 15000, 35000], par: [20000, 7000, 3000],
     goals: [
-      { type: 0, p1: 5000,  p2: 0, text: 'High Score - 5,000',   cash: 150 },
-      { type: 0, p1: 15000, p2: 0, text: 'Pro Score - 15,000',   cash: 250 },
-      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 200 },
-      { type: 4, p1: 5,     p2: 'BOXES', text: 'Smash the Boxes', cash: 200 },
-      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 200 },
+      { type: 0, p1: 5000,       p2: 0,             text: 'Nota Baixa - 5,000',     cash: 150 },
+      { type: 0, p1: 15000,      p2: 0,             text: 'Nota Pro - 15,000',      cash: 250 },
+      { type: 0, p1: 35000,      p2: 0,             text: 'Nota Lula - 35,000',     cash: 400 },
+      { type: 1, p1: 0,          p2: 0,             text: 'Formar T-A-X-A-S',       cash: 200 },
+      { type: 4, p1: 5,          p2: 'CAIXAS TAXA', text: 'Quebrar 5 Caixas Taxa',  cash: 250 },
+      { type: 3, p1: 0x5111A101, p2: 'MANDIOCAS',   text: '5 Mandiocas da Dilma',   cash: 300 },
+      { type: 5, p1: 0,          p2: '50-50',       text: '50-50 Trilhao da Taxa',  cash: 300 },
+      { type: 2, p1: 0,          p2: 'VOOS JANJA',  text: '3 Voos Canal da Janja',  cash: 350 },
+      { type: 6, p1: 0,          p2: 0,             text: 'Pinga 51 Secreta',       cash: 350 },
+      { type: 7, p1: 0,          p2: 0,             text: '100% Bolsa Mandioca!',   cash: 500 },
     ],
   },
   {
     id: 12, name: 'School', loc: 'Miami', vab: 'school2', isComp: 0, trg: 'SkSchl_T',
     rend: 't1rend01.bmp', levl: 't1levl01.bmp', globeLon: 3160, globeLat: -16, lightFrom: 1, primBufDelta: -20000,
-    scores: [7500, 25000, 50000], par: [20000, 7000, 3000],
+    gapMin: 2000, gapMax: 2099,
+    scores: [7500, 25000, 55000], par: [20000, 7000, 3000],
     goals: [
-      { type: 0, p1: 7500,  p2: 0, text: 'High Score - 7,500',   cash: 200 },
-      { type: 0, p1: 25000, p2: 0, text: 'Pro Score - 25,000',   cash: 350 },
-      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 250 },
-      { type: 4, p1: 5,     p2: 'LUNCH TABLES', text: 'Grind 5 Lunch Tables', cash: 300 },
-      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 300 },
+      { type: 0, p1: 7500,       p2: 0,               text: 'Merenda - 7,500',        cash: 200 },
+      { type: 0, p1: 25000,      p2: 0,               text: 'Nota MEC - 25,000',      cash: 350 },
+      { type: 0, p1: 55000,      p2: 0,               text: 'Sem Diploma - 55,000',   cash: 500 },
+      { type: 1, p1: 0,          p2: 0,               text: 'Formar T-A-X-A-S',       cash: 250 },
+      { type: 4, p1: 5,          p2: 'MESAS MERENDA', text: 'Grind 5 Mesas do MEC',   cash: 300 },
+      { type: 3, p1: 0x5112A102, p2: 'TRIPLEX',       text: '5 Triplex do Guaruja',   cash: 400 },
+      { type: 5, p1: 0,          p2: 'Kickflip',      text: 'Kickflip Canteiro L',    cash: 400 },
+      { type: 2, p1: 0,          p2: 'SALTOS MEC',    text: '3 Saltos Sem-Diploma',   cash: 450 },
+      { type: 6, p1: 0,          p2: 0,               text: 'Pinga 51 Secreta',       cash: 400 },
+      { type: 7, p1: 0,          p2: 0,               text: '100% Triplex Quitado!',  cash: 600 },
     ],
   },
   {
     id: 13, name: 'Mall', loc: 'New York', vab: 'ny', isComp: 0, trg: 'SkMall_T',
     rend: 't1rend02.bmp', levl: 't1levl02.bmp', globeLon: 3238, globeLat: -24, lightFrom: 3, primBufDelta: -28000,
-    scores: [10000, 30000, 60000], par: [20000, 7000, 3000],
+    gapMin: 2300, gapMax: 2399,
+    scores: [10000, 30000, 65000], par: [20000, 7000, 3000],
     goals: [
-      { type: 0, p1: 10000, p2: 0, text: 'High Score - 10,000',  cash: 300 },
-      { type: 0, p1: 30000, p2: 0, text: 'Pro Score - 30,000',   cash: 500 },
-      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 400 },
-      { type: 4, p1: 5,     p2: 'DIRECTORIES', text: 'Smash 5 Mall Signs', cash: 400 },
-      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 400 },
+      { type: 0, p1: 10000,      p2: 0,             text: 'Shopee - 10,000',        cash: 300 },
+      { type: 0, p1: 30000,      p2: 0,             text: 'Shein Pro - 30,000',     cash: 500 },
+      { type: 0, p1: 65000,      p2: 0,             text: 'Taxa 92% - 65,000',      cash: 700 },
+      { type: 1, p1: 0,          p2: 0,             text: 'Formar T-A-X-A-S',       cash: 400 },
+      { type: 4, p1: 5,          p2: 'PLACAS TAXA', text: 'Quebrar 5 Placas Taxa',  cash: 400 },
+      { type: 3, p1: 0x5113A103, p2: 'MALAS $$$',   text: '5 Malas do Mensalao',    cash: 500 },
+      { type: 5, p1: 0,          p2: 'Grind',       text: 'Grind Atrio do BNDES',   cash: 500 },
+      { type: 2, p1: 0,          p2: 'SALTOS MALL', text: '3 Saltos Isencao Zero',  cash: 550 },
+      { type: 6, p1: 0,          p2: 0,             text: 'Pinga 51 Secreta',       cash: 500 },
+      { type: 7, p1: 0,          p2: 0,             text: '100% Mensalao Pago!',    cash: 750 },
     ],
   },
   {
     id: 14, name: 'Skate Park', loc: 'Chicago', vab: 'ss', isComp: 1, trg: 'skvans_t',
     rend: 't1rend03.bmp', levl: 't1levl03.bmp', globeLon: 3040, globeLat: -25, lightFrom: 5, primBufDelta: -8000,
+    gapMin: 4000, gapMax: 4099,
     scores: [35000, 22000, 12000], par: [3000, 2250, 1500],
     goals: [],
   },
   {
     id: 15, name: 'Downtown', loc: 'Minneapolis', vab: 'ny', isComp: 0, trg: 'SkDown_T',
-    rend: 't1rend04.bmp', levl: 't1levl04.bmp', globeLon: 2960, globeLat: -27, lightFrom: 3, primBufDelta: -20000,
-    scores: [15000, 40000, 80000], par: [20000, 7000, 3000],
+    rend: 't1rend04.bmp', levl: 't1levl04.bmp', globeLon: 2960, globeLat: -27, lightFrom: 3, primBufDelta: -18000,
+    gapMin: 1100, gapMax: 1299,
+    scores: [15000, 40000, 85000], par: [20000, 7000, 3000],
     goals: [
-      { type: 0, p1: 15000, p2: 0, text: 'High Score - 15,000',  cash: 500 },
-      { type: 0, p1: 40000, p2: 0, text: 'Pro Score - 40,000',   cash: 800 },
-      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 600 },
-      { type: 4, p1: 5,     p2: 'SIGNS', text: 'Smash 5 Signs',  cash: 600 },
-      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 700 },
+      { type: 0, p1: 15000,      p2: 0,               text: 'Taxa INSS - 15,000',     cash: 450 },
+      { type: 0, p1: 40000,      p2: 0,               text: 'Sigilo 100 - 40,000',    cash: 700 },
+      { type: 0, p1: 85000,      p2: 0,               text: 'Pro INSS - 85,000',      cash: 950 },
+      { type: 1, p1: 0,          p2: 0,               text: 'Formar T-A-X-A-S',       cash: 550 },
+      { type: 4, p1: 5,          p2: 'PLACAS SIGILO', text: '5 Placas do Sigilo',     cash: 600 },
+      { type: 3, p1: 0x5115A104, p2: 'COFRES INSS',   text: '5 Cofres Roubo INSS',    cash: 700 },
+      { type: 5, p1: 0,          p2: 'Tailslide',     text: 'Tailslide Borda INSS',   cash: 700 },
+      { type: 2, p1: 0,          p2: 'PULO CENTRO',   text: '3 Saltos do Desconto',   cash: 750 },
+      { type: 6, p1: 0,          p2: 0,               text: 'Pinga 51 Secreta',       cash: 700 },
+      { type: 7, p1: 0,          p2: 0,               text: '100% INSS na Conta!',    cash: 1000 },
     ],
   },
   {
     id: 16, name: 'Downhill Jam', loc: 'Phoenix', vab: 'venice', isComp: 0, trg: 'SkJam_T',
     rend: 't1rend05.bmp', levl: 't1levl05.bmp', globeLon: 2740, globeLat: -10, lightFrom: 4, primBufDelta: -24000,
-    scores: [20000, 40000, 85000], par: [20000, 7000, 3000],
+    gapMin: 2600, gapMax: 2699,
+    scores: [20000, 45000, 95000], par: [20000, 7000, 3000],
     goals: [
-      { type: 0, p1: 20000, p2: 0, text: 'High Score - 20,000',  cash: 600 },
-      { type: 0, p1: 40000, p2: 0, text: 'Pro Score - 40,000',   cash: 900 },
-      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 700 },
-      { type: 4, p1: 5,     p2: 'VALVES', text: 'Open 5 Valves', cash: 700 },
-      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 800 },
+      { type: 0, p1: 20000,      p2: 0,              text: 'Represa - 20,000',       cash: 550 },
+      { type: 0, p1: 45000,      p2: 0,              text: 'Sitio Pro - 45,000',     cash: 850 },
+      { type: 0, p1: 95000,      p2: 0,              text: 'Atibaia - 95,000',       cash: 1100 },
+      { type: 1, p1: 0,          p2: 0,              text: 'Formar T-A-X-A-S',       cash: 650 },
+      { type: 4, p1: 5,          p2: 'TORNEIRAS',    text: '5 Torneiras Petrolao',   cash: 700 },
+      { type: 3, p1: 0x5116A105, p2: 'PEDALINHOS',   text: '5 Pedalinhos Atibaia',   cash: 800 },
+      { type: 5, p1: 0,          p2: 'Heelflip',     text: 'Heelflip Lago Sitio',    cash: 800 },
+      { type: 2, p1: 0,          p2: 'VOOS REPRESA', text: '3 Voos da Inflacao',     cash: 850 },
+      { type: 6, p1: 0,          p2: 0,              text: 'Pinga 51 Secreta',       cash: 800 },
+      { type: 7, p1: 0,          p2: 0,              text: '100% Sitio de Amigo!',   cash: 1200 },
     ],
   },
   {
     id: 17, name: 'Burnside', loc: 'Portland', vab: 'mar', isComp: 1, trg: 'SkBurn_T',
     rend: 't1rend06.bmp', levl: 't1levl06.bmp', globeLon: 2560, globeLat: -28, lightFrom: 2, primBufDelta: -8000,
+    gapMin: 4100, gapMax: 4199,
     scores: [55000, 40000, 25000], par: [4000, 3000, 2000],
     goals: [],
   },
   {
     id: 18, name: 'Streets', loc: 'San Francisco', vab: 'philly', isComp: 0, trg: 'SkSF_T',
     rend: 't1rend07.bmp', levl: 't1levl07.bmp', globeLon: 2580, globeLat: -14, lightFrom: 6, primBufDelta: -28000,
-    scores: [25000, 50000, 100000], par: [20000, 7000, 3000],
+    gapMin: 3000, gapMax: 3399,
+    scores: [25000, 55000, 110000], par: [20000, 7000, 3000],
     goals: [
-      { type: 0, p1: 25000, p2: 0, text: 'High Score - 25,000',  cash: 800 },
-      { type: 0, p1: 50000, p2: 0, text: 'Pro Score - 50,000',   cash: 1200 },
-      { type: 1, p1: 0,     p2: 0, text: 'Collect S-K-A-T-E',    cash: 900 },
-      { type: 4, p1: 5,     p2: 'COP CARS', text: 'Ollie 5 Cop Cars', cash: 900 },
-      { type: 6, p1: 0,     p2: 0, text: 'Get the Secret Tape',  cash: 1000 },
+      { type: 0, p1: 25000,      p2: 0,             text: 'Abobora - 25,000',       cash: 750 },
+      { type: 0, p1: 55000,      p2: 0,             text: 'Picanha - 55,000',       cash: 1100 },
+      { type: 0, p1: 110000,     p2: 0,             text: 'Churrasco - 110,000',    cash: 1400 },
+      { type: 1, p1: 0,          p2: 0,             text: 'Formar T-A-X-A-S',       cash: 850 },
+      { type: 4, p1: 5,          p2: 'VIATURAS PF', text: 'Pular 5 Viaturas PF',    cash: 900 },
+      { type: 3, p1: 0x5118A106, p2: 'PICANHAS',    text: '5 Picanhas Promessa',    cash: 1000 },
+      { type: 5, p1: 0,          p2: 'Nosegrind',   text: 'Nosegrind Hubba PF',     cash: 1000 },
+      { type: 2, p1: 0,          p2: 'FUGAS DA PF', text: '3 Fugas da PF',          cash: 1050 },
+      { type: 6, p1: 0,          p2: 0,             text: 'Pinga 51 Secreta',       cash: 1000 },
+      { type: 7, p1: 0,          p2: 0,             text: '100% Picanha e 51!',     cash: 1500 },
     ],
   },
   {
     id: 19, name: 'Roswell', loc: 'New Mexico', vab: 'bullring', isComp: 1, trg: 'SkRos_T',
     rend: 't1rend08.bmp', levl: 't1levl08.bmp', globeLon: 2800, globeLat: -8, lightFrom: 7, primBufDelta: -20000,
+    gapMin: 4200, gapMax: 4299,
     scores: [75000, 55000, 35000], par: [5000, 3500, 2000],
     goals: [],
   },
+];
+
+// 24 Live Verified THPS1 Gaps (4 per regular THPS1 level: 1x gt=2 for G6 Trick+Gap + 3x gt=1 for G7 Multi-Gap!)
+// Every gapId matches an exact live 0x00C9 EndGap trigger inside its level's .TRG and falls inside [gapMin, gapMax]!
+const THPS1_GAPS = [
+  // [11] Warehouse (gapMin=1000, gapMax=1099)
+  { f0: 25, gt: 2, gapId: 21000, pts: 300, name: '[TRILHAO DA TAXA]'   },
+  { f0: 19, gt: 1, gapId: 11000, pts: 250, name: '[CANAL DA JANJA]'    },
+  { f0: 19, gt: 1, gapId:  1006, pts: 200, name: '[RAMPA DO ICMS]'     },
+  { f0: 19, gt: 1, gapId:  1007, pts: 300, name: '[PULO DO HALFPIPE]'  },
+  // [12] School (gapMin=2000, gapMax=2099)
+  { f0: 19, gt: 2, gapId:  2010, pts: 250, name: '[CANTEIRO DO L]'     },
+  { f0: 19, gt: 1, gapId:  2009, pts: 250, name: '[MINI SALTO DO MEC]' },
+  { f0: 19, gt: 1, gapId:  2011, pts: 250, name: '[RAMPA DO ENEM]'     },
+  { f0: 25, gt: 1, gapId: 22002, pts: 500, name: '[CORRIMAO DA GREVE]' },
+  // [13] Mall (gapMin=2300, gapMax=2399)
+  { f0: 25, gt: 2, gapId: 22301, pts: 500, name: '[ATRIO DO BNDES]'    },
+  { f0: 19, gt: 1, gapId:  2305, pts: 200, name: '[VOO DA ALFANDEGA]'  },
+  { f0: 19, gt: 1, gapId:  2306, pts: 200, name: '[JARDIM DO IMPOSTO]' },
+  { f0: 19, gt: 1, gapId:  2310, pts: 300, name: '[FONTE DA PROPINA]'  },
+  // [15] Downtown (gapMin=1100, gapMax=1299)
+  { f0: 25, gt: 2, gapId: 21200, pts: 250, name: '[BORDA DO INSS]'     },
+  { f0: 19, gt: 1, gapId:  1100, pts: 200, name: '[RAMPA SINDICATO]'   },
+  { f0: 19, gt: 1, gapId:  1106, pts: 250, name: '[PULO NO TAXI DO L]' },
+  { f0: 19, gt: 1, gapId:  1108, pts: 300, name: '[SALTO ESCRITORIO]'  },
+  // [16] Downhill Jam (gapMin=2600, gapMax=2699)
+  { f0: 19, gt: 2, gapId:  2609, pts: 300, name: '[LAGO DE ATIBAIA]'   },
+  { f0: 19, gt: 1, gapId:  2611, pts: 150, name: '[INFLACAO 25%]'      },
+  { f0: 19, gt: 1, gapId:  2603, pts: 250, name: '[INFLACAO 50%]'      },
+  { f0: 19, gt: 1, gapId:  2604, pts: 500, name: '[INFLACAO 100%]'     },
+  // [18] Streets SF (gapMin=3000, gapMax=3399)
+  { f0: 25, gt: 2, gapId: 23002, pts: 500, name: '[HUBBA DA PF]'       },
+  { f0: 19, gt: 1, gapId:  3311, pts: 300, name: '[CANTEIRO DA FUGA]'  },
+  { f0: 19, gt: 1, gapId:  3314, pts: 500, name: '[RAMPA DO HABEAS]'   },
+  { f0: 19, gt: 1, gapId:  3320, pts: 500, name: '[KICKER DO INDULTO]' },
 ];
 
 // ============================================================================
@@ -393,18 +474,25 @@ function buildThps1ResidentBlock() {
   const block = Buffer.alloc(THPS1_ADDR.TotalBytes, 0);
   const putAt = (ram, buf) => buf.copy(block, ram - THPS1_ADDR.Base);
 
-  // --- A. Build THPS1 String Pool @ 0x800E9000 ---
+  // --- A. Build THPS1 String Pool (Primary @ 0x800E9000..0x800E96E0 + Spill @ 0x800E8C80..0x800E9000) ---
   let strCursor = THPS1_ADDR.Thps1Strings;
+  let strSpillCursor = THPS1_ADDR.Thps1StringsSpill;
   const strMap = new Map();
   function internStr(s) {
     if (strMap.has(s)) return strMap.get(s);
-    const addr = strCursor;
     const raw = Buffer.from(s + '\0', 'ascii');
-    putAt(addr, raw);
-    strCursor += (raw.length + 3) & ~3;
-    if (strCursor > THPS1_ADDR.g_Thps1BaseLba) {
-      throw new Error(`Thps1Strings overflow: 0x${strCursor.toString(16)} > 0x${THPS1_ADDR.g_Thps1BaseLba.toString(16)}`);
+    const len = raw.length; // byte-packed C strings (lbu), zero wasted alignment padding!
+    let addr;
+    if (strCursor + len <= THPS1_ADDR.g_Thps1BaseLba) {
+      addr = strCursor;
+      strCursor += len;
+    } else if (strSpillCursor + len <= THPS1_ADDR.Thps1Strings) {
+      addr = strSpillCursor;
+      strSpillCursor += len;
+    } else {
+      throw new Error(`Thps1Strings overflow (primary=0x${strCursor.toString(16)}, spill=0x${strSpillCursor.toString(16)}, str="${s}")`);
     }
+    putAt(addr, raw);
     strMap.set(s, addr);
     return addr;
   }
@@ -462,10 +550,12 @@ function buildThps1ResidentBlock() {
     block.writeUInt32LE(0,                         dstOff + 0x58);
     block.writeUInt32LE(0,                         dstOff + 0x5C);
     block.writeInt32LE(-18,                        dstOff + 0x60);
+    block.writeUInt32LE(def.gapMin >>> 0,          dstOff + 0x78); // Gap ID range min (Career_IsGapInCurrentLevel @ 0x80024780!)
+    block.writeUInt32LE(def.gapMax >>> 0,          dstOff + 0x7C); // Gap ID range max (Career_IsGapInCurrentLevel @ 0x80024798!)
     block.writeUInt32LE(0x800BA174,                dstOff + 0x170); // OOB bail strings
 
-    // Populate 10 Goal slots (+0x80, stride 24):
-    // Career THPS1 levels get their exact 5 THPS1 objectives in G0..G4, and type=8 (inactive) in G5..G9!
+    // Populate ALL 10 Goal slots (+0x80, stride 24):
+    // Career THPS1 levels fill ALL 10 slots G0..G9 (identical to THPS2!), comp levels use Marseille template.
     for (let g = 0; g < 10; g++) {
       const gf = dstOff + 0x80 + g * 24;
       if (!def.isComp && g < def.goals.length) {
@@ -539,6 +629,27 @@ function buildThps1ResidentBlock() {
   writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 16, 0, 9512,  5, 6, THPS1_ADDR.S2LevlDiscOrder + 6);
   writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 32, 1,   45,  9, 6, THPS1_ADDR.T1DiscOrder);
 
+  // --- C2. Build Live THPS1 Gap Table @ 0x800E7E60 (24 gaps + sentinel = 300 B <= 416 B!) ---
+  let gapOff = THPS1_ADDR.Thps1GapList - THPS1_ADDR.Base;
+  for (const g of THPS1_GAPS) {
+    block.writeUInt16LE(g.f0 & 0xFFFF, gapOff + 0);
+    block.writeUInt16LE(g.gt & 0xFFFF, gapOff + 2);
+    block.writeInt16LE(g.gapId,        gapOff + 4);
+    block.writeUInt16LE(g.pts & 0xFFFF, gapOff + 6);
+    block.writeUInt32LE(internStr(g.name) >>> 0, gapOff + 8);
+    gapOff += 12;
+  }
+  // Sentinel entry (gapId = -1 terminates all g_GapList scans!)
+  block.writeUInt16LE(0, gapOff + 0);
+  block.writeUInt16LE(0, gapOff + 2);
+  block.writeInt16LE(-1, gapOff + 4);
+  block.writeUInt16LE(0, gapOff + 6);
+  block.writeUInt32LE(0, gapOff + 8);
+  gapOff += 12;
+  if (THPS1_ADDR.Base + gapOff > THPS1_ADDR.ExtLightTable) {
+    throw new Error(`Thps1GapList overflow: 0x${(THPS1_ADDR.Base + gapOff).toString(16)} > 0x${THPS1_ADDR.ExtLightTable.toString(16)}`);
+  }
+
   // --- D. Extended Light (stride 52), Shadow (stride 16), and THPS1 HighScore Table (stride 64 @ 0x800E8550) ---
   const origLightOff = ramToFile(0x800B961C);
   const origShadowOff = ramToFile(0x800B9824);
@@ -560,8 +671,11 @@ function buildThps1ResidentBlock() {
     }
   }
 
-  // --- E. THPS1.HED Lookup Table @ 0x800E8A50 ---
-  if (manifest.entries.length > 106) throw new Error(`Too many THPS1.WAD entries (${manifest.entries.length} > 106)`);
+  // --- E. THPS1.HED Lookup Table @ 0x800E8A50 (must stop cleanly before Thps1StringsSpill @ 0x800E8C80!) ---
+  const maxHedEntries = Math.floor((THPS1_ADDR.Thps1StringsSpill - THPS1_ADDR.Thps1Hed - 4) / 12);
+  if (manifest.entries.length > maxHedEntries) {
+    throw new Error(`Too many THPS1.WAD entries (${manifest.entries.length} > ${maxHedEntries} before Thps1StringsSpill)`);
+  }
   let hedOff = THPS1_ADDR.Thps1Hed - THPS1_ADDR.Base;
   for (const e of manifest.entries) {
     block.writeUInt32LE(e.hash >>> 0, hedOff + 0);
@@ -575,8 +689,11 @@ function buildThps1ResidentBlock() {
   const codeBuf = assembleThps1Code(strThps1WadPath, strCVan, strCCab1);
   putAt(THPS1_ADDR.CodeBase, codeBuf);
 
-  console.log(`  [THPS1] StringPool: 0x${THPS1_ADDR.Thps1Strings.toString(16)}..0x${strCursor.toString(16)} (${strCursor - THPS1_ADDR.Thps1Strings} B)`);
-  console.log(`  [THPS1] THPS1.HED : ${manifest.entries.length} arquivos indexados em 0x${THPS1_ADDR.Thps1Hed.toString(16)}`);
+  const primaryUsed = strCursor - THPS1_ADDR.Thps1Strings;
+  const spillUsed = strSpillCursor - THPS1_ADDR.Thps1StringsSpill;
+  console.log(`  [THPS1] StringPool: primary=${primaryUsed}B/1760B + spill=${spillUsed}B/896B (total ${primaryUsed + spillUsed} B)`);
+  console.log(`  [THPS1] GapTable  : ${THPS1_GAPS.length} gaps + sentinel @ 0x${THPS1_ADDR.Thps1GapList.toString(16)} (${(THPS1_GAPS.length + 1) * 12} B / 416 B)`);
+  console.log(`  [THPS1] THPS1.HED : ${manifest.entries.length} arquivos indexados em 0x${THPS1_ADDR.Thps1Hed.toString(16)} (max ${maxHedEntries})`);
   return { block, manifest };
 }
 
@@ -633,6 +750,8 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1) {
     [THPS1_ADDR.Entry_Car216_SetModel,      'Hook_Car216_SetModel'],
     [THPS1_ADDR.Entry_LevelSelFastRend,     'Hook_LevelSelFastRend'],
     [THPS1_ADDR.Entry_LevelSelFastMap,      'Hook_LevelSelFastMap'],
+    [THPS1_ADDR.Entry_SetGapList,           'Hook_SetGapList'],
+    [THPS1_ADDR.Entry_GapChecklistGuard,    'Hook_GapChecklistGuard'],
   ];
   for (const [addr, lbl] of entries) {
     a.padTo(addr);
@@ -1036,23 +1155,15 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1) {
 
   // --------------------------------------------------------------------------
   // 6. Hook_CareerCountLvlGoals(SCareerSkater* $a0, int levelId $a1) [replaces 0x8002413C]
+  //    ALL regular career levels (both THPS2 0..9 AND THPS1 11..19) now have FULL 10 goals (bits 0..9)!
   // --------------------------------------------------------------------------
   a.label('Hook_CareerCountLvlGoals');
   a.addiu(R.sp, R.sp, -16);
   a.sw(R.ra, 12, R.sp);
-  a.sw(R.a1, 8, R.sp);
   a.jal('Helper_GetLevelFlags');
   a.nop();
-  a.lw(R.a1, 8, R.sp);            // levelId
   a.move(R.a2, R.zero);           // count
-  a.move(R.v1, R.zero);           // bit 0..maxGoals-1
-  // maxGoals = (levelId >= 11) ? 5 : 10
-  a.slti(R.t0, R.a1, 11);
-  a.bne(R.t0, R.zero, 'cclg_10');
-  a.addiu(R.t1, R.zero, 5);
-  a.j('cclg_loop');
-  a.nop();
-  a.label('cclg_10');
+  a.move(R.v1, R.zero);           // bit 0..9
   a.addiu(R.t1, R.zero, 10);
 
   a.label('cclg_loop');
@@ -1279,22 +1390,10 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1) {
 
   // --------------------------------------------------------------------------
   // 13. Hook_GoalListLoopCheck [j @ 0x80025EE4 inside Career_PrintGoalList, delay slot: addiu s2, s2, 16]
-  //     Original: `slti v0, s4, 10; bne v0, zero, 0x80025DFC; addiu s2, s2, 16`
-  //     Uses 5-goal cap for THPS1 levels (id >= 11) and 10-goal cap for THPS2 levels (< 11)!
+  //     ALL regular levels (THPS2 AND THPS1!) now display ALL 10 goals (G0..G9)!
   // --------------------------------------------------------------------------
   a.label('Hook_GoalListLoopCheck');
-  a.lui(R.t0, 0x800D);
-  a.lw(R.t0, 25200, R.t0);
-  a.nop();
-  a.slti(R.t1, R.t0, 11);
-  a.bne(R.t1, R.zero, 'gllc_10');
-  a.nop();
-  a.slti(R.v0, R.s4, 5);
-  a.j('gllc_chk');
-  a.nop();
-  a.label('gllc_10');
   a.slti(R.v0, R.s4, 10);
-  a.label('gllc_chk');
   a.bne(R.v0, R.zero, 'gllc_cont');
   a.nop();
   a.j(0x80025EF0);
@@ -1413,16 +1512,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1) {
   a.label('lsp_normal');
   a.jal('Hook_CareerCountLvlGoals');
   a.nop();
-  // THPS1 levels (id >= 11): 5 goals * 20% = 100%; THPS2 levels (< 11): 10 goals * 10% = 100%!
-  a.slti(R.t0, R.s1, 11);
-  a.bne(R.t0, R.zero, 'lsp_x10');
-  a.nop();
-  // v0 * 20 = (v0 * 5) << 2
-  a.sll(R.t1, R.v0, 2);
-  a.addu(R.t1, R.t1, R.v0);
-  a.j('lsp_ret');
-  a.sll(R.v0, R.t1, 2);
-  a.label('lsp_x10');
+  // ALL regular career levels (THPS2 + THPS1): 10 goals * 10% = 100%!
   a.sll(R.t1, R.v0, 2);
   a.addu(R.t1, R.t1, R.v0);
   a.sll(R.v0, R.t1, 1);
@@ -1858,6 +1948,41 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1) {
   a.jr(R.ra);
   a.addiu(R.sp, R.sp, 64);
 
+  // --------------------------------------------------------------------------
+  // 28. Hook_SetGapList [jal @ 0x80083848 inside Game_StartLevel, $s1 = new levelId 0..19]
+  //     Returns $v0 = g_Thps1GapList (0x800E7E60) for THPS1 levels (11..19), or vanilla 0x800BC52C for THPS2!
+  // --------------------------------------------------------------------------
+  a.label('Hook_SetGapList');
+  a.sltiu(R.t8, R.s1, 11);
+  a.bne(R.t8, R.zero, 'sgl_thps2');
+  a.nop();
+  a.la(R.v0, THPS1_ADDR.Thps1GapList);
+  a.jr(R.ra);
+  a.nop();
+  a.label('sgl_thps2');
+  a.lui(R.v0, 0x800C);
+  a.jr(R.ra);
+  a.addiu(R.v0, R.v0, -15060); // 0x800BC52C (vanilla THPS2 g_GapList!)
+
+  // --------------------------------------------------------------------------
+  // 29. Hook_GapChecklistGuard [jal @ 0x80024CD4 inside Career_GapAward_Start]
+  //     Prevents 0x80024AE4 from indexing g_Career+5268 + g_CurrentLevel*12 past level 10!
+  //     For THPS2 levels (0..10), tail-jumps to original 0x80024AE4; for THPS1 (11..19), returns cleanly
+  //     while in-run G6/G7 goal bitmasks (1084(gp) & 1088(gp)) continue tracking 100% natively!
+  // --------------------------------------------------------------------------
+  a.label('Hook_GapChecklistGuard');
+  a.lui(R.t8, 0x800D);
+  a.lw(R.t8, 25200, R.t8);
+  a.nop();
+  a.sltiu(R.t9, R.t8, 11);
+  a.beq(R.t9, R.zero, 'gcg_skip');
+  a.nop();
+  a.j(0x80024AE4);
+  a.nop();
+  a.label('gcg_skip');
+  a.jr(R.ra);
+  a.nop();
+
   const used = a.pc() - THPS1_ADDR.CodeBase;
   if (used > 4096) throw new Error(`THPS1_CODE exceeds 4096 B (${used} B)!`);
   console.log(`  [ASM] THPS1_CODE  : 0x${THPS1_ADDR.CodeBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / 4096 B, livre: ${4096 - used} B)`);
@@ -2073,6 +2198,11 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   patchExact(slusBuf, r2f(0x80061A58), 0x0C0127A9, jalW(THPS1_ADDR.Entry_Car215_SetModel),     'CCar 215 c_bus/c_van @ 0x80061A58');
   patchExact(slusBuf, r2f(0x80061A70), 0x0C0127A9, jalW(THPS1_ADDR.Entry_Car216_SetModel),     'CCar 216 c_cable/c_cabl1 @ 0x80061A70');
 
+  // Switch g_GapList (0x800D70A8) to g_Thps1GapList (0x800E7E60) on THPS1 levels 11..19 & guard 11-level Gap Checklist!
+  patchExact(slusBuf, r2f(0x80083848), 0x3C02800C, jalW(THPS1_ADDR.Entry_SetGapList),          'Game_StartLevel SetGapList jal @ 0x80083848');
+  patchExact(slusBuf, r2f(0x8008384C), 0x2442C52C, 0x00000000,                                 'Game_StartLevel SetGapList delay nop @ 0x8008384C');
+  patchExact(slusBuf, r2f(0x80024CD4), 0x0C0092B9, jalW(THPS1_ADDR.Entry_GapChecklistGuard),   'Career_GapAward_Start GapChecklistGuard @ 0x80024CD4');
+
   // Hook all 6 .TRG SecretFlagSet / SecretFlagGet / TrigHasGoal sites so THPS1 secret areas (levels 11..19)
   // read/write g_ExtCareer.secretFlags & levelFlags cleanly without overflowing SCareerSkater!
   // Block 1 (0x80046F20..0x80046FEC):
@@ -2241,6 +2371,7 @@ module.exports = {
   SLOT_OF_LEVEL,
   UNLOCK_REQS,
   THPS1_DEFS,
+  THPS1_GAPS,
   buildThps1ResidentBlock,
   applyThps1EnginePatches,
 };

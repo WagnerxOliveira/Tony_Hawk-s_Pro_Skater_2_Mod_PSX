@@ -4,7 +4,25 @@ Todas as evoluções técnicas, correções binárias, customizações 3D e marc
 
 ---
 
-## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório, Integração das 9 Fases do THPS1 & Enciclopédia v2
+## [v2.0] — Customização Completa de 7 Skatistas 3D, Motor MIPS de Vozes/Gritos/Boot Aleatório, Integração das 9 Fases do THPS1 (60 Metas + 6 Objetos 3D Esculpidos) & Enciclopédia v2
+
+### 🗿 60 Novos Objetivos Satíricos nas 6 Fases Regulares do THPS1 (`10 × 6` Listas Completas), 6 Objetos 3D Geométricos Esculpidos & 24 Gaps Ao Vivo (`Scripts/mod_thps1_custom_objects.js`, `port_thps1_levels.js`, `thps1_engine_mod.js` & `HISTORIA Cap. 15`)
+- **Expansão Completa das 6 Fases Regulares do THPS1 para 10/10 Objetivos (Igual às Listas Completas do THPS2 — `10 × 10% = 100%`):**
+  - Preenchidas todas as **60 metas (`G0..G9` × 6 fases regulares)** em `g_ExtLevelTable[11..18]` com nomes satíricos criativos em português validados pixel a pixel contra `s2goal.fnt` (`gap >= 14 px` até a coluna `$cash`, zero sobreposição visual!), removendo o cap antigo de 5 metas em `Hook_CareerCountLvlGoals`, `Hook_GoalListLoopCheck` e `Hook_LevelSelPct`.
+  - Pool de strings `g_Thps1Strings` expandido para **2 segmentos byte-packed** (`0x800E9000..0x800E96DF` + spill `0x800E8C80..0x800E8FFF`, `2.214 B / 2.656 B`, `442 B` livres — **zero deslocamento em `NewHeapStart = 0x800EB000`!**).
+- **6 Novos Objetos 3D Geométricos Satíricos Esculpidos Proceduralmente (`Scripts/mod_thps1_custom_objects.js`) + 30 Coletáveis Injetados nos `.TRG`:**
+  - Descoberta e aplicação da lei real de hardware PS1 `.PSX` para malhas anexadas: **`fl = 0x2003`** (quad `POLY_FT4` completo com RGB direto neutro, eliminando o bit `0x0010 = IS_TRIANGLE` e o bit `0x0800 = USE_RGBs_CHUNK` que causava corte triangular e cores neon), orientação automática de *winding* (`dot < 0`), polaridade UV direita→esquerda correta e `maxDrawDist = 0xFFFF7FFF`.
+  - Cada objeto foi anexado diretamente ao `sk*_o.psx` da respectiva fase (`+2,8 KB..+3,9 KB`, textura pixel-art `64×48` 4-bit 16 cores) e vinculado a **5 novos nós coletáveis giratórios `Type 5 subtype 33` (`0x0021`)** no `.TRG` (30 ao todo, com o #1 sempre visível logo à frente do ponto de spawn!):
+    1. **`[11] Warehouse` (`skware_o.psx`, `0x5111A101`, `48v/40f`, `+3.252 B`):** **3D Mandioca da Dilma** (raiz curva com faixa `"DILMA"`, ponta cortada e 3 folhas verdes) — *"5 Mandiocas da Dilma"*.
+    2. **`[12] School` (`skschl_o.psx`, `0x5112A102`, `40v/30f`, `+2.844 B`):** **3D Triplex do Guarujá** (prédio 3 andares à beira-mar, sacadas douradas, piscina na cobertura e letreiro `"TRIPLEX / GUARUJA"`) — *"5 Triplex do Guaruja"*.
+    3. **`[13] Mall` (`skmall_o.psx`, `0x5113A103`, `64v/48f`, `+3.540 B`):** **3D Mala do Mensalão** (maleta executiva entreaberta transbordando 3 maços de notas `$$$` e selo `"MENSALAO / $$$ PT $$$"`) — *"5 Malas do Mensalao"*.
+    4. **`[15] Downtown` (`skdown_o.psx`, `0x5115A104`, `48v/35f`, `+3.080 B`):** **3D Cofre do Escândalo INSS** (cofre blindado rebitado `"INSS / ROUBO!"`, volante cromado 3D e pirâmide de moedas de ouro) — *"5 Cofres Roubo INSS"*.
+    5. **`[16] Downhill Jam` (`skjam_o.psx`, `0x5116A105`, `78v/58f`, `+3.948 B`):** **3D Pedalinho de Atibaia** (pedalinho cisne branco/turquesa `"ATIBAIA"`, pescoço/bico laranja e toldo listrado) — *"5 Pedalinhos Atibaia"*.
+    6. **`[18] Streets SF` (`sksf_o.psx`, `0x5118A106`, `48v/45f`, `+3.384 B`):** **3D Picanha da Promessa** (corte triangular marmorizado com capa de gordura dourada, espeto inox e bandeira `"PICANHA"`) — *"5 Picanhas Promessa"*.
+- **Tabela de 24 Gaps Ao Vivo do THPS1 (`g_Thps1GapList @ 0x800E7E60`) + 2 Novos Hooks MIPS (`Entry_SetGapList @ 0x80083848` & `Entry_GapChecklistGuard @ 0x80024CD4`):**
+  - Mapeados 24 gatilhos reais `0x00C9 EndGap` nos `.TRG` do THPS1 (4 por fase regular: `1× gt=2` para `G6` Trick+Gap com substrings validadas em `tricks.bin` + `3× gt=1` para `G7` Multi-Gap) com nomes satíricos (`[TRILHAO DA TAXA]`, `[CANAL DA JANJA]`, `[BORDA DO INSS]`, `[LAGO DE ATIBAIA]`, `[HUBBA DA PF]`), guardando a escrita fora de limites na tabela de 11 níveis de Gap Checklist (`0x800BBC1C`).
+- **60 FPS Travados & Prova Ao Vivo 6/6 no DuckStation + Auditoria Forense 10/10 (`296/296` hooks, `319.968` setores, `0` erros):**
+  - `primBufDelta` ajustado (`Warehouse +12000`, `Downtown -18000`) mantendo **`PrimBuf` entre `62,7%` e `84,2%`** e `Heap[1]` saudável em todas as 6 fases; comprovados ao vivo os **6/6 checklists de 10 objetivos (`○ VEJA NOOB!`)**, os **6/6 objetos 3D em gameplay** e os banners HUD de coleta (`"1 OF 5 MANDIOCAS"`, `"1 OF 5 TRIPLEX"`, `"1 OF 5 MALAS $$$"`).
 
 ### ⚡ Level Select Instantâneo (5 Bursts Contíguos `CdRead`), Restauração dos Vídeos Preview Inferiores & Renderização 3D Zero-Artefatos (`Scripts/thps1_engine_mod.js`, `SLUS-01066.ini` & `HISTORIA Cap. 14`)
 - **Seleção de Fases Instantânea (~18 s → ~1,5 s, 40/40 Fotos no Frame 1, ZERO `LOADING...`):**
