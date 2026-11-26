@@ -1,7 +1,7 @@
 # 🤸 MAPA 05 — Todas as Manobras (`tricks.bin`)
 
 - **Localização no `CD.HED`:** Índice `11` | Hash `0x9D9973E7` (`nsHash("tricks.bin")`)
-- **Localização no `CD.WAD`:** Offset `0x0014E000` | Tamanho `33168` bytes
+- **Localização no `CD.WAD`:** Offset `0x0014E000` | Tamanho `33592` bytes
 - **Carregamento em `SLUS_010.66`:** String `"tricks.bin"` em `0x800D2848`, carregada em `0x80014130`
 
 ---

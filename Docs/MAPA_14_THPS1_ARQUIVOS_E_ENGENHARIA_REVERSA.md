@@ -27,7 +27,7 @@ flowchart TB
     DUMP --> EXT["Scripts/extract_thps1.js<br/>Parser CD.HED ASCII + Desempacotador .PRE"]
     EXT --> TREE["📂 EXTRAIDOS_ARQUIVOS_THPS1/<br/>669 arquivos do CD.WAD + 58 sub-arquivos .PRE<br/>organizados em 9 categorias / 25 subpastas"]
     TREE --> PORT["Scripts/port_thps1_levels.js + mod_thps1_custom_objects.js<br/>• Converte 2.301 trilhos .TRG + 68 moedas -> $100 Cash + 333 remapes SFX/Shatter<br/>• Esculpe 6 objetos 3D satiricos (fl=0x2003) nos sk*_o.psx<br/>• Injeta 30 coletaveis Type 5 subtype 33 (5 por fase regular, Mall #3/#4 auditados)<br/>• Gera 18 BMPs Level Select + 3 telas Comp (t1comp0..2.bmp) + 60 metas + 24 Gaps"]
-    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>0,39 MB • 202 setores • 5 arquivos prioritários"]
+    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,12 MB • 572 setores • 38 arquivos prioritários"]
     WAD --> ENG["⚡ Motor Residente MIPS (0x800E6000..0x800EC7FF)<br/>• g_ExtLevelTable[20] (60 metas) + g_Thps1GapList[24] + CASHART @ 0x800EB000<br/>• Hook_CdWadFallback + Entry_CompLoadBmp + FastBurst 1-Visita + Fade 2×<br/>• 70+13+8 relocações + Carrossel Intercalado 19 fases"]
 ```
 
@@ -120,18 +120,18 @@ Porém, **não era possível simplesmente apontar o THPS2 para essas sobras orig
 2. **4 modelos `.PSX` diferiam da versão final USA do THPS1** (`skware.psx`, `skware_2.psx`, `skware_l.psx`, `skschl.psx`), **`skvans_t.psx`** (Skate Park Chicago) **estava ausente**, e **`c_cable.psx`** no THPS2 tinha apenas 1 textura placeholder em vez das 11 texturas reais do bonde de San Francisco.
 3. **Os outros 43 arquivos `.PSX` eram 100% idênticos bit-a-bit ao THPS1 USA!**
 
-### Solução Cirúrgica: Alojamento Zero-Seek *In-Place* em `CD.WAD` (37 Ativos) + `THPS1.WAD` Ultraleve (5 Ativos Exclusivos)
+### Solução Cirúrgica: Alojamento Zero-Seek *In-Place* em `CD.WAD` (37 Ativos) + `THPS1.WAD` Ultraleve (38 Ativos Exclusivos)
 Em vez de duplicar 7,7 MB de geometria ou forçar o canhão laser a saltar até o Minuto 71 (`LBA 319.067`), [`Scripts/port_thps1_levels.js`](../Scripts/port_thps1_levels.js) + [`Scripts/mod_thps1_custom_objects.js`](../Scripts/mod_thps1_custom_objects.js) aplicam uma arquitetura híbrida de máxima velocidade em hardware real PS1 2× (preservando **48/48 LBAs Redump** e **0 deslocamento em todas as 1.472 entradas do THPS2**!):
 - **18 BMPs de Level Select alojados *in-place* em slots órfãos 100% sombreados por `.PRE` dentro do `CD.WAD`:** `t1rend00..08.bmp` (`45s`) em `CD.WAD[573]` (`LBA 7.955`, ex-`s2bgd3.bmp`) e `t1levl00..08.bmp` (`54s`) em `CD.WAD[578]` (`LBA 8.049`, ex-`s2bgd5.bmp`), permitindo que `FastMap` carregue **40/40 fotos em 5 rajadas estritamente crescentes sem sair do `CD.WAD` (`139f = 2,32 s`)**!
 - **19 arquivos modificados de fase alojados na zona fechada `CD.WAD[1127..1185]` (exatos `4.577 / 4.577` setores, `Delta = 0`, ordenados na sequência real `_T.trg → _o.psx → _l.psx → .psx`!):**
   - **9 arquivos `.TRG` integralmente convertidos** (2.301 trilhos + 68 moedas → `$100 Cash` + **30 coletáveis 3D `Type 5 subtype 33` injetados** — 5 por fase regular, com Malas #3/#4 de *Mall NY* auditadas em espaço aberto contra os 11.126 triângulos — + **333 remapes cirúrgicos SFX/Shatter** (`84` shatters + `249` SFX) + `C_Cable → C_Cabl1`),
   - **6 arquivos `sk*_o.psx` com novos objetos 3D geométricos esculpidos** (`skware_o`, `skschl_o`, `skmall_o`, `skdown_o`, `skjam_o`, `sksf_o`: `+2,8 KB..+3,9 KB` cada, todos em `fl = 0x2003` full-quad + texturas `64×48` 4-bit 16 cores),
   - **4 `.PSX` divergentes do THPS1 USA** (`skware.psx`, `skware_2.psx`, `skware_l.psx`, `skschl.psx`).
-- **`THPS1.WAD` ultraleve (50º arquivo da ISO, `0,39 MB` / `202 setores`, apenas 5 arquivos sem correspondente em `CD.WAD`):** `skvans_t.psx` (Chicago), `c_cabl1.psx` (bonde 11 texturas de San Francisco) e as **3 telas oficiais de competição `512×240` 8bpp** (`t1comp0.bmp` *Skate Park Chicago*, `t1comp1.bmp` *Burnside* e `t1comp2.bmp` *Roswell*, `123.960 B` / `61` set. cada, despachadas por `Entry_CompLoadBmp @ 0x80022E2C`).
+- **`THPS1.WAD` ultraleve (50º arquivo da ISO, `1,12 MB` / `572 setores`, apenas 38 arquivos sem correspondente em `CD.WAD`):** `skvans_t.psx` (Chicago), `c_cabl1.psx` (bonde 11 texturas de San Francisco) e as **3 telas oficiais de competição `512×240` 8bpp** (`t1comp0.bmp` *Skate Park Chicago*, `t1comp1.bmp` *Burnside* e `t1comp2.bmp` *Roswell*, `123.960 B` / `61` set. cada, despachadas por `Entry_CompLoadBmp @ 0x80022E2C`).
 
-No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (5 entradas) PRIMEIRO** (sem nunca chamar `CdSearchFile` em runtime — calcula `thps1BaseLba = g_VoicesBaseLba + 1174` diretamente da RAM!) e cai imediatamente para o `CD.HED` original (com suporte a `TURBO_BURST`), lendo todos os 37 ativos *in-place* em velocidade nativa de `CD.WAD`!
+No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (38 entradas) PRIMEIRO** (sem nunca chamar `CdSearchFile` em runtime — calcula `thps1BaseLba = g_VoicesBaseLba + 1174` diretamente da RAM!) e cai imediatamente para o `CD.HED` original (com suporte a `TURBO_BURST`), lendo todos os 37 ativos *in-place* em velocidade nativa de `CD.WAD`!
 
-### Tabela dos 5 Arquivos Empacotados em `THPS1.WAD`
+### Tabela dos 38 Arquivos Empacotados em `THPS1.WAD`
 
 | # | Arquivo | Hash Neversoft | Offset em `THPS1.WAD` | Tamanho | Setores | Função |
 | :---: | :--- | :---: | :---: | :---: | :---: | :--- |
@@ -140,6 +140,39 @@ No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (5 ent
 | 3 | `t1comp1.bmp` | `0X679DCF3A` | `0x00022800` | 123.960 B | 61 | Tela oficial de competição `512×240` 8bpp (`123.960 B`, despachada por `Entry_CompLoadBmp`) |
 | 4 | `t1comp2.bmp` | `0X1B7F5645` | `0x00041000` | 123.960 B | 61 | Tela oficial de competição `512×240` 8bpp (`123.960 B`, despachada por `Entry_CompLoadBmp`) |
 | 5 | `c_cabl1.psx` | `0X85651A4D` | `0x0005F800` | 21.004 B | 11 | Bonde de San Francisco (11 texturas originais THPS1) |
+| 6 | `cr_down.psx` | `0X00863604` | `0x00065000` | 20.416 B | 10 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 7 | `cr_han_o.psx` | `0X21EE21E1` | `0x0006A000` | 126.928 B | 62 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 8 | `cr_jam.psx` | `0X89CDB8F3` | `0x00089000` | 32.044 B | 16 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 9 | `cr_mall.psx` | `0X24A822FD` | `0x00091000` | 37.304 B | 19 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 10 | `cr_schl.psx` | `0X68A59D9C` | `0x0009A800` | 28.264 B | 14 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 11 | `cr_sf.psx` | `0X9B1036D7` | `0x000A1800` | 19.740 B | 10 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 12 | `cr_ware.psx` | `0X72DCD2F4` | `0x000A6800` | 14.640 B | 8 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 13 | `crash.psh` | `0X5940ABF0` | `0x000AA800` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 14 | `crash.psx` | `0X3484B2F7` | `0x000AB000` | 59.324 B | 29 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 15 | `crash_L.psh` | `0X368F2C63` | `0x000B9800` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 16 | `crash_L.psx` | `0X5B4B3564` | `0x000BA000` | 59.324 B | 29 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 17 | `crash_it.psx` | `0X05C40400` | `0x000C8800` | 42.500 B | 21 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 18 | `crashb.psh` | `0X4182EC70` | `0x000D3000` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 19 | `crashb.psx` | `0X2C46F577` | `0x000D3800` | 59.324 B | 29 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 20 | `crashb_L.psh` | `0XC92233C6` | `0x000E2000` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 21 | `crashb_L.psx` | `0XA4E62AC1` | `0x000E2800` | 59.324 B | 29 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 22 | `s2dCR01c.bmp` | `0XA9EE8B60` | `0x000F1000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 23 | `s2dCR02c.bmp` | `0X95D9E987` | `0x000F5800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 24 | `s2dCR03c.bmp` | `0X74812181` | `0x000FA000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 25 | `s2dCR04c.bmp` | `0XBA139E97` | `0x000FE800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 26 | `s2dCR05c.bmp` | `0X5B4B5691` | `0x00103000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 27 | `s2dCR06c.bmp` | `0X677C3476` | `0x00107800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 28 | `s2dCR07c.bmp` | `0X8624FC70` | `0x0010C000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 29 | `s2dCR08c.bmp` | `0X55C5B8F6` | `0x00110800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 30 | `s2face20.bmp` | `0XDFA771FF` | `0x00115000` | 4.088 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 31 | `s2gCR01c.bmp` | `0X0E7967D6` | `0x00116000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 32 | `s2gCR02c.bmp` | `0X324E0531` | `0x00117000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 33 | `s2gCR03c.bmp` | `0XD316CD37` | `0x00118000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 34 | `s2gCR04c.bmp` | `0X1D847221` | `0x00119000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 35 | `s2gCR05c.bmp` | `0XFCDCBA27` | `0x0011A000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 36 | `s2gCR06c.bmp` | `0XC0EBD8C0` | `0x0011B000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 37 | `s2gCR07c.bmp` | `0X21B310C6` | `0x0011C000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 38 | `s2gCR08c.bmp` | `0XF2525440` | `0x0011D000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
 
 ---
 
@@ -247,7 +280,7 @@ Seguindo rigorosamente a mecânica de desbloqueio e a interface de Seleção de 
 | `0x800E8000..0x800E840F` | `1.040 B` | `g_ExtLightTable[20]` | Tabela expandida de iluminação direcional (stride `52 B`). |
 | `0x800E8410..0x800E854F` | `320 B` | `g_ExtShadowTable[20]` | Tabela expandida de cor/intensidade de sombra (stride `16 B`). |
 | `0x800E8550..0x800E8A4F` | `1.280 B` | `g_ExtHighScoreTable[20]` | Tabela expandida de recordes (*High Scores*, stride `64 B`), com 6 hooks seguros mantendo `0..10` nativos para compatibilidade de Memory Card! |
-| `0x800E8A50..0x800E8C7F` | `560 B` | `g_Thps1Hed[5+1]` | Índice residente em RAM de `THPS1.WAD` (**5 entradas prioritárias** + sentinela `0xFFFFFFFF`, suporte até 46 entradas). |
+| `0x800E8A50..0x800E8C7F` | `560 B` | `g_Thps1Hed[38+1]` | Índice residente em RAM de `THPS1.WAD` (**38 entradas prioritárias** + sentinela `0xFFFFFFFF`, suporte até 46 entradas). |
 | `0x800E8C80..0x800E96DF` | `2.656 B` | `g_Thps1Strings` (2 segmentos) | Pool compacto byte-packed em 2 segmentos (`0x800E9000..0x800E96DF` primário + `0x800E8C80..0x800E8FFF` spill): nomes das 9 fases, **60 títulos satíricos pixel-validados em `s2goal.fnt`**, `t1comp0..2.bmp`, rótulos HUD e **24 nomes de Gaps**. |
 | `0x800E96E0..0x800E96FF` | `32 B` | Estado de Runtime | `g_Thps1BaseLba`, `g_VoicesTotalSectors (1174)`, `g_SavedRendSprites @ 0x800E96F4`, `g_FastBurstXaSaved @ 0x800E96F8`. |
 | `0x800E9700..0x800E9ECF` | `2.000 B` | `g_ExtCareer[20 × 100 B]` | Progresso completo (flags das **10 metas/fase**, medalhas, `secretFlags` via 6 hooks `.TRG`, bits de `$100` Cash) dos 20 skatistas nas 9 fases THPS1 (`11..19`), limpo em `Career_InitAll @ 0x80023988`. |

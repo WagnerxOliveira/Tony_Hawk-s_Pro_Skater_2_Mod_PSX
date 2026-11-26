@@ -34,6 +34,7 @@ const fs = require('fs');
 const path = require('path');
 const { buildVoicesBank } = require('./build_skater_voices');
 const { THPS1_ADDR, buildThps1ResidentBlock, applyThps1EnginePatches } = require('./thps1_engine_mod');
+const { CRASH_ADDR, applyCrashEnginePatches } = require('./mod_crash_engine');
 
 const rootDir = path.resolve(__dirname, '..');
 const slusPath = path.join(rootDir, 'SLUS_010.66');
@@ -1537,8 +1538,9 @@ function assembleLulaoEngine(gpMeta) {
   a.j('Hook_GoalListTick');   a.nop(); // 0x800E3870
 
   // --------------------------------------------------------------------------
-  // 1. Lulao_SyncStrings() — Backs up original pointers once, then sets Lulao
-  //    strings if selected skater == 2, or restores originals for all others!
+  // 1. Lulao_SyncStrings() — Backs up original pointers once for BOTH Lulao & Crash B.,
+  //    always restores ALL originals first, then applies Lulao (Slot 2) OR Crash B. (Slot 20),
+  //    or leaves clean originals for all other 19 skaters! ZERO cross-contamination!
   // --------------------------------------------------------------------------
   a.label('Lulao_SyncStrings');
   a.addiu(R.sp, R.sp, -32);
@@ -1546,7 +1548,7 @@ function assembleLulaoEngine(gpMeta) {
   a.sw(R.s0, 24, R.sp);
   a.sw(R.s1, 20, R.sp);
 
-  // First time only: save original pointers from g_LevelTable & g_StringTable into LulaoOrigBackup
+  // First time only: save original pointers for BOTH LulaoStrDataBase & Crash StrMapBase!
   a.lwSym(R.t0, 'g_OrigSaved');
   a.nop();
   a.bne(R.t0, R.zero, 'ls_do_apply');
@@ -1557,7 +1559,7 @@ function assembleLulaoEngine(gpMeta) {
   a.label('ls_save_lp');
   a.lw(R.t0, 0, R.s0);
   a.nop();
-  a.beq(R.t0, R.zero, 'ls_save_done');
+  a.beq(R.t0, R.zero, 'ls_save_crash');
   a.nop();
   a.lw(R.t1, 0, R.t0);
   a.addiu(R.s0, R.s0, 8);
@@ -1565,38 +1567,69 @@ function assembleLulaoEngine(gpMeta) {
   a.j('ls_save_lp');
   a.addiu(R.s1, R.s1, 4);
 
+  a.label('ls_save_crash');
+  a.la(R.s0, CRASH_ADDR.StrMapBase);
+  a.la(R.s1, CRASH_ADDR.StrOrigBackup);
+  a.label('ls_save_cr_lp');
+  a.lw(R.t0, 0, R.s0);
+  a.nop();
+  a.beq(R.t0, R.zero, 'ls_save_done');
+  a.nop();
+  a.lw(R.t1, 0, R.t0);
+  a.addiu(R.s0, R.s0, 8);
+  a.sw(R.t1, 0, R.s1);
+  a.j('ls_save_cr_lp');
+  a.addiu(R.s1, R.s1, 4);
+
   a.label('ls_save_done');
   a.addiu(R.t0, R.zero, 1);
   a.swSym(R.t0, R.t1, 'g_OrigSaved');
 
+  // Always restore BOTH original sets cleanly before applying the active skater!
   a.label('ls_do_apply');
-  a.la(R.a0, SYM.g_Career);
-  a.jal(SYM.GetSelectedSkaterIdx);
-  a.nop();
-  a.addiu(R.t2, R.zero, 2);              // Slot 2 = Lulao
   a.la(R.s0, ADDR.LulaoStrDataBase);
   a.la(R.s1, ADDR.LulaoOrigBackup);
-  a.beq(R.v0, R.t2, 'ls_lulao_lp');
-  a.nop();
-
-  // Restore originals for all non-Lulao skaters
   a.label('ls_orig_lp');
   a.lw(R.t0, 0, R.s0);
   a.lw(R.t1, 0, R.s1);
-  a.beq(R.t0, R.zero, 'ls_done');
+  a.beq(R.t0, R.zero, 'ls_orig_cr');
   a.addiu(R.s0, R.s0, 8);
   a.sw(R.t1, 0, R.t0);
   a.j('ls_orig_lp');
   a.addiu(R.s1, R.s1, 4);
 
-  // Apply Lulao satirical Career goals, cash pickup & podium strings
-  a.label('ls_lulao_lp');
+  a.label('ls_orig_cr');
+  a.la(R.s0, CRASH_ADDR.StrMapBase);
+  a.la(R.s1, CRASH_ADDR.StrOrigBackup);
+  a.label('ls_orig_cr_lp');
+  a.lw(R.t0, 0, R.s0);
+  a.lw(R.t1, 0, R.s1);
+  a.beq(R.t0, R.zero, 'ls_chk_skater');
+  a.addiu(R.s0, R.s0, 8);
+  a.sw(R.t1, 0, R.t0);
+  a.j('ls_orig_cr_lp');
+  a.addiu(R.s1, R.s1, 4);
+
+  a.label('ls_chk_skater');
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t2, R.zero, 2);              // Slot 2 = Lulao
+  a.la(R.s0, ADDR.LulaoStrDataBase);
+  a.beq(R.v0, R.t2, 'ls_apply_lp');
+  a.addiu(R.t2, R.zero, 20);             // delay slot: Slot 20 = Crash B.!
+  a.bne(R.v0, R.t2, 'ls_done');
+  a.nop();
+  a.la(R.s0, CRASH_ADDR.StrMapBase);
+
+  // Apply active skater's { targetPtr, newVal } list (Lulao OR Crash B.)!
+  a.label('ls_apply_lp');
   a.lw(R.t0, 0, R.s0);
   a.lw(R.t1, 4, R.s0);
   a.beq(R.t0, R.zero, 'ls_done');
   a.addiu(R.s0, R.s0, 8);
   a.sw(R.t1, 0, R.t0);
-  a.j('ls_lulao_lp');
+  a.j('ls_apply_lp');
   a.nop();
 
   a.label('ls_done');
@@ -3277,11 +3310,11 @@ function applyAll() {
     }
   }
 
-  // 1. Assemble resident SLUS tail, MODCODE, Hook_BailSfx & THPS1 Engine Block (24 KB)
+  // 1. Assemble resident SLUS tail, MODCODE, Hook_BailSfx & THPS1 Engine Block (20 KB)
   const slusTail = assembleSlusTailCompact();
   const modCode = assembleModCode();
   const bailHookCode = assembleBailHookCode();
-  const { block: thps1Block } = buildThps1ResidentBlock();
+  const { block: thps1Block, manifest: thps1Manifest } = buildThps1ResidentBlock();
 
   // 2. Build/update VOICES.DAT (41 menu clips @ 11025 Hz + ring-doubled LULAO_GPBANK @ 6890.625 Hz)
   //    and assemble LULAO_CODE + LULAO_STRDATA with the exact finalized GPBANK startSector & ring tables!
@@ -3365,8 +3398,11 @@ function applyAll() {
   patchWord(wad, playselOff + 0x100C, jalWord(SYM.SFX_Play),             jalWord(ADDR.Tramp_PlaySelConfirm), 'playsel.bin Confirm +0x100C', [jalWord(0x800E27A8)]);
   patchWord(wad, playselOff + 0x415C, 0x240400EC,                        0x24040070,                         'playsel.bin Fade->LevelSel 236->112 +0x415C');
 
-  // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin)
+  // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin + frontend overlays)
   applyThps1EnginePatches(slus, wad, hed);
+
+  // 6. Apply Crash Bandicoot ("Crash B.", Slot 20) Engine Integration (SLUS_010.66 + tricks.bin + playsel.bin + equipsel.bin + THPS1.HED!)
+  applyCrashEnginePatches(slus, wad, hed, thps1Manifest);
 
   fs.writeFileSync(slusPath, slus);
   console.log(`  [OK] SLUS_010.66 gravado (${slus.length} B — tamanho 100% preservado!)`);

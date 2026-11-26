@@ -109,6 +109,7 @@ try {
   // Verify ZERO unintended diffs in executable MIPS code regions (outside known text pools & documented mod hooks)
   const { ADDR, SYM, jalWord, assembleSlusTailClean, assembleModCode, assembleBailHookCode, assembleLulaoEngine, buildLulaoStrData } = require('./patch_random_videos_and_voices');
   const { THPS1_ADDR, buildThps1ResidentBlock, applyThps1EnginePatches } = require('./thps1_engine_mod');
+  const { CRASH_ADDR, applyCrashEnginePatches, buildPatchedTricksBin } = require('./mod_crash_engine');
   const {
     VAB_TARGETS,
     BAIL_SFX_IDS,
@@ -125,16 +126,25 @@ try {
     BIO_SLOT_OFFSETS,
     buildPatchedS2BioFnt,
   } = require('./mod_skater_bios');
-  // Compute exact deterministic THPS1-in-THPS2 engine diffs on clean copies of SLUS_010.66, CD.WAD & CD.HED
+  // Compute exact deterministic THPS1-in-THPS2 + Crash B. (Slot 20) engine diffs on clean copies of SLUS_010.66, CD.WAD & CD.HED
   const origWadForRef = fs.readFileSync(path.join(rootDir, 'originals_backup', 'CD.WAD'));
   const origHedForRef = fs.readFileSync(path.join(rootDir, 'originals_backup', 'CD.HED'));
+  const thps1Man = JSON.parse(fs.readFileSync(path.join(rootDir, 'build', 'thps1_manifest.json'), 'utf8'));
   const slusThps1Ref = Buffer.from(slusOrig);
   const wadThps1Ref = Buffer.from(origWadForRef);
   const hedThps1Ref = Buffer.from(origHedForRef);
   {
+    // Pre-apply playsel.bin's 3 voice/fade hooks before THPS1+Crash engine patches (matching patch_random_videos_and_voices.js order!)
+    const psRefOff = hedThps1Ref.readUInt32LE(61 * 12 + 4);
+    wadThps1Ref.writeUInt32LE(jalWord(ADDR.Tramp_PlaySelScroll),  psRefOff + 0x3388);
+    wadThps1Ref.writeUInt32LE(jalWord(ADDR.Tramp_PlaySelConfirm), psRefOff + 0x100C);
+    wadThps1Ref.writeUInt32LE(0x24040070,                         psRefOff + 0x415C);
     const savedLog = console.log;
     console.log = () => {};
-    try { applyThps1EnginePatches(slusThps1Ref, wadThps1Ref, hedThps1Ref); }
+    try {
+      applyThps1EnginePatches(slusThps1Ref, wadThps1Ref, hedThps1Ref);
+      applyCrashEnginePatches(slusThps1Ref, wadThps1Ref, hedThps1Ref, thps1Man);
+    }
     finally { console.log = savedLog; }
   }
   const thps1SlusWords = [];
@@ -188,6 +198,7 @@ try {
   ]);
   const isTextPool = (off) => (off >= 0x059BC0 && off < 0x05BC00) || (off >= 0x0A0000 && off < 0x0D2E74);
   const isModTail = (ram) => ram >= 0x800E2680 && ram < 0x800E2800;
+  const isCrashDataRegion = (ram) => ram >= CRASH_ADDR.SkaterEntry20 && ram < CRASH_ADDR.RegionEnd;
   let codeDiffWords = 0, verifiedHooks = 0;
   for (let off = 0x800; off < slusOrig.length; off += 4) {
     const wO = slusOrig.readUInt32LE(off);
@@ -233,7 +244,7 @@ try {
     if (slusOrig[p] === slusIso[p]) continue;
     const pRam = (0x80010000 + (p - 0x800)) >>> 0;
     const pRamAligned = (pRam & ~3) >>> 0;
-    if (expectedSlusHooks.has(pRamAligned) || isModTail(pRam)) continue;
+    if (expectedSlusHooks.has(pRamAligned) || isModTail(pRam) || isCrashDataRegion(pRam)) continue;
     let s = p;
     // Walk back only through printable ASCII bytes (avoid stepping back into preceding MIPS code bytes!)
     while (s > 0x800 && slusOrig[s - 1] >= 0x20 && slusOrig[s - 1] <= 0x7E) s--;
@@ -300,7 +311,6 @@ try {
   console.log('\n[STAGE 3] CD.HED & CD.WAD — Integridade de Todas as 1.531 Entradas');
   const { SILVIO_MIC_DELTA, SILVIO_MIC_VERTS, SILVIO_MIC_FACES } = require('./mod_skater_silvio');
   const { HASH_X_LETTER, buildItemsPsxWithX, buildSkvenOPsxWithPitu } = require('./mod_lulao_world_assets');
-  const thps1Man = JSON.parse(fs.readFileSync(path.join(rootDir, 'build', 'thps1_manifest.json'), 'utf8'));
   const hedRed = readSectorsUser(fdRed, 446, 9);
   const hedMod = readSectorsUser(fdMod, 446, 9);
   const hedDisk = fs.readFileSync(hedCurPath);
@@ -310,8 +320,11 @@ try {
     // Allow ONLY size-field updates strictly within SAME CD sector allocations (ZERO offset shifts on all 1,472 THPS2 entries!)
     const allowedHedSizeDelta = new Map([
       [8,    1688],             // items.psx:   39096 -> 40784 B (<= 40960 B, same 20 sectors, +3D 'X' M[13] + 3D Garrafa 51 & Aura M[8])
+      [11,   424],              // tricks.bin:  33168 -> 33592 B (<= 34816 B, same 17 sectors, +Slot 20 Crash B. Bob+Rodney moveset!)
       [14,   -316],             // skhan_o.psx: 122236 -> 121920 B (<= 122880 B, same 60 sectors, Barril 51+Lulao + 3D Haddad M[8])
+      [46,   424],              // panel.pre:   194924 -> 195348 B (same sectors, embedded tricks.bin +Slot 20 Crash B.!)
       [47,   536],              // levelsel.pre: 281224 -> 281760 B (<= 282624 B, same 138 sectors, +s2arrow8.bmp & +s2arrow9.bmp)
+      [59,   424],              // tricksel.pre: 298004 -> 298428 B (same sectors, embedded tricks.bin +Slot 20 Crash B.!)
       [387,  SILVIO_MIC_DELTA], // burnq2.psx:  60244 -> 61404 B (<= 61440 B, same 30 sectors, +3D Mic)
       [1010, SILVIO_MIC_DELTA], // burnq_l.psx: 51932 -> 53092 B (<= 53248 B, same 26 sectors, +3D Mic)
       [1094, 528],              // sksl2_l.psx: 341176 -> 341704 B (<= 342016 B, same 167 sectors, Dilma 40x64 + Vento Estocado 48x64)
@@ -371,7 +384,8 @@ try {
   const allowedWadIdxs = new Set([
     3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
     8, 14, 1094, 1095, 1096, 1100, 1102, 1103, 1109,// Lulao world assets: items (3D X + 51 Bottle/Aura), skhan_o/o2 (Barril 51+Lulao + Haddad), sksl2_o/l/l2 (Dilma + Vento Estocado), c_kart (Bolsonaro), skven_o/l (Pitu)
-    33, 37, 45, 47, 60, 61, 458,                    // levelsel.bin, options.bin, options.pre, levelsel.pre (+s2arrow8/9), player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
+    11, 46, 59,                                     // tricks.bin + panel.pre + tricksel.pre (Slot 20 Crash B. Bob Burnquist + Rodney Mullen Casper to 360 Flip!)
+    33, 35, 37, 39, 41, 45, 47, 48, 60, 61, 67, 458,// levelsel/multisel/options/equipsel/tricksel/playsel/creedit + PREs (g_LevelTable relocs + Crash Slot 20 + s2bio.fnt + s2arrow8/9)
     369, 370, 371, 372, 377, 378, 379,              // 7 custom portraits: s2face1,2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     387, 1010, 431, 1012,                           // Silvio Santos (4 .PSX, incl. 3D Chest Mic on 387 & 1010)
     389, 986, 433, 988,                             // Lulao (4 .PSX)
@@ -398,41 +412,40 @@ try {
       wadUnexpected++;
     }
   }
-  // Verify playsel.bin (idx 61) ONLY modified +0x3388 (Scroll hook), +0x100C (Confirm hook) and +0x415C (Fade 236->112)
-  {
-    const psOrig = getWadEntry(fdRed, 455, hedDisk, 61);
-    const psMod  = getWadEntry(fdMod, 455, hedDisk, 61);
-    const expPlaySelHooks = new Map([
-      [0x3388, jalWord(ADDR.Tramp_PlaySelScroll)],
-      [0x100C, jalWord(ADDR.Tramp_PlaySelConfirm)],
-      [0x415C, 0x24040070],
-    ]);
-    let psErr = 0;
-    for (let o = 0; o < psOrig.length; o += 4) {
-      const wO = psOrig.readUInt32LE(o), wM = psMod.readUInt32LE(o);
-      if (expPlaySelHooks.has(o)) {
-        if (wM !== expPlaySelHooks.get(o)) { fail('WAD', `playsel.bin hook +0x${o.toString(16)} incorreto: 0x${wM.toString(16)}`); psErr++; }
-      } else if (wO !== wM) {
-        fail('WAD', `playsel.bin alterado fora dos hooks em +0x${o.toString(16)}: 0x${wO.toString(16)} -> 0x${wM.toString(16)}`); psErr++;
-      }
-    }
-    if (psErr === 0) pass('playsel.bin (idx=61): 3/3 patches (+0x3388 Scroll, +0x100C Confirm Zero-Seek, +0x415C Fade 236->112) validos, 31.628 B restantes intactos');
-  }
-  // Verify levelsel.bin (idx 33), levelsel.pre (idx 47) & options.bin (idx 37) match THPS1 20-level overlay patches bit-for-bit!
+  // Verify ALL patched frontend overlays & tricks.bin copies (playsel, levelsel, equipsel, tricksel, multisel, creedit, options + PREs) match deterministic reference bit-for-bit!
   {
     let ovErr = 0;
-    for (const [idx, nm] of [[33, 'levelsel.bin'], [47, 'levelsel.pre'], [37, 'options.bin']]) {
+    const refChecks = [
+      [11, 'tricks.bin'],
+      [33, 'levelsel.bin'],
+      [35, 'multisel.bin'],
+      [37, 'options.bin'],
+      [39, 'equipsel.bin'],
+      [41, 'tricksel.bin'],
+      [46, 'panel.pre'],
+      [47, 'levelsel.pre'],
+      [48, 'equipsel.pre'],
+      [59, 'tricksel.pre'],
+      [61, 'playsel.bin'],
+      [67, 'creedit.bin'],
+    ];
+    for (const [idx, nm] of refChecks) {
       const o = hedDisk.readUInt32LE(idx * 12 + 4), s = hedDisk.readUInt32LE(idx * 12 + 8);
       const got = getWadEntry(fdMod, 455, hedDisk, idx);
       const exp = wadThps1Ref.subarray(o, o + s);
-      if (!got.equals(exp)) { fail('WAD', `${nm} (idx=${idx}) difere dos patches esperados do motor THPS1!`); ovErr++; }
+      if (!got.equals(exp)) { fail('WAD', `${nm} (idx=${idx}) difere dos patches deterministicos THPS1 + Crash B. Slot 20!`); ovErr++; }
     }
     const lsGot = getWadEntry(fdMod, 455, hedDisk, 33);
     const lsPreGot = getWadEntry(fdMod, 455, hedDisk, 47);
     if (!lsPreGot.subarray(0x18, 0x18 + lsGot.length).equals(lsGot)) {
       fail('WAD', 'levelsel.pre +0x18 dessincronizado de levelsel.bin!'); ovErr++;
     }
-    if (ovErr === 0) pass('levelsel.bin (idx=33), levelsel.pre (idx=47 +0x18) & options.bin (idx=37): 13+8 relocs g_LevelTable + 5 bursts contiguos 40 BMPs + skip FileIO_Kick + videos preview restaurados 100% validos');
+    const eqGot = getWadEntry(fdMod, 455, hedDisk, 39);
+    const eqPreGot = getWadEntry(fdMod, 455, hedDisk, 48);
+    if (!eqPreGot.subarray(0x18, 0x18 + eqGot.length).equals(eqGot)) {
+      fail('WAD', 'equipsel.pre +0x18 dessincronizado de equipsel.bin!'); ovErr++;
+    }
+    if (ovErr === 0) pass('12/12 overlays & tricks.bin/PREs (playsel, equipsel+pre, levelsel+pre, tricks.bin+panel.pre+tricksel.pre, options, multisel, tricksel, creedit) 100% bit-a-bit validos!');
   }
   // Verify s2bio.fnt (idx 458) & player.pre (idx 60) ONLY modified s2bio.fnt (+0x14..+0x1187) identically!
   {
@@ -1108,12 +1121,76 @@ try {
     const totalThps1Goals = THPS1_DEFS.reduce((s, d) => s + (d.goals ? d.goals.length : 0), 0);
     const totalInjectedCol = thps1Man.levels.reduce((s, l) => s + ((l.trgStats && l.trgStats.g5Injected) || 0), 0);
     const totalThps1Assets = thps1Man.totalFiles + (inPlace ? inPlace.bmps.length + inPlace.levelFiles.length : 0);
-    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 5 || totalThps1Assets !== 42) {
-      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/42 ativos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, wad=${thps1Man.totalFiles}, total=${totalThps1Assets}`);
+    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 38 || totalThps1Assets !== 75) {
+      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/38 THPS1.WAD/75 ativos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, wad=${thps1Man.totalFiles}, total=${totalThps1Assets}`);
       t1Err++;
     }
+    // Crash Bandicoot ("Crash B.", Brand-New Slot 20) Forensic Validation:
+    //  1) All 33 Crash binary assets present & valid in THPS1.WAD (skater .PSX <= 67,584 B CSkaterCache limit, 8 Skate Shop decks, 8 3D board-bottom BMPs, portrait, crash_it.psx numObjs=14, 7 cr_*.psx with exact RGBs pointer relocation!)
+    //  2) g_SkaterTable[0..19] ZERO deletions + g_SkaterTable[20] ("Crash B.") unlocked, PT-BR Bio, 8 Crash 3 decks!
+    //  3) tricks.bin Slot 20 = Bob Burnquist [1] normal moveset + Bob's 3 specials [40,41,42] + Rodney Mullen Casper to 360 Flip [73]!
+    let crErr = 0;
+    const reqCrashFiles = [
+      'crash.psx', 'crash_L.psx', 'crashb.psx', 'crashb_L.psx',
+      'crash.psh', 'crash_L.psh', 'crashb.psh', 'crashb_L.psh',
+      's2face20.bmp', 'crash_it.psx',
+      'cr_han_o.psx', 'cr_ware.psx', 'cr_schl.psx', 'cr_mall.psx', 'cr_down.psx', 'cr_jam.psx', 'cr_sf.psx',
+      ...Array.from({ length: 8 }, (_, i) => `s2dCR0${i + 1}c.bmp`),
+      ...Array.from({ length: 8 }, (_, i) => `s2gCR0${i + 1}c.bmp`),
+    ];
+    for (const cName of reqCrashFiles) {
+      const en = thps1Man.entries.find(e => e.name === cName);
+      if (!en) { fail('CRASH20', `Ativo Crash B. ausente em THPS1.WAD: ${cName}`); crErr++; continue; }
+      const raw = thps1Iso.subarray(en.relOffset, en.relOffset + en.size);
+      if (/^crash.*\.psx$/i.test(cName) && cName !== 'crash_it.psx') {
+        if (en.size > 0x10800 || raw.readUInt32LE(0) !== 0x00020004 || raw.readUInt32LE(8) !== 19) {
+          fail('CRASH20', `Modelo ${cName} invalido ou > 67.584 B (CSkaterCache): sz=${en.size}, objs=${raw.readUInt32LE(8)}`); crErr++;
+        }
+      }
+      if (cName === 's2face20.bmp' && (en.size !== 4088 || raw[54 + 21 * 4] !== 255 || raw[54 + 21 * 4 + 1] !== 0 || raw[54 + 21 * 4 + 2] !== 255)) {
+        fail('CRASH20', `Retrato s2face20.bmp invalido (sz=${en.size}, magIdx=21)`); crErr++;
+      }
+      if (/^s2dCR0\dc\.bmp$/.test(cName) && en.size !== 17464) { fail('CRASH20', `Deck ${cName} tamanho ${en.size} != 17464`); crErr++; }
+      if (/^s2gCR0\dc\.bmp$/.test(cName) && en.size !== 3128) { fail('CRASH20', `Board-bottom ${cName} tamanho ${en.size} != 3128`); crErr++; }
+      if (cName === 'crash_it.psx' && (raw.readUInt32LE(0) !== 0x00020004 || raw.readUInt32LE(8) !== 14)) {
+        fail('CRASH20', `crash_it.psx invalido: objs=${raw.readUInt32LE(8)} (esperado 14)`); crErr++;
+      }
+      if (/^cr_.*\.psx$/.test(cName)) {
+        const pm = raw.readUInt32LE(4), nObj = raw.readUInt32LE(8);
+        const rgb0 = nObj > 0 ? raw.readUInt32LE(12 + 32) : 0;
+        if (raw.readUInt32LE(0) !== 0x00020004 || rgb0 !== pm + 8) {
+          fail('CRASH20', `${cName} RGBs pointer nao relocado: rgb0=0x${rgb0.toString(16)} != ptrMeta+8=0x${(pm + 8).toString(16)}`); crErr++;
+        }
+      }
+    }
+    const r2fS = (ram) => 0x800 + (ram - 0x80010000);
+    const readSlusCStr = (ram) => { const o = r2fS(ram); return slusIso.subarray(o, slusIso.indexOf(0, o)).toString('latin1'); };
+    const slot20Off = r2fS(CRASH_ADDR.SkaterEntry20);
+    const crName = readSlusCStr(slusIso.readUInt32LE(slot20Off + 0x20));
+    const crFace = readSlusCStr(slusIso.readUInt32LE(slot20Off + 0x134));
+    const crUnlk = slusIso.readUInt32LE(slot20Off + 0x13C);
+    const crBio0 = readSlusCStr(slusIso.readUInt32LE(r2fS(slusIso.readUInt32LE(slot20Off + 0x138))));
+    if (crName !== 'Crash B.' || crFace !== 's2face20.bmp' || crUnlk !== 1 || !crBio0.includes('Ilha Wumpa')) {
+      fail('CRASH20', `g_SkaterTable[20] invalido: name="${crName}", face="${crFace}", unlk=${crUnlk}, bio0="${crBio0}"`); crErr++;
+    }
+    // Verify tricks.bin Slot 20 = Bob Burnquist [1] 3 specials (36 B) + Rodney Mullen Casper to 360 Flip (12 B) + ALL Bob regular tricks (330 B) + 0x0000!
+    const trIso = getWadEntry(fdMod, 455, hedDisk, 11);
+    const trTbl = trIso.readUInt16LE(0);
+    const bobOff = trIso.readUInt16LE(trTbl + 1 * 2);
+    const crOff  = trIso.readUInt16LE(trTbl + 20 * 2);
+    const rodneyCasper = Buffer.from([0x03,0x00, 0x02,0x00, 0x04,0x00, 0x09,0x00, 0xe7,0x77, 0x32,0xa0]);
+    const okSpecBob = trIso.subarray(crOff, crOff + 36).equals(trIso.subarray(bobOff, bobOff + 36));
+    const okSpecRod = trIso.subarray(crOff + 36, crOff + 48).equals(rodneyCasper);
+    const okRegBob  = trIso.subarray(crOff + 48, crOff + 378).equals(trIso.subarray(bobOff + 36, bobOff + 366));
+    const okTerm    = trIso.readUInt16LE(crOff + 378) === 0;
+    if (trTbl !== 0x8190 || crOff !== 0x81BC || !okSpecBob || !okSpecRod || !okRegBob || !okTerm) {
+      fail('CRASH20', `tricks.bin Slot 20 divergente: tbl=0x${trTbl.toString(16)} crOff=0x${crOff.toString(16)} bobSpec=${okSpecBob} rodSpec=${okSpecRod} bobReg=${okRegBob} term=${okTerm}`); crErr++;
+    }
+    if (crErr === 0) {
+      pass(`Crash B. (Novo Slot 20 — 0 skatistas excluidos!): 33/33 ativos em THPS1.WAD (4 .PSX <= 59.3 KB, 8 shapes s2dCR/s2gCR, crash_it.psx 14 objs + 7 cr_*.psx RGBs ok) + tricks.bin (Bob + Casper to 360 Flip [73]) 100% validos`);
+    }
     if (t1Err === 0) {
-      pass(`THPS1 Zero-Seek CD.WAD + THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): 37 ativos in-place em CD.WAD (18 BMPs LevelSel + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 4 PSXs) + ${thps1Man.totalFiles} em THPS1.WAD (3 BMPs Comp + skvans_t + c_cabl1) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
+      pass(`THPS1 Zero-Seek CD.WAD + THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): 37 ativos in-place em CD.WAD (18 BMPs LevelSel + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 4 PSXs) + ${thps1Man.totalFiles} em THPS1.WAD (5 THPS1 + 33 Crash B.) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
     }
   }
 

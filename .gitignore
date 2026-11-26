@@ -34,3 +34,20 @@ desktop.ini
 
 Arquivos Originais/Arquivos Extraidos - WAD/WAD_Desempacotado/
 Arquivos Originais/Arquivos Classificados/
+
+# ==============================================================================
+# ATIVOS BINÁRIOS PROPRIETÁRIOS E BUILD LOCAL (NUNCA SUBIR AO GITHUB)
+# ==============================================================================
+crash_3_psx/
+EXTRAIDOS_ARQUIVOS_THPS1/
+bin_cue_originais_do_jogo/
+originals_backup/
+build/
+*.psx
+*.psh
+*.wad
+*.hed
+*.dat
+*.obj
+*.mtl
+*.xdelta

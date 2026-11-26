@@ -10,31 +10,31 @@ Este documento mapeia **todas as 11 fases** dentro de `SLUS_010.66` (`g_LevelTab
 
 | Idx | Endereço RAM | Offset `SLUS_010.66` | Nome da Fase | Localização | Prefixo | Comp. | Preview `.STR` |
 | :-: | :---: | :---: | :--- | :--- | :---: | :-: | :--- |
-| 0 | `0x800B8444` | `0x0A8C44` | **The Hangar** | Mullet Falls MT | `hangar` | 0 | `HANGAR.STR` |
-| 1 | `0x800B85B8` | `0x0A8DB8` | **School II** | Southern Cali | `school2` | 0 | `SCHOOL.STR` |
-| 2 | `0x800B872C` | `0x0A8F2C` | **Marseille** | France | `mar` | 1 | `MAR.STR` |
-| 3 | `0x800B88A0` | `0x0A90A0` | **NY City** | New York | `ny` | 0 | `NY.STR` |
-| 4 | `0x800B8A14` | `0x0A9214` | **Venice Beach** | California | `venice` | 0 | `VENICE.STR` |
-| 5 | `0x800B8B88` | `0x0A9388` | **SkateStreet** | Ventura | `ss` | 1 | `SS.STR` |
-| 6 | `0x800B8CFC` | `0x0A94FC` | **Philadelphia** | Pennsylvania | `philly` | 0 | `PHILLY.STR` |
-| 7 | `0x800B8E70` | `0x0A9670` | **The Bullring** | Mexico | `bullring` | 1 | `BULLRING.STR` |
-| 8 | `0x800B8FE4` | `0x0A97E4` | **Chopper Drop** | Hawaii | `b1` | 0 | `B1.STR` |
-| 9 | `0x800B9158` | `0x0A9958` | **Skate Heaven** |  | `heaven` | 0 | `HEAVEN.STR` |
-| 10 | `0x800B92CC` | `0x0A9ACC` | **Custom park name goes here** |  | `sked` | 0 | `EDITOR.STR` |
+| 0 | `0x800B8444` | `0x0A8C44` | **s2dCr09u.bmp** | Transmissionator 2000 | `` | 1 | `HANGAR.STR` |
+| 1 | `0x800B85B8` | `0x0A8DB8` | **?** |  | `` | 0 | `SCHOOL.STR` |
+| 2 | `0x800B872C` | `0x0A8F2C` | **?** |  | `` | 0 | `MAR.STR` |
+| 3 | `0x800B88A0` | `0x0A90A0` | **?** |  | `` | 3128 | `NY.STR` |
+| 4 | `0x800B8A14` | `0x0A9214` | **?** |  | `` | 0 | `VENICE.STR` |
+| 5 | `0x800B8B88` | `0x0A9388` | **?** |  | `` | 2936012800 | `SS.STR` |
+| 6 | `0x800B8CFC` | `0x0A94FC` | **?** |  | `` | 1919512659 | `PHILLY.STR` |
+| 7 | `0x800B8E70` | `0x0A9670` | **?** |  | `` | 1701576815 | `BULLRING.STR` |
+| 8 | `0x800B8FE4` | `0x0A97E4` | **Cristal de Poder Secreto** |  | `Formar C-R-A-S-H` | 2148431572 | `B1.STR` |
+| 9 | `0x800B9158` | `0x0A9958` | **?** |  | `` | 0 | `HEAVEN.STR` |
+| 10 | `0x800B92CC` | `0x0A9ACC` | **?** |  | `` | 0 | `EDITOR.STR` |
 
 ### Objetivos, Dinheiro e Ponteiros de Gaps por Fase
 
-- **[0] The Hangar** (`0x800B8444` | GapList `+0x170` = `0x800BA174`): `+0x30`: "s2rend06.bmp" • `+0x40`: "s2levl07.bmp" • `+0x90`: "Auge do Lixo 10,000" • `+0xa8`: "Quase bom - 25,000" • `+0xc0`: "Rei Noob!!! - 75,000" • `+0xd8`: "Forme o S-K-A-T-E" • `+0xe8`: "BARRELS" • `+0xf0`: "Barrel Hunt" • `+0x100`: "PILOT WINGS" • `+0x108`: "Collect 5 Pilot Wings" • `+0x118`: "NOSEGRIND" • `+0x120`: "Nosegrind Over The Pipe" • `+0x130`: "Hangtime Gaps" • `+0x138`: "Hit 3 Hangtime Gaps"
-- **[1] School II** (`0x800B85B8` | GapList `+0x170` = `0x800BA174`): `+0x30`: "s2rend04.bmp" • `+0x40`: "s2levl04.bmp" • `+0x90`: "Level lixo - 15,000" • `+0xa8`: "Noob faz  - 40,000" • `+0xc0`: "Zezao fez - 100,000  " • `+0xd8`: "Forme o S-K-A-T-E" • `+0xe8`: "School Bells" • `+0xf0`: "Wallride 5 Bells" • `+0x100`: "Hall Passes" • `+0x108`: "Collect 5 Hall Passes" • `+0x118`: "Kickflip" • `+0x120`: "Kickflip TC's Roof Gap" • `+0x130`: "Roll Call Rails" • `+0x138`: "Grind 3 Roll Call Rails"
-- **[2] Marseille** (`0x800B872C` | GapList `+0x170` = `0x800BA1A0`): `+0x30`: "s2rend01.bmp" • `+0x40`: "s2levl01.bmp" • `+0x90`: "Temp Score" • `+0xa8`: "Temp Score" • `+0xc0`: "Temp Score" • `+0xd8`: "Temp Score" • `+0xf0`: "Temp Score" • `+0x108`: "Temp Score" • `+0x120`: "Temp Score" • `+0x138`: "Temp Score" • `+0x150`: "Temp Score" • `+0x168`: "Temp Score"
-- **[3] NY City** (`0x800B88A0` | GapList `+0x170` = `0x800BA1F8`): `+0x30`: "s2rend03.bmp" • `+0x40`: "s2levl03.bmp" • `+0x90`: "High Score - 20,000" • `+0xa8`: "Pro Score - 50,000" • `+0xc0`: "SICK Score! - 150,000" • `+0xd8`: "Forme o S-K-A-T-E" • `+0xe8`: "HYDRANTS" • `+0xf0`: "Ollie the Hydrants" • `+0x100`: "SUBWAY TOKENS" • `+0x108`: "5 Subway Tokens" • `+0x118`: "50-50" • `+0x120`: "50-50 Joey's Sculpture" • `+0x138`: "Grind the Subway Rails" • `+0x150`: "Acho a Porra da Fita"
-- **[4] Venice Beach** (`0x800B8A14` | GapList `+0x170` = `0x800BA1B8`): `+0x30`: "s2rend07.bmp" • `+0x40`: "s2levl06.bmp" • `+0x90`: "High Score - 40,000" • `+0xa8`: "Pro Score - 100,000" • `+0xc0`: "SICK Score! - 200,000" • `+0xd8`: "Forme o S-K-A-T-E" • `+0xe8`: "Bums" • `+0xf0`: "Pule o Bebum 5x       " • `+0x100`: "Spray Cans" • `+0x108`: "Collect 5 Spray Cans" • `+0x118`: "Tailslide" • `+0x120`: "Tailslide Venice Ledge" • `+0x130`: "VB Transfers" • `+0x138`: "Hit 4 VB Transfers"
-- **[5] SkateStreet** (`0x800B8B88` | GapList `+0x170` = `0x800BA174`): `+0x30`: "s2rend02.bmp" • `+0x40`: "s2levl02.bmp" • `+0x90`: "NOOB BRONZE " • `+0xa8`: "NOOB PRATA  " • `+0xc0`: "NOOB OURO " • `+0xd8`: "Almost a Million!" • `+0xf0`: "Almost a Million!" • `+0x108`: "Almost a Million!" • `+0x120`: "Almost a Million!" • `+0x138`: "Almost a Million!" • `+0x150`: "Almost a Million!" • `+0x168`: "Almost a Million!"
-- **[6] Philadelphia** (`0x800B8CFC` | GapList `+0x170` = `0x800BA1D4`): `+0x30`: "s2rend05.bmp" • `+0x40`: "s2levl05.bmp" • `+0x90`: "High Score - 50,000" • `+0xa8`: "Pro Score - 125,000" • `+0xc0`: "SICK Score! - 250,000" • `+0xd8`: "Forme o S-K-A-T-E" • `+0xe8`: "FOUNTAIN" • `+0xf0`: "Seco a fonte, Noob" • `+0x100`: "LIBERTY BELLS" • `+0x108`: "Collect 5 Bells" • `+0x118`: "Blunt" • `+0x120`: "Bluntslide the Awning" • `+0x130`: "Phillyside Lips" • `+0x138`: "Liptrick 4 Skatepark Lips"
-- **[7] The Bullring** (`0x800B8E70` | GapList `+0x170` = `0x800BA218`): `+0x30`: "s2rend08.bmp" • `+0x40`: "s2levl08.bmp" • `+0x90`: "High Score A" • `+0xa8`: "High Score A" • `+0xc0`: "High Score A" • `+0xd8`: "High Score A" • `+0xf0`: "High Score A" • `+0x108`: "High Score A" • `+0x120`: "High Score A" • `+0x138`: "High Score A" • `+0x150`: "Ten Million!" • `+0x168`: "Ten Million!"
-- **[8] Chopper Drop** (`0x800B8FE4` | GapList `+0x170` = `0x800BA174`): `+0x30`: "s2rend09.bmp" • `+0x40`: "s2levl09.bmp"
-- **[9] Skate Heaven** (`0x800B9158` | GapList `+0x170` = `0x800BA22C`): `+0x30`: "s2rend10.bmp" • `+0x40`: "s2levl00.bmp"
-- **[10] Custom park name goes here** (`0x800B92CC` | GapList `+0x170` = `0x800BA188`): `+0x30`: "s2rend11.bmp" • `+0x40`: "s2levl10.bmp" • `+0x90`: "High Score A" • `+0xa8`: "High Score A" • `+0xc0`: "High Score A" • `+0xd8`: "High Score A" • `+0xf0`: "High Score A" • `+0x108`: "High Score A" • `+0x120`: "High Score A" • `+0x138`: "High Score A" • `+0x150`: "Ten Million!" • `+0x168`: "Ten Million!"
+- **[0] s2dCr09u.bmp** (`0x800B8444` | GapList `+0x170` = `0x00000005`): `+0x20`: "s2dCr10u.bmp" • `+0x24`: "Zero Team" • `+0x40`: "s2dCr11u.bmp" • `+0x44`: "A-Team Team Deck" • `+0x60`: "s2dCr12u.bmp" • `+0x64`: "Birdhouse Team Seal" • `+0x80`: "s2dCr13u.bmp" • `+0x84`: "Team Silhouette" • `+0xa0`: "s2dCr14u.bmp" • `+0xa4`: "17th/21st Lancers" • `+0xc0`: "s2dCr15u.bmp" • `+0xc4`: "Flip New Wave" • `+0xe0`: "s2dCr16u.bmp" • `+0xe4`: "Race"
+- **[1] ?** (`0x800B85B8` | GapList `+0x170` = `0x00000000`): 
+- **[2] ?** (`0x800B872C` | GapList `+0x170` = `0x00115000`): 
+- **[3] ?** (`0x800B88A0` | GapList `+0x170` = `0x3C03800C`): 
+- **[4] ?** (`0x800B8A14` | GapList `+0x170` = `0x1719FFFD`): 
+- **[5] ?** (`0x800B8B88` | GapList `+0x170` = `0x2E633230`): 
+- **[6] ?** (`0x800B8CFC` | GapList `+0x170` = `0x716E7275`): 
+- **[7] ?** (`0x800B8E70` | GapList `+0x170` = `0x800E7434`): `+0x68`: "Direto da Ilha Wumpa" • `+0x6c`: "para o skate mundial!" • `+0x70`: "Criado pelo Dr. Cortex," • `+0x74`: "Crash escapou do" • `+0x78`: "castelo girando tudo" • `+0x7c`: "e trouxe Aku Aku para" • `+0x80`: "proteger seus combos." • `+0x84`: "Domina todas manobras" • `+0x88`: "e especiais do Bob" • `+0x8c`: "Burnquist, além do" • `+0x90`: "lendário Casper to 360" • `+0x94`: "Flip de Rodney Mullen." • `+0x98`: "Pegue Frutas Wumpa," • `+0x9c`: "Cristais e Relíquias!"
+- **[8] Cristal de Poder Secreto** (`0x800B8FE4` | GapList `+0x170` = `0x00000000`): `+0x18`: "Cristal de Poder Secreto" • `+0x20`: "Formar C-R-A-S-H" • `+0x28`: "5 Mascaras Uka Uka" • `+0x30`: "Cristal de Poder Secreto" • `+0x38`: "Formar C-R-A-S-H" • `+0x40`: "5 Cristais de Poder" • `+0x48`: "Cristal de Poder Secreto" • `+0x50`: "Fruta Wumpa +50!" • `+0x58`: "Gema Warp +100!" • `+0x60`: "Reliquia Ouro +250!" • `+0x68`: "Todas Wumpas da Fase!" • `+0x70`: "Wumpas"
+- **[9] ?** (`0x800B9158` | GapList `+0x170` = `0x00000000`): 
+- **[10] ?** (`0x800B92CC` | GapList `+0x170` = `0x00000000`): 
 
 ---
 

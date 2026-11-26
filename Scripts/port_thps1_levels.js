@@ -857,7 +857,20 @@ function main() {
   fs.writeFileSync(path.join(ROOT, 'CD.HED'), curCdHed);
   console.log(`  [FAST-CDWAD] 18 BMPs LevelSel gravados in-place em CD.WAD[573] (LBA 7955) & CD.WAD[578] (LBA 8049) (0 shift!).`);
   console.log(`  [FAST-CDWAD] ${cdWadZoneMeta.length} arquivos THPS1 (9 TRGs + 4 PSXs + 6 sk*_o.psx esculpidos) gravados na zona fechada CD.WAD[1127..1185] (${packedSec}/${zoneTotalSec} setores, delta=${packedSec - zoneTotalSec}, 0 shift em todos 1.472 itens THPS2!).`);
-  console.log(`  [PACK]       ${remainingForThps1Wad.length} arquivos exclusivos empacotados em THPS1.WAD (ultraleve!).`);
+
+  // Append all binary Crash Bandicoot (Slot 20) assets from build/crash_assets/ into THPS1.WAD (0 CD.WAD shift!)
+  const crashAssetsDir = path.join(ROOT, 'build', 'crash_assets');
+  if (fs.existsSync(crashAssetsDir)) {
+    const crashFiles = fs.readdirSync(crashAssetsDir)
+      .filter(f => /\.(psx|psh|bmp)$/i.test(f))
+      .sort();
+    for (const f of crashFiles) {
+      const buf = fs.readFileSync(path.join(crashAssetsDir, f));
+      remainingForThps1Wad.push({ name: f, hash: nsHash(f), buf });
+    }
+    console.log(`  [CRASH-WAD]  +${crashFiles.length} ativos exclusivos de Crash B. (Slot 20) anexados em THPS1.WAD!`);
+  }
+  console.log(`  [PACK]       ${remainingForThps1Wad.length} arquivos exclusivos empacotados em THPS1.WAD.`);
 
   const wadChunks = [];
   let relOffset = 0;

@@ -72,7 +72,7 @@ const THPS1_ADDR = {
   ExtLightTable:     0x800E8000, // 20 * 52 = 1,040 B -> 0x800E8410
   ExtShadowTable:    0x800E8410, // 20 * 16 = 320 B   -> 0x800E8550
   ExtSkyTable:       0x800E8550, // 20 * 64 = 1,280 B -> 0x800E8A50
-  Thps1Hed:          0x800E8A50, // up to 7 * 12 + 4 = 88 B -> 0x800E8AA8 (5 THPS1.WAD entries = 64 B!)
+  Thps1Hed:          0x800B873C, // Relocated into freed SLUS g_LevelTable RAM (52 * 12 + 4 = 628 B -> 0x800B89B0!)
   TurboBurstBase:    0x800E8AB0, // 672 B -> 0x800E8D50: Entry_BurstCdOpen (contiguous CD-ROM streaming cache!)
   Thps1StringsSpill: 0x800E8D50, // 688 B overflow string pool -> 0x800E9000 (ZERO NewHeapStart shift!)
 
@@ -691,19 +691,8 @@ function buildThps1ResidentBlock() {
     }
   }
 
-  // --- E. THPS1.HED Lookup Table @ 0x800E8A50 (must stop cleanly before TurboBurstBase @ 0x800E8AB0!) ---
-  const maxHedEntries = Math.floor((THPS1_ADDR.TurboBurstBase - THPS1_ADDR.Thps1Hed - 4) / 12);
-  if (manifest.entries.length > maxHedEntries) {
-    throw new Error(`Too many THPS1.WAD entries (${manifest.entries.length} > ${maxHedEntries} before TurboBurstBase)`);
-  }
-  let hedOff = THPS1_ADDR.Thps1Hed - THPS1_ADDR.Base;
-  for (const e of manifest.entries) {
-    block.writeUInt32LE(e.hash >>> 0, hedOff + 0);
-    block.writeUInt32LE(e.relOffset >>> 0, hedOff + 4);
-    block.writeUInt32LE(e.size >>> 0, hedOff + 8);
-    hedOff += 12;
-  }
-  block.writeUInt32LE(0, hedOff); // null terminator
+  // --- E. THPS1.HED Lookup Table is now relocated inside SLUS_010.66 @ 0x800B873C (written by mod_crash_engine.js!) ---
+  const maxHedEntries = 52;
 
   // --- E2. Assemble Turbo CD-ROM Burst Cache @ 0x800E8AB0 (464 B) & Throttle/Free Helpers @ 0x800E9ED0 (304 B) ---
   putAt(THPS1_ADDR.TurboBurstBase, assembleTurboBurstCode());
@@ -785,10 +774,18 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
 
   // --------------------------------------------------------------------------
   // Leaf Helper: Helper_ExtCareerPtr(SCareerSkater* $a0) -> $v0 = &g_ExtCareer[skaterIdx]
-  //   Computes skaterIdx = ($a0 - 0x800BA78C) / 228 (exact integer division, 0..19)
+  //   For Slot 20 Crash B. ($a0 == 0x800B85C4), returns dedicated g_CrashExtCareer (0x800B86D8)!
+  //   For Slots 0..19, computes skaterIdx = ($a0 - 0x800BA78C) / 228 (exact integer division, 0..19).
   //   Clobbers: $v0, $v1, $t8, $t9 (preserves $a0..$a3, $t0..$t7, $s0..$s7, $ra!)
   // --------------------------------------------------------------------------
   a.label('Helper_ExtCareerPtr');
+  a.la(R.t8, 0x800B85C4);          // g_CrashCareerData (Slot 20 Crash B.!)
+  a.bne(R.a0, R.t8, 'ecp_std');
+  a.nop();
+  a.la(R.v0, 0x800B86D8);          // g_CrashExtCareer (100 B in freed SLUS RAM!)
+  a.jr(R.ra);
+  a.nop();
+  a.label('ecp_std');
   a.la(R.t8, SYM.g_SkaterProgBase);
   a.subu(R.v0, R.a0, R.t8);
   a.addiu(R.t9, R.zero, 228);
@@ -1131,7 +1128,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.j('cliom_ret');
   a.nop();
 
-  // Non-Career modes (Free Skate / Single Session / 2P): open if ANY skater (0..19) has unlocked it!
+  // Non-Career modes (Free Skate / Single Session / 2P): open if ANY skater (0..20) has unlocked it!
   a.label('cliom_other_modes');
   a.move(R.s0, R.zero);
   a.label('cliom_any_loop');
@@ -1142,7 +1139,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.move(R.a1, R.v0);
   a.bne(R.v0, R.zero, 'cliom_yes');
   a.addiu(R.s0, R.s0, 1);
-  a.slti(R.v0, R.s0, 20);
+  a.slti(R.v0, R.s0, 21);
   a.bne(R.v0, R.zero, 'cliom_any_loop');
   a.nop();
   a.move(R.v0, R.zero);
@@ -1697,7 +1694,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
 
   // --------------------------------------------------------------------------
   // 24. Hook_CareerResetExt [jal @ 0x80023988 inside Career_InitAll]
-  //     Zeroes g_ExtCareer[2000 B] and tail-jumps to original 0x8002C4D8!
+  //     Zeroes g_ExtCareer[2000 B], then tail-jumps to Hook_CrashCareerReset (0x800B89F0 -> 0x8002C4D8)!
   // --------------------------------------------------------------------------
   a.label('Hook_CareerResetExt');
   a.la(R.t8, THPS1_ADDR.ExtCareer);
@@ -1707,7 +1704,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.addiu(R.t8, R.t8, 4);
   a.bne(R.t8, R.t9, 'cre_loop');
   a.nop();
-  a.j(0x8002C4D8);
+  a.j(0x800B89B0);                 // Hook_CrashCareerReset -> resets Crash B. Slot 20 & tail-jumps to 0x8002C4D8!
   a.nop();
 
   // --------------------------------------------------------------------------
@@ -2716,8 +2713,8 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   hedBuf.writeUInt32LE(lpNewSz >>> 0, 47 * 12 + 8);
   console.log(`  [OK] levelsel.bin atualizado em WAD[33] (0x${lsOff.toString(16)}) e levelsel.pre (0x${lsPreOff.toString(16)}, +s2arrow8/9 -> ${lpNewSz}/${lpSlotSz} B, mesmos 138 setores!)`);
 
-  // --- C. Patch options.bin (WAD[37]) ---
-  console.log('\n=== Aplicando Relocacao g_LevelTable em options.bin ===');
+  // --- C. Patch options.bin (WAD[37]) & remaining 5 frontend overlays (zero refs left to 0x800B8444..9437!) ---
+  console.log('\n=== Aplicando Relocacao g_LevelTable em options.bin e Overlays de Frontend ===');
   const optOff = hedBuf.readUInt32LE(37 * 12 + 4);
   const optSz  = hedBuf.readUInt32LE(37 * 12 + 8);
   const optOrig = origWad.subarray(optOff, optOff + optSz);
@@ -2726,6 +2723,29 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   if (optRelocs !== 8) throw new Error(`Expected 8 g_LevelTable relocs in options.bin, got ${optRelocs}`);
   optMod.copy(wadBuf, optOff);
   console.log(`  [OK] options.bin atualizado em WAD[37] (0x${optOff.toString(16)})`);
+
+  // Relocate the 1 remaining g_LevelTable ref (0x800B8450 -> 0x800E600C) in each frontend overlay so
+  // 0x800B8444..0x800B943F is 100% dead & safely reusable for Crash B. (Slot 20)!
+  for (const [idx, nm, preIdx] of [
+    [35, 'multisel.bin', null],
+    [39, 'equipsel.bin', 48],
+    [41, 'tricksel.bin', null],
+    [61, 'playsel.bin',  null],
+    [67, 'creedit.bin',  null],
+  ]) {
+    const o = hedBuf.readUInt32LE(idx * 12 + 4);
+    const s = hedBuf.readUInt32LE(idx * 12 + 8);
+    const origOv = origWad.subarray(o, o + s);
+    // Start from live wadBuf slice to preserve any existing voice/fade patches (e.g. playsel.bin)!
+    const modOv = Buffer.from(wadBuf.subarray(o, o + s));
+    const n = relocateLevelTableRefs(modOv, origOv, 0, origOv.length, nm);
+    if (n !== 1) throw new Error(`Expected 1 g_LevelTable reloc in ${nm}, got ${n}`);
+    modOv.copy(wadBuf, o);
+    if (preIdx !== null) {
+      const preOff = hedBuf.readUInt32LE(preIdx * 12 + 4) + 0x18;
+      modOv.copy(wadBuf, preOff);
+    }
+  }
 }
 
 module.exports = {
