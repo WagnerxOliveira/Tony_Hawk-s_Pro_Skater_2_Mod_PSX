@@ -1163,6 +1163,25 @@ try {
       if (/^crash.*\.psx$/i.test(cName) && cName !== 'crash_it.psx') {
         if (en.size > 0x10800 || raw.readUInt32LE(0) !== 0x00020004 || raw.readUInt32LE(8) !== 19) {
           fail('CRASH20', `Modelo ${cName} invalido ou > 67.584 B (CSkaterCache): sz=${en.size}, objs=${raw.readUInt32LE(8)}`); crErr++;
+        } else {
+          // Verify native THPS2 Gouraud hardware invariants on ALL 19 meshes (fl0=0x0008, nN=nV+nF, w24=0xFFFF7FFF)
+          const meshOffBase = 12 + 19 * 36 + 4;
+          for (let mi = 0; mi < 19; mi++) {
+            const mo = raw.readUInt32LE(meshOffBase + mi * 4);
+            const fl0 = raw.readUInt16LE(mo), nV = raw.readUInt16LE(mo + 2), nN = raw.readUInt16LE(mo + 4), nF = raw.readUInt16LE(mo + 6), w24 = raw.readUInt32LE(mo + 24);
+            if (fl0 !== 0x0008 || nN !== nV + nF || w24 !== 0xFFFF7FFF) {
+              fail('CRASH20', `${cName} M[${mi}] viola formato Gouraud nativo (fl0=0x${fl0.toString(16)} nN=${nN} vs nV+nF=${nV+nF} w24=0x${w24.toString(16)})`);
+              crErr++; break;
+            }
+          }
+        }
+      }
+      if (/^crash.*\.psh$/i.test(cName)) {
+        const expPfx = cName.replace(/\.psh$/i, '').toUpperCase() + 'PART_';
+        const cnt = (raw.toString('ascii').match(new RegExp(expPfx, 'g')) || []).length;
+        if (cnt !== 19) {
+          fail('CRASH20', `${cName} sem 19 entradas ${expPfx} (encontradas ${cnt}) — causaria colapso PlaySel & overwrite de CTex[1]!`);
+          crErr++;
         }
       }
       if (cName === 's2face20.bmp' && (en.size !== 4088 || raw[54 + 21 * 4] !== 255 || raw[54 + 21 * 4 + 1] !== 0 || raw[54 + 21 * 4 + 2] !== 255)) {
@@ -1205,7 +1224,7 @@ try {
       fail('CRASH20', `tricks.bin Slot 20 divergente: tbl=0x${trTbl.toString(16)} crOff=0x${crOff.toString(16)} bobSpec=${okSpecBob} rodSpec=${okSpecRod} bobReg=${okRegBob} term=${okTerm}`); crErr++;
     }
     if (crErr === 0) {
-      pass(`Crash B. (Novo Slot 20 — 0 skatistas excluidos!): 33/33 ativos em THPS1.WAD (4 .PSX <= 59.3 KB, 8 shapes s2dCR/s2gCR, crash_it.psx 14 objs + 7 cr_*.psx RGBs ok) + tricks.bin (Bob + Casper to 360 Flip [73]) 100% validos`);
+      pass(`Crash B. (Novo Slot 20 — 0 skatistas excluidos!): 33/33 ativos em THPS1.WAD (4 .PSX <= 67.5 KB c/ Gouraud nativo fl0=8/nN=nV+nF + 4 .PSH CRASH*PART_, 8 shapes s2dCR/s2gCR, crash_it.psx 14 objs + 7 cr_*.psx RGBs ok) + tricks.bin (Bob + Casper to 360 Flip [73]) 100% validos`);
     }
     if (t1Err === 0) {
       pass(`THPS1 Zero-Seek CD.WAD + THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): 37 ativos in-place em CD.WAD (18 BMPs LevelSel + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 4 PSXs) + ${thps1Man.totalFiles} em THPS1.WAD (5 THPS1 + 33 Crash B.) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);

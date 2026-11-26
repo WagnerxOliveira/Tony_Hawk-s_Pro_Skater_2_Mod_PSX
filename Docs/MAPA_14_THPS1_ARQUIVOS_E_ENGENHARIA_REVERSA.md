@@ -27,7 +27,7 @@ flowchart TB
     DUMP --> EXT["Scripts/extract_thps1.js<br/>Parser CD.HED ASCII + Desempacotador .PRE"]
     EXT --> TREE["📂 EXTRAIDOS_ARQUIVOS_THPS1/<br/>669 arquivos do CD.WAD + 58 sub-arquivos .PRE<br/>organizados em 9 categorias / 25 subpastas"]
     TREE --> PORT["Scripts/port_thps1_levels.js + mod_thps1_custom_objects.js<br/>• Converte 2.301 trilhos .TRG + 68 moedas -> $100 Cash + 333 remapes SFX/Shatter<br/>• Esculpe 6 objetos 3D satiricos (fl=0x2003) nos sk*_o.psx<br/>• Injeta 30 coletaveis Type 5 subtype 33 (5 por fase regular, Mall #3/#4 auditados)<br/>• Gera 18 BMPs Level Select + 3 telas Comp (t1comp0..2.bmp) + 60 metas + 24 Gaps"]
-    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,11 MB • 566 setores • 38 arquivos prioritários"]
+    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,12 MB • 574 setores • 38 arquivos prioritários"]
     WAD --> ENG["⚡ Motor Residente MIPS (0x800E6000..0x800EC7FF)<br/>• g_ExtLevelTable[20] (60 metas) + g_Thps1GapList[24] + CASHART @ 0x800EB000<br/>• Hook_CdWadFallback + Entry_CompLoadBmp + FastBurst 1-Visita + Fade 2×<br/>• 70+13+8 relocações + Carrossel Intercalado 19 fases"]
 ```
 
@@ -127,7 +127,7 @@ Em vez de duplicar 7,7 MB de geometria ou forçar o canhão laser a saltar até 
   - **9 arquivos `.TRG` integralmente convertidos** (2.301 trilhos + 68 moedas → `$100 Cash` + **30 coletáveis 3D `Type 5 subtype 33` injetados** — 5 por fase regular, com Malas #3/#4 de *Mall NY* auditadas em espaço aberto contra os 11.126 triângulos — + **333 remapes cirúrgicos SFX/Shatter** (`84` shatters + `249` SFX) + `C_Cable → C_Cabl1`),
   - **6 arquivos `sk*_o.psx` com novos objetos 3D geométricos esculpidos** (`skware_o`, `skschl_o`, `skmall_o`, `skdown_o`, `skjam_o`, `sksf_o`: `+2,8 KB..+3,9 KB` cada, todos em `fl = 0x2003` full-quad + texturas `64×48` 4-bit 16 cores),
   - **4 `.PSX` divergentes do THPS1 USA** (`skware.psx`, `skware_2.psx`, `skware_l.psx`, `skschl.psx`).
-- **`THPS1.WAD` ultraleve (50º arquivo da ISO, `1,11 MB` / `566 setores`, apenas 38 arquivos sem correspondente em `CD.WAD`):** `skvans_t.psx` (Chicago), `c_cabl1.psx` (bonde 11 texturas de San Francisco) e as **3 telas oficiais de competição `512×240` 8bpp** (`t1comp0.bmp` *Skate Park Chicago*, `t1comp1.bmp` *Burnside* e `t1comp2.bmp` *Roswell*, `123.960 B` / `61` set. cada, despachadas por `Entry_CompLoadBmp @ 0x80022E2C`).
+- **`THPS1.WAD` ultraleve (50º arquivo da ISO, `1,12 MB` / `574 setores`, apenas 38 arquivos sem correspondente em `CD.WAD`):** `skvans_t.psx` (Chicago), `c_cabl1.psx` (bonde 11 texturas de San Francisco) e as **3 telas oficiais de competição `512×240` 8bpp** (`t1comp0.bmp` *Skate Park Chicago*, `t1comp1.bmp` *Burnside* e `t1comp2.bmp` *Roswell*, `123.960 B` / `61` set. cada, despachadas por `Entry_CompLoadBmp @ 0x80022E2C`).
 
 No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (38 entradas) PRIMEIRO** (sem nunca chamar `CdSearchFile` em runtime — calcula `thps1BaseLba = g_VoicesBaseLba + 1174` diretamente da RAM!) e cai imediatamente para o `CD.HED` original (com suporte a `TURBO_BURST`), lendo todos os 37 ativos *in-place* em velocidade nativa de `CD.WAD`!
 
@@ -147,32 +147,32 @@ No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (38 en
 | 10 | `cr_schl.psx` | `0X68A59D9C` | `0x0009A800` | 28.264 B | 14 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
 | 11 | `cr_sf.psx` | `0X9B1036D7` | `0x000A1800` | 19.740 B | 10 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
 | 12 | `cr_ware.psx` | `0X72DCD2F4` | `0x000A6800` | 14.640 B | 8 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 13 | `crash.psh` | `0X5940ABF0` | `0x000AA800` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 14 | `crash.psx` | `0X3484B2F7` | `0x000AB000` | 57.276 B | 28 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 15 | `crash_L.psh` | `0X368F2C63` | `0x000B9000` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 16 | `crash_L.psx` | `0X5B4B3564` | `0x000B9800` | 57.276 B | 28 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 17 | `crash_it.psx` | `0X05C40400` | `0x000C7800` | 37.556 B | 19 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 18 | `crashb.psh` | `0X4182EC70` | `0x000D1000` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 19 | `crashb.psx` | `0X2C46F577` | `0x000D1800` | 57.276 B | 28 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 20 | `crashb_L.psh` | `0XC92233C6` | `0x000DF800` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 21 | `crashb_L.psx` | `0XA4E62AC1` | `0x000E0000` | 57.276 B | 28 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 22 | `s2dCR01c.bmp` | `0XA9EE8B60` | `0x000EE000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 23 | `s2dCR02c.bmp` | `0X95D9E987` | `0x000F2800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 24 | `s2dCR03c.bmp` | `0X74812181` | `0x000F7000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 25 | `s2dCR04c.bmp` | `0XBA139E97` | `0x000FB800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 26 | `s2dCR05c.bmp` | `0X5B4B5691` | `0x00100000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 27 | `s2dCR06c.bmp` | `0X677C3476` | `0x00104800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 28 | `s2dCR07c.bmp` | `0X8624FC70` | `0x00109000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 29 | `s2dCR08c.bmp` | `0X55C5B8F6` | `0x0010D800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 30 | `s2face20.bmp` | `0XDFA771FF` | `0x00112000` | 4.088 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 31 | `s2gCR01c.bmp` | `0X0E7967D6` | `0x00113000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 32 | `s2gCR02c.bmp` | `0X324E0531` | `0x00114000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 33 | `s2gCR03c.bmp` | `0XD316CD37` | `0x00115000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 34 | `s2gCR04c.bmp` | `0X1D847221` | `0x00116000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 35 | `s2gCR05c.bmp` | `0XFCDCBA27` | `0x00117000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 36 | `s2gCR06c.bmp` | `0XC0EBD8C0` | `0x00118000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 37 | `s2gCR07c.bmp` | `0X21B310C6` | `0x00119000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 38 | `s2gCR08c.bmp` | `0XF2525440` | `0x0011A000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 13 | `crash.psh` | `0X5940ABF0` | `0x000AA800` | 1.381 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 14 | `crash.psx` | `0X3484B2F7` | `0x000AB000` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 15 | `crash_L.psh` | `0X368F2C63` | `0x000BA000` | 1.423 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 16 | `crash_L.psx` | `0X5B4B3564` | `0x000BA800` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 17 | `crash_it.psx` | `0X05C40400` | `0x000C9800` | 37.556 B | 19 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 18 | `crashb.psh` | `0X4182EC70` | `0x000D3000` | 1.402 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 19 | `crashb.psx` | `0X2C46F577` | `0x000D3800` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 20 | `crashb_L.psh` | `0XC92233C6` | `0x000E2800` | 1.444 B | 1 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 21 | `crashb_L.psx` | `0XA4E62AC1` | `0x000E3000` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 22 | `s2dCR01c.bmp` | `0XA9EE8B60` | `0x000F2000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 23 | `s2dCR02c.bmp` | `0X95D9E987` | `0x000F6800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 24 | `s2dCR03c.bmp` | `0X74812181` | `0x000FB000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 25 | `s2dCR04c.bmp` | `0XBA139E97` | `0x000FF800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 26 | `s2dCR05c.bmp` | `0X5B4B5691` | `0x00104000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 27 | `s2dCR06c.bmp` | `0X677C3476` | `0x00108800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 28 | `s2dCR07c.bmp` | `0X8624FC70` | `0x0010D000` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 29 | `s2dCR08c.bmp` | `0X55C5B8F6` | `0x00111800` | 17.464 B | 9 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 30 | `s2face20.bmp` | `0XDFA771FF` | `0x00116000` | 4.088 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 31 | `s2gCR01c.bmp` | `0X0E7967D6` | `0x00117000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 32 | `s2gCR02c.bmp` | `0X324E0531` | `0x00118000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 33 | `s2gCR03c.bmp` | `0XD316CD37` | `0x00119000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 34 | `s2gCR04c.bmp` | `0X1D847221` | `0x0011A000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 35 | `s2gCR05c.bmp` | `0XFCDCBA27` | `0x0011B000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 36 | `s2gCR06c.bmp` | `0XC0EBD8C0` | `0x0011C000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 37 | `s2gCR07c.bmp` | `0X21B310C6` | `0x0011D000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 38 | `s2gCR08c.bmp` | `0XF2525440` | `0x0011E000` | 3.128 B | 2 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
 
 ---
 
