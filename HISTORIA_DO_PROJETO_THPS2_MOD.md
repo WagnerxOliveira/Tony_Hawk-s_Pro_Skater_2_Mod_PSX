@@ -488,37 +488,133 @@ flowchart LR
 
 ---
 
-## Capítulo 16 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 16 — Turbo nos Menus & Carregamento, Telas de Competição do THPS1 (*Chicago*, *Burnside* & *Roswell*), Malas #3/#4 em *Mall NY* & Som de Caixa + Skatista Zero-Stall em *School Miami* e no THPS1
+
+Depois de expandir as 6 fases regulares do THPS1 para 10 objetivos completos com 6 novos objetos 3D esculpidos, partimos para o **polimento de nível estúdio** em quatro frentes que transformam completamente a sensação do jogo no controle: **velocidade real de navegação entre menus até o início da fase**, **telas de apresentação das competições do THPS1**, **auditoria geométrica 3D de coletáveis em *Mall New York*** e **áudio simultâneo de impacto de caixa + voz de esbarrão do skatista sem 1 único frame de travamento**!
+
+### 1. Turbo nos Menus e no Carregamento até a Fase Começar (Eliminando Seeks Inúteis do Laser CD-ROM!)
+
+No PlayStation 1, a CPU roda a `33,8 MHz`, mas o verdadeiro vilão do tempo de espera é o **braço mecânico do leitor de CD-ROM 2×**: toda vez que o jogo salta de uma ponta do disco (`LBA ~10.000`, dentro do `CD.WAD`) para a outra ponta (`LBA 317.893+`, onde moram `VOICES.DAT` e `THPS1.WAD`) — ou pausa e retoma a música `COMPILED.XA` repetidas vezes — o console desperdiça **centenas de milissegundos em cada salto**!
+
+Cronometrando frame a frame via GDB no DuckStation (`60 Hz`), localizamos **4 gargalos reais** no caminho `Main Menu → Seleção de Skatistas → Seleção de Fases → Lista de Objetivos → Gameplay`, e eliminamos os quatro com cirurgia MIPS:
+
+1. **`LULAO_CASHART` Boot-Residente em RAM (`0x800EB000..0x800EC7FF` — `-1,92 s` em TODA fase do Lulão!):**
+   - Antes, toda vez que o Lulão carregava **qualquer fase**, `Hook_PsxUpload` interceptava `items.psx`, alocava um buffer temporário, pausava a música `COMPILED.XA`, mandava o laser viajar **318.000 setores** até o final de `VOICES.DAT` só para ler `6 KB` (3 setores) das notas com a cara do Lulão e depois voltar para `CD.WAD` para ler `bits.psx`!
+   - **Solução definitiva:** movemos os 3 setores de `LULAO_CASHART` para os **setores residentes `17..19`** no início de `VOICES.DAT` (expandindo a arena residente de `17` para **`20` setores = `40 KB`** carregados uma única vez no boot, com `NewHeapStart = 0x800EC800` e **zero crescimento total de `VOICES.DAT`**, que permanece em exatos `1.174` setores!).
+   - Resultado: `Hook_PsxUpload` lê a arte das notas direto da RAM em **`< 0,15 ms`** (**zero `CdRead`, zero `XA_Pause`, zero `Mem_Alloc`**), derrubando a etapa `items.psx → bits.psx` de **`139 frames (2,32 s)` → `24 frames (0,40 s)`** (**`-115 frames / -1,92 s` economizados em toda fase!**).
+2. **`FastBurst` Unificado com 1 Única Visita a `THPS1.WAD` (`-1,55 s` / `-20%` ao abrir o Level Select!):**
+   - Antes, o construtor da Seleção de Fases visitava `THPS1.WAD` **duas vezes** (uma para `t1rend00..08`, voltando ao `CD.WAD` para `s2levl`, e depois indo de novo a `THPS1.WAD` para `t1levl00..08`) e pausava/retomava o `COMPILED.XA` separadamente entre cada etapa!
+   - Reestruturamos `FastBurstRendDesc` (`0x800E7E10`) e `FastBurstMapDesc` (`0x800E7E20`) usando duas variáveis residentes novas (`g_SavedRendSprites @ 0x800E96F4` e `g_FastBurstXaSaved @ 0x800E96F8`): `CLevelRend` agora lê apenas `s2rend`, **mantém o `XA` pausado** durante os pequenos arquivos de interface (`s2levl11`, `s2arrow8/9`) e entrega o bastão para `CLevelMap`, que lê `s2levl` e faz **uma única viagem contígua (0 seek!)** por `t1rend[0..8]` + `t1levl[0..8]` em `THPS1.WAD`, só então retomando a música!
+3. **Confirmação Instantânea no `playsel.bin` (`Hook_PlaySel_Confirm` Zero-Seek):**
+   - Ao apertar `X` em *Continue* na Seleção de Skatistas, o hook antigo ainda buscava um clipe síncrono em `VOICES.DAT` enquanto o menu já estava fechando (fazendo o laser sair do `CD.WAD` justamente antes de carregar `levelsel.bin`!).
+   - Trocamos `Hook_PlaySel_Confirm` (`playsel.bin +0x100C`) por um salto imediato `j SFX_Play; nop`: o jogador já ouviu a fala do skatista ao selecioná-lo, e confirmar agora faz a transição `PlaySel → State 2` em apenas **`49–50 frames (0,82 s)`**!
+4. **Transições `Fade_Start` 2× Mais Rápidas (Sem Quebrar Quadros de Sincronia):**
+   - Aceleramos o efeito de persiana/quadrados (`Fade_Start`) em `0x80082B48` (`MainMenu → PlaySel`: `236 → 112`), `playsel.bin +0x415C` (`PlaySel → LevelSel`: `236 → 112`), `0x80083328` (`Gameplay → Menu`: `236 → 112`) e `0x8002310C` (`GoalList → Gameplay`: `52 → 34`).
+
+```mermaid
+flowchart LR
+    BOOT["⚡ Boot (1× só)<br/>VOICES.DAT Setores 0..19<br/>CASHART residente @ 0x800EB000"] --> PSEL["🛹 PlaySel CONTINUE<br/>Zero-Seek + Fade 2×<br/>49–50 frames (0,82 s)"]
+    PSEL --> LSEL["🗺️ Level Select<br/>1 Visita a THPS1.WAD + 1× XA_Pause<br/>471f → 378f (-1,55 s / -20%)"]
+    LSEL --> LOAD["🚀 Carregamento da Fase (Lulão)<br/>items.psx→bits.psx: 139f → 24f (-1,92 s)<br/>Total: 1.030f → 930f (-1,67 s)"]
+    LOAD --> PLAY["🎮 GoalList CROSS → Gameplay<br/>Fade 52→34 • 1 frame para iniciar!"]
+```
+
+| Etapa Medida Ao Vivo no DuckStation (`60 Hz`) | Antes | Depois | Ganho Real |
+| :--- | :---: | :---: | :---: |
+| **`PlaySel` `CONTINUE` (`X`) → Entrada `State 2`** | Seek de áudio + Fade `236` | **`49–50 frames (0,82 s)`** | **Zero seek + Fade 2×** |
+| **Entrada `State 2` → Level Select Pronto (`40/40` fotos)** | `471 frames (7,85 s)` | **`378 frames (6,30 s)`** | **`-93 frames (-1,55 s / -20%)`** |
+| **Detalhe: `s2win5 → s2levl11` & `s2arrow8 → s2arrow9`** | `119f` / `56f` | **`37f` / `9f`** | **`-82f` / `-47f` (XA sem guerra!)** |
+| **`items.psx → bits.psx` (Lulão carregando fase)** | `139 frames (2,32 s)` | **`24 frames (0,40 s)`** | **`-115 frames (-1,92 s / -83%!)`** |
+| **Level Select `X` → Tela de Objetivos Pronta (*School Miami*)** | `1.030 frames (17,17 s)` | **`930 frames (15,50 s)`** | **`-100 frames (-1,67 s)`** |
+
+---
+
+### 2. Fim da Tela Preta nas Competições do THPS1 (*Skate Park Chicago*, *Burnside* & *Roswell*)
+
+Quem selecionava **Skate Park Chicago (`ID 14`)** e apertava `X` (*Accept*) caía em uma **tela completamente preta** (sem imagem da fase, sem título e sem regras da competição) — embora apertar `X` novamente iniciasse a fase normalmente. O mesmo ocorria nas outras duas competições do THPS1: **Burnside (`ID 17`)** e **Roswell (`ID 19`)**!
+
+**A causa raiz cirúrgica em `GoalList_Open @ 0x80022DFC..0x80022E58`:**
+Quando o jogador escolhe uma fase de **Competição** (`isComp == 1`), o THPS2 **não** desenha a folha de 10 objetivos — em vez disso, ele entra em um `switch ($a1)` sobre o `levelId` para carregar uma tela de fundo especial `512×240` (`s2bgd7.bmp` para *Marseille `2`*, `s2bgd8.bmp` para *Skatestreet `5`*, `s2bgd9.bmp` para *The Bullring `7`*). Para qualquer outro ID (`14`, `17`, `19`), o `switch` caía no `default` e **pulava o carregamento do fundo inteiro**, deixando o *framebuffer* preto!
+
+**A solução completa para TODAS as 3 competições do THPS1 (`Scripts/port_thps1_levels.js` + `thps1_engine_mod.js`):**
+1. **3 Telas Oficiais de Competição (`t1comp0.bmp`, `t1comp1.bmp`, `t1comp2.bmp` em `THPS1.WAD`):**
+   - Convertemos as artes originais de competição do THPS1 (`loadcp1.bmp` *Chicago*, `loadcp2.bmp` *Burnside* e `loadcp3.bmp` *Roswell*) para o formato binário exato esperado por `GoalList_Open`: **`512×240` 8-bit não-comprimido (`offBits = 1078`, `imgSize = 0`, `nCol = 0`, exatos `123.960 B` / `61` setores cada)**!
+   - Detalhe visual de precisão: recortamos exatamente a faixa superior `512×174` (removendo a barra antiga `"LOADING..."` que vinha pintada nos BMPs de 1999, mas preservando **100% da foto da fase, do título oficial e das regras do torneio**!) e emolduramos a base sobre grafite escuro `#0A0C12` com uma linha divisória dourada acima do rodapé nativo `"PRESS (X) TO PLAY  (△) TO GO BACK"`.
+   - Empacotamos os 3 arquivos no **final** de `THPS1.WAD` (`42` entradas, `934` setores, `1,82 MB`), preservando os setores `0..98` contíguos do `FastBurst` intocados!
+2. **`Entry_CompLoadBmp` (Hook em `0x80022E2C..0x80022E30`):**
+   - Substituímos o antigo slot já sem uso de `Entry_GoalListLoopCheck` (`0x800EA068`, restaurando o loop nativo de 10 metas em `0x80025EE4`) pelo novo despachante `Entry_CompLoadBmp`: ele lê `$a1`, despacha `14 → "t1comp0.bmp"`, `17 → "t1comp1.bmp"` e `19 → "t1comp2.bmp"` direto para `0x80022E50` (onde `Hook_CdWadFallback` encontra o BMP instantaneamente em `THPS1.WAD`!), e cai no fluxo padrão para qualquer outro ID.
+   - **Comprovado visualmente ao vivo no DuckStation nas 3 competições:** *Windy City Slam (Chicago)*, *Asphalt Annihilation I (Burnside)* e *Concrete Conspiracy '99 (Roswell)* agora exibem arte completa + regras + botões nítidos e iniciam a competição perfeitamente ao apertar `X`!
+
+---
+
+### 3. Auditoria CAD 3D de `11.126` Triângulos em *Mall New York* — Reposicionando Malas do Mensalão #3 e #4 Fora das Paredes!
+
+Em *Mall New York (`ID 13`, `SkMall_T.trg`)*, o jogador notou que uma das **Malas do Mensalão (#3 ou #4)** estava encostada/entrando na parede. Em vez de "chutar" coordenadas no escuro, escrevemos uma auditoria geométrica 3D real contra **todos os `11.126` triângulos da malha `skmall.psx`** e todos os props dinâmicos `Type 1` do `SkMall_T.trg`:
+
+- **Diagnóstico exato encontrado:** a antiga Mala #4 (`[-15235, 587, 17991]`) estava a apenas **`160` unidades da parede lateral** (`minWall = 160 u`) — somado ao raio de rotação da maleta 3D, a quina dela literalmente invadia a geometria da parede! E a antiga #3 (`[-30233, -1762, 22251]`) também podia ficar em posição mais aberta e intuitiva.
+- **Novas coordenadas cirúrgicas validadas contra os `11.126` triângulos e todos os props:**
+  - **Mala do Mensalão #3 (`Ho_Car_Mall` — `[-29583, -869, 20791]`):** distância mínima de qualquer parede **`minWall = 498 u`** (> 3× mais folga!), piso em `Y = -700` (flutuando limpo a `169 u` do chão) e **`0` props num raio de `800 u`**!
+  - **Mala do Mensalão #4 (`Ho_Rail_Mall` — `[-13620, 2192, 7934]`):** distância mínima de qualquer parede **`minWall = 335 u`**, piso em `Y = 2362` (flutuando limpo a `170 u` do chão) e **`0` props num raio de `800 u`**!
+- **Comprovado ao vivo no DuckStation:** teleportando o Lulão (escrevendo os 7 campos de posição do `CSkater`) para as novas coordenadas, ambas as malas aparecem totalmente livres no espaço aberto e coletam instantaneamente (`"1 OF 5 MALAS $$$"` e `"2 OF 5 MALAS $$$"`).
+
+---
+
+### 4. Som de Caixa + Voz de Esbarrão do Skatista Zero-Stall em *School Miami* (e em Todas as Fases do THPS1!)
+
+Em **School Miami (`ID 12`, `SkSchl_T.trg`)**, derrubar ou coletar as caixas de objetivo não disparava o conjunto completo **som de impacto da caixa + som/reação do skatista** — e o mesmo padrão escondia um problema mais amplo: **nos `.TRG` originais de 1999 do THPS1, os IDs numéricos dos comandos `0x4309` (*ShatterType*) e `0x4290/4291/4508` (*PlaySFX*) apontavam para a tabela de sons do THPS1**, não para os bancos `.VAB`/`.SFX` do THPS2 (`hangar.sfx`, `school2.sfx`, `ny.sfx`, `venice.sfx`, `philly.sfx`)! Um exemplo gritante eram as **24 caixas de *"Quebrar 5 Caixas Taxa"* em *Warehouse (`ID 11`)*, que chamavam `shatterType = 5` (inexistente em `hangar.sfx`!)** em vez de `shatterType = 3` (madeira/caixa quebrando)!
+
+Montamos uma correção em **3 camadas simultâneas**, 100% em **SPU RAM residente** (**`0` chamadas `CdRead` = `0,00 ms` de travamento!**):
+
+1. **Hook `Entry_GoalPickupSfx` (`0x800E3860`, gancho em `PowerUp_Pickup @ 0x80036858`):**
+   - Sempre que o skatista coleta uma das **5 caixas-objetivo de *School Miami* (`subtype 33` → `SFX 316` com `g_CurrentLevel == 12`)**, nossa rotina dispara, na mesma janela de frame e sem tocar no CD:
+     - `SFX_Play(316, 8192, 0)` (jingle de coleta),
+     - **`SFX_Play(83, 12288, 0)`** (impacto pesado de madeira/caixa residente em `school2.vab`),
+     - **`0x80049D34()` (`Skater_BumpSfx`)** (reação/voz de esbarrão do skatista em `skate2.vab` via `Hook_BailSfx`!).
+2. **Reforço de Presença em `CModel::KnockDown` (`0x80044318` e `0x80044A08`):**
+   - Nas caixas/lixeiras derrubáveis físicas (`n711`/`n712` em *School Miami* e todas as caixas físicas do jogo), `CModel::KnockDown` já dispara `Skater_BumpSfx (0x80049D34)` + o som da caixa (`shatterType 3 → SFX 60` + quique `SFX 69`), mas o volume nativo de `8192` ficava tímido no meio da música. Elevamos o impacto inicial de `8192 → 12288 (0x3000)` e o quique de `8192 → 11264 (0x2C00)`!
+3. **Remapeamento Universal `THPS1_SFX_REMAP` em `Scripts/port_thps1_levels.js` (`84` *Shatters* + `249` *SFX* = `333` correções cirúrgicas!):**
+   - Varrendo estritamente a cauda de script dos nós `Type 1` (*Baddy*) preservando a paridade mod-4, mapeamos todos os `shatterType` e `PlaySFX` do THPS1 para os IDs reais presentes nos bancos `.SFX`/`.VAB` de cada fase (`hangar`, `school2`, `ny`, `venice`, `philly`) — incluindo a **injeção cirúrgica de 4 bytes `0x4290(83)` em `node 252` (*G4: Grind 5 Mesas do MEC* em *School Miami*)** e o **conserto das 24 caixas de *Warehouse* (`shatterType 5 → 3`)**!
+
+**Telemetria de Áudio Capturada Ao Vivo via GDB no DuckStation (`CdReads = 0` em 100% dos testes!):**
+- ***School Miami* — Coletar *Triplex #1* (`subtype 33`):** `SFX_Play(316, vol=8192) → voz 4` + **`SFX_Play(83, vol=12288) → voz 8`** + **`SFX_Play(342/30, vol=8192) → vozes 16/32`** (`CdReads = 0`!).
+- ***School Miami* — Derrubar Caixa/Lixeira Física (`n711`):** `KnockDown(3)` → **`SFX_Play(60, vol=12288) → voz 128`** + **`SFX_Play(342/30) → vozes 256/512`** + **`SFX_Play(69, vol=11264) → vozes 1024/2048`** (`CdReads = 0`!).
+- ***Warehouse* — Quebrar Caixa da Taxa (`n244`, *Quebrar 5 Caixas Taxa*):** `KnockDown(3)` → **`SFX_Play(60, vol=12288) → voz 2/8`** + **`SFX_Play(28) → voz 4`** (`CdReads = 0`!).
+
+---
+
+## Capítulo 17 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
     subgraph RAM["🧠 Mapa da Main RAM do PS1 (2 MB: 0x80000000..0x801FFFFF)"]
         K["0x80000000..0x8000FFFF — Kernel BIOS PS1"]
-        E["0x80010000..0x800E267F — SLUS_010.66<br/>296 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font + Preview STR 81.5 KB"]
-        B["0x800E2680..0x800E27FF — Mod_BootInit (17 set.) & Trampolins"]
+        E["0x80010000..0x800E267F — SLUS_010.66<br/>301 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font + Fade 2× + Preview STR 81.5 KB"]
+        B["0x800E2680..0x800E27FF — Mod_BootInit (20 set.) & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
-        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache 48/80KB + Streamer SPU 2 KB Anti-Chiado vLOUT/vROUT + SpawnLetter + CarHitVoice + PsxUpload)"]
+        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache + Streamer SPU 2 KB Anti-Chiado + SpawnLetter + CarHitVoice + PsxUpload 0-Seek + GoalPickupSfx)"]
         S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Vento Estocado + Diploma no Buteco + Roubei)"]
-        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] 60 Metas + g_Thps1GapList[24] + FastBurst + g_ExtCareer[20] + g_Thps1Hed[39] + THPS1_CODE 32 rotinas)"]
-        H["0x800EB000..0x801FFFFF — Heap Dinâmica THPS2 (~1,10 MB) + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK"]
+        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] 60 Metas + g_Thps1GapList[24] + FastBurst 1-Visita + g_ExtCareer[20] + g_Thps1Hed[42] + THPS1_CODE incl. CompLoadBmp)"]
+        C["0x800EB000..0x800EC7FF — LULAO_CASHART Boot-Residente (6 KB / Setores 17..19 — 0 ms seek em toda fase!)"]
+        H["0x800EC800..0x801FFFFF — Heap Dinâmica THPS2 (~1,09 MB) + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK"]
     end
-    K --> E --> B --> M --> L --> S --> T --> H
+    K --> E --> B --> M --> L --> S --> T --> C --> H
 ```
 
 ### Placar Técnico Consolidado do Projeto
 
 | Dimensão | Quantidade / Métrica Verificada |
 | :--- | :--- |
-| **Integridade da ISO Compilada** | **319.968 / 319.968 setores** (`717,7 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
+| **Integridade da ISO Compilada** | **320.151 / 320.151 setores** (`718,1 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
 | **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.531 entradas** |
-| **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo**, com **60 novos objetivos satíricos `10 × 6`**, **24 Gaps reais ao vivo**, **2.301 trilhos** convertidos, **68 nós de moedas → `$100` Cash** para Stats e `PrimBuf` saudável `62,7%..84,2%` em 60 FPS) + Custom Park |
-| **Level Select & Vídeos Preview** | **40/40 fotos instantâneas no Frame 1** via **5 bursts contíguos `CdRead` (`~1,5 s` vs `~18 s`, zero `LOADING...`)** + **vídeos preview inferiores restaurados (`vlcBufSize = 16.896 B`, `ringSec = 16`, `90,8 KB` livres na `Heap[1]`, 0 OOM, 0 leak)** |
+| **Velocidade de Menus & Carregamento** | **`CASHART` Boot-Residente (`0x800EB000`)** (`items.psx→bits.psx`: `139f → 24f` / **`-1,92 s`**) + **`FastBurst` 1-Visita a `THPS1.WAD`** (`471f → 378f` / **`-20%`** no Level Select) + **`PlaySel` zero-seek (`0,82 s`)** + **`Fade_Start` 2×** (`236→112` / `52→34`) |
+| **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo**, com **60 novos objetivos satíricos `10 × 6`**, **3 telas oficiais de competição `t1comp0/1/2.bmp`** para *Chicago*, *Burnside* e *Roswell*, **24 Gaps reais ao vivo**, **2.301 trilhos** convertidos, **68 nós de moedas → `$100` Cash** para Stats e **333 remapes SFX/Shatter `.TRG`**) + Custom Park |
+| **Level Select & Vídeos Preview** | **40/40 fotos instantâneas no Frame 1** via **`FastBurst` 1-Visita (`-20%`, zero `LOADING...`)** + **vídeos preview inferiores restaurados (`vlcBufSize = 16.896 B`, `ringSec = 16`, `90,8 KB` livres na `Heap[1]`, 0 OOM, 0 leak)** |
 | **Renderização 3D Zero-Artefatos** | **Zero linhas vazias/fendas no chão** (*School II* / *NY City*), **zero céu/objetos sumindo** via perfil `SLUS-01066.ini` (`PGXPEnable = false`, `PGXPDepthBuffer = false`, `WidescreenHack = false`, `5× HD Nearest`, `4:3`) + `PrimBuf` calibrado + 6 hooks `.TRG SecretFlag` |
-| **Hooks & Relocações MIPS R3000A** | **296 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` + `levelsel.bin`/`levelsel.pre` + `options.bin` + **17 setores residentes** em `VOICES.DAT` (`1.174` set.) + **`THPS1.WAD`** (`1,47 MB`, **39 arquivos prioritários** incl. 6 `sk*_o.psx` esculpidos) |
+| **Hooks & Relocações MIPS R3000A** | **301 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` (`3/3`) + `levelsel.bin`/`levelsel.pre` + `options.bin` + **20 setores residentes** em `VOICES.DAT` (`1.174` set., `NewHeapStart = 0x800EC800`) + **`THPS1.WAD`** (`1,82 MB` / `934` set., **42 arquivos prioritários** incl. 6 `sk*_o.psx` esculpidos + `t1comp0..2.bmp`) |
 | **Skatistas Personalizados** | **7 skatistas** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan*) = **28 modelos `.PSX` + 7 retratos `s2face*.bmp`** |
-| **Mundo 3D & Coletáveis Customizados** | **THPS2:** Letra 3D **`X`** (`T-A-X-A-S`) + **Barris 51 / Lulão** + **Notas Dinâmicas do Lulão** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D**, **5 Ventos Estocados 3D** & **Carrinho de Golfe Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) • **THPS1 (`30` coletáveis 3D `fl=0x2003`):** **5 Mandiocas da Dilma** (*Warehouse*) + **5 Triplex do Guarujá** (*School*) + **5 Malas do Mensalão** (*Mall*) + **5 Cofres do Escândalo INSS** (*Downtown*) + **5 Pedalinhos de Atibaia** (*Downhill Jam*) + **5 Picanhas da Promessa** (*Streets SF*) |
-| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc)** + **9 gritos de queda (`0 B` SPU RAM extra)** |
+| **Mundo 3D & Coletáveis Customizados** | **THPS2:** Letra 3D **`X`** (`T-A-X-A-S`) + **Barris 51 / Lulão** + **Notas Dinâmicas do Lulão** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D**, **5 Ventos Estocados 3D** & **Carrinho de Golfe Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) • **THPS1 (`30` coletáveis 3D `fl=0x2003`):** **5 Mandiocas da Dilma** (*Warehouse*) + **5 Triplex do Guarujá** (*School*) + **5 Malas do Mensalão** (*Mall*, #3/#4 auditadas em espaço aberto `minWall = 498 / 335 u`) + **5 Cofres do Escândalo INSS** (*Downtown*) + **5 Pedalinhos de Atibaia** (*Downhill Jam*) + **5 Picanhas da Promessa** (*Streets SF*) |
+| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc)** + **9 gritos de queda (`0 B` SPU RAM extra)** + **Som de Caixa + Skatista Zero-Stall** (`Entry_GoalPickupSfx` + `CModel::KnockDown` reforçado + 333 remapes `.TRG`, `CdReads = 0`!) |
 | **Idioma, Fonte & Documentação** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Lulão + **60 objetivos satíricos THPS1 pixel-validados em `s2goal.fnt`** + **14 Mapas Técnicos** (incl. enciclopédia completa de 669 arquivos do THPS1 em `MAPA_14`) |
 
 ---
@@ -535,11 +631,14 @@ flowchart TB
 - **Frequência de Nyquist & Anti-Aliasing**: a maior frequência representável sem distorção equivale à metade da taxa de amostragem (`3.445 Hz` em `6.890,625 Hz`). Filtrar o áudio antes da reamostragem (*anti-aliasing*) impede que frequências agudas "dobrem" para dentro da voz em forma de chiado metálico.
 - **GTE (*Geometry Transformation Engine*)**: coprocessador 3D do PS1 que projeta triângulos e quads na tela e descarta faces viradas para trás (*back-face culling* via `NCLIP`).
 - **`M3dAsm` × PGXP**: o renderizador assembly `M3dAsm` da Neversoft (`0x800956B8..0x80097F00`) subdivide polígonos próximos em inteiros na CPU MIPS para evitar distorção de textura. O PGXP do DuckStation tenta reconstruir coordenadas em ponto flutuante, o que desalinha polígonos subdivididos dos vizinhos e abre fendas/linhas brancas no chão (*School II*, *NY City*); desativar o PGXP no perfil `SLUS-01066.ini` devolve chão 100% sólido mantendo resolução `5× HD`.
-- **Burst `CdRead` Contíguo (`Helper_RunFastBurstGroup`)**: técnica de ler dezenas de arquivos consecutivos do CD-ROM em uma única chamada `CdRead` com a música XA pausada uma só vez, eliminando ~80 seeks de laser e derrubando o carregamento do Level Select de `~18 s` para `~1,5 s` (40/40 fotos prontas no Frame 1).
+- **Burst `CdRead` Contíguo 1-Visita (`Helper_RunFastBurstGroup`)**: técnica de ler dezenas de arquivos consecutivos em rajadas contínuas mantendo o XA pausado entre `CLevelRend` e `CLevelMap` e visitando `THPS1.WAD` apenas **1 vez** (`t1rend` + `t1levl` em sequência, 0 seek extra), derrubando o carregamento do Level Select em `-20%` (`471f → 378f`, 40/40 fotos prontas no Frame 1).
+- **`CASHART` Boot-Residente (`0x800EB000..0x800EC7FF`)**: bloco de 6 KB (setores `17..19` de `VOICES.DAT`) carregado uma única vez no boot para estampar o rosto do Lulão nas notas de dinheiro direto da RAM (`< 0,15 ms`), economizando `-1,92 s` (`139f → 24f`) em toda entrada de fase do Lulão.
+- **`Hook_CompLoadBmp` (`0x80022E2C`)**: despachante MIPS dentro de `GoalList_Open` que carrega as telas oficiais `t1comp0/1/2.bmp` (`512×240` 8bpp, `123.960 B`) nas 3 competições do THPS1 (*Skate Park Chicago*, *Burnside* e *Roswell*), eliminando a tela preta antes da competição.
+- **`Entry_GoalPickupSfx` (`0x80036858`) & `CModel::KnockDown` (`0x80044318`)**: hooks de áudio em SPU RAM residente que tocam simultaneamente o impacto de caixa (`SFX 83/60` com volume reforçado `12288`) e a reação do skatista (`0x80049D34`) sem qualquer leitura de CD (`0,00 ms` stall).
 - **`vlcBufSize` & `ringSec` (`g_MovieTable @ 0x800C1CB4`)**: parâmetros por vídeo que controlam o tamanho dos 2 buffers de saída MDEC VLC e do anel de leitura CD-ROM (em setores de 2 KB). Ajustá-los ao tamanho real dos 11 vídeos `176×48` (`16.896 B` e `16` setores) reduziu o consumo de `182,8 KB` para `81,5 KB`, restaurando os vídeos preview inferiores com `90,8 KB` livres na `Heap[1]`.
-- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, `Hook_LevelSelFastRend`, `Entry_SetGapList`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
+- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, `Hook_LevelSelFastRend`, `Entry_SetGapList`, `Entry_CompLoadBmp`, `Entry_GoalPickupSfx`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`/`j`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
 - **Patch `.xdelta`**: arquivo de diferença binária que transforma legalmente a cópia original do usuário no mod completo sem distribuir arquivos comerciais protegidos.
-- **`THPS1.WAD` & `Hook_CdWadFallback`**: 50º arquivo da ISO (`1,47 MB`, **39 ativos prioritários** incluindo os 6 `sk*_o.psx` com objetos 3D esculpidos) consultado antes do `CD.HED` original para sobrepor os `.TRG` convertidos do THPS1, coletáveis 3D e o bonde `c_cabl1.psx` sobre as sobras antigas da Neversoft, deduplicando os `.PSX` já idênticos no disco do THPS2.
+- **`THPS1.WAD` & `Hook_CdWadFallback`**: 50º arquivo da ISO (`1,82 MB` / `934` set., **42 ativos prioritários** incluindo os 6 `sk*_o.psx` com objetos 3D esculpidos e as 3 telas de competição `t1comp0/1/2.bmp`) consultado antes do `CD.HED` original para sobrepor os `.TRG` convertidos do THPS1 (com 333 remapes SFX/Shatter), coletáveis 3D e o bonde `c_cabl1.psx` sobre as sobras antigas da Neversoft, deduplicando os `.PSX` já idênticos no disco do THPS2.
 - **`g_Thps1GapList` (`0x800E7E60`) & `Entry_SetGapList` (`0x80083848`)**: tabela residente de **24 Gaps reais do THPS1** (4 por fase regular) selecionada automaticamente ao iniciar fases `11..19`, habilitando as metas nativas `G6` (Trick+Gap) e `G7` (Multi-Gap) enquanto `Entry_GapChecklistGuard @ 0x80024CD4` protege o checklist de 11 fases do THPS2.
 - **`primBufDelta` (`g_LevelTable + 0x50`)**: campo nativo assinado da engine Neversoft (`0x80050118`) que ajusta o tamanho do buffer duplo de pacotes GPU por fase (`2 × delta` bytes em `Heap[1]`), mantendo o pico de `PrimBuf` saudável (`62,7%..84,2%`) em todas as fases do THPS1 sem clipping de polígonos ou OOM.
 

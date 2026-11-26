@@ -414,13 +414,13 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     if (prev.length >= 2048) prev.copy(sec0, 0, 0, 2048);
   }
 
-  // Resident Sectors 2..16 (30720 B = LULAO_CODE [6144 B] + LULAO_STRDATA [4096 B] + THPS1_ENGINE [20480 B])
-  const RESIDENT_EXTRA_SECTORS = 15;
+  // Resident Sectors 2..19 (36864 B = LULAO_CODE [6144 B] + LULAO_STRDATA [4096 B] + THPS1_ENGINE [20480 B] + BOOT-RESIDENT CASHART [6144 B]!)
+  const RESIDENT_EXTRA_SECTORS = 18;
   const RESIDENT_EXTRA_BYTES = RESIDENT_EXTRA_SECTORS * 2048;
 
   const allEntries = [];
   const payloads = [];
-  let curSector = 2 + RESIDENT_EXTRA_SECTORS; // Sector 0=MODCODE, 1=VOICETBL+Sec1Code, 2..4=LULAO_CODE, 5..6=LULAO_STRDATA
+  let curSector = 2 + RESIDENT_EXTRA_SECTORS; // Sector 0=MODCODE, 1=VOICETBL+Sec1Code, 2..4=LULAO_CODE, 5..6=LULAO_STRDATA, 7..16=THPS1_ENGINE, 17..19=CASHART
 
   const groups = [
     { skater: 'Lulao',         skaterIdx: 2, dir: lulaoDir,  files: lulaoFiles,  prefix: 'lulao' },
@@ -473,19 +473,21 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
   payloads.push(bolsoGpBank.bankBuf);
   curSector += bolsoGpBank.totalSectors;
 
-  // Append LULAO_CASHART (3 sectors = 6,144 B) for dynamic per-skater Lulao engraved cash bills ($100/$50/$250)!
-  let cashArtStartSec = 0;
-  let cashArtSectors = 0;
+  // Boot-Resident LULAO_CASHART (3 sectors = 6,144 B -> Sectors 17..19 -> RAM 0x800EB000..0x800EC7FF!):
+  // Loaded ONCE at boot alongside MODCODE/THPS1_ENGINE -> eliminates the 318k-sector CD seek (~2.0 s) on EVERY level load!
+  let cashArtBuf = Buffer.alloc(3 * 2048, 0);
+  let cashArtStartSec = 17;
+  let cashArtSectors = 3;
   if (fs.existsSync(cashArtPath)) {
-    const cashBuf = fs.readFileSync(cashArtPath);
-    if (cashBuf.length !== 3 * 2048 || cashBuf.readUInt32LE(0) !== 0x43415348) {
-      throw new Error(`lulao_cash_art.bin invalido (${cashBuf.length} B)! Execute mod_lulao_world_assets.js primeiro.`);
+    const rawCash = fs.readFileSync(cashArtPath);
+    if (rawCash.length !== 3 * 2048 || rawCash.readUInt32LE(0) !== 0x43415348) {
+      throw new Error(`lulao_cash_art.bin invalido (${rawCash.length} B)! Execute mod_lulao_world_assets.js primeiro.`);
     }
-    cashArtStartSec = curSector;
-    cashArtSectors = 3;
-    payloads.push(cashBuf);
-    curSector += cashArtSectors;
-    console.log(`  [CASHART] Empacotado em VOICES.DAT setor +${cashArtStartSec} (${cashArtSectors} setores, ${cashBuf.length} B)`);
+    rawCash.copy(cashArtBuf, 0);
+    console.log(`  [CASHART] Boot-residente em VOICES.DAT setores 17..19 -> RAM 0x800EB000 (${cashArtBuf.length} B, 0 seeks por fase!)`);
+  } else {
+    cashArtStartSec = 0;
+    cashArtSectors = 0;
   }
 
   const gpMeta = {
@@ -512,6 +514,7 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     cashArt: {
       startSector: cashArtStartSec,
       sectors: cashArtSectors,
+      ramAddr: '0x800eb000',
     },
   };
 
@@ -520,10 +523,14 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     ? extraResidentSectors(gpMeta)
     : extraResidentSectors;
   if (resolvedExtra) {
-    if (resolvedExtra.length !== RESIDENT_EXTRA_BYTES) {
+    if (resolvedExtra.length === (RESIDENT_EXTRA_SECTORS - 3) * 2048) {
+      resolvedExtra.copy(secExtra, 0);
+      cashArtBuf.copy(secExtra, resolvedExtra.length);
+    } else if (resolvedExtra.length === RESIDENT_EXTRA_BYTES) {
+      resolvedExtra.copy(secExtra, 0);
+    } else {
       throw new Error(`extraResidentSectors tamanho invalido: ${resolvedExtra.length} != ${RESIDENT_EXTRA_BYTES}`);
     }
-    resolvedExtra.copy(secExtra, 0);
   } else if (fs.existsSync(voicesDatPath)) {
     const prev = fs.readFileSync(voicesDatPath);
     if (prev.length >= (2 + RESIDENT_EXTRA_SECTORS) * 2048) {

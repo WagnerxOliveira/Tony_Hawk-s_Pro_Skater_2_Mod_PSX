@@ -144,6 +144,7 @@ try {
     ...thps1SlusWords,                                 // All 70 g_LevelTable relocs + THPS1-in-THPS2 engine hooks (deterministic!)
     [0x80030DA0, jalWord(ADDR.Entry_EndRunPause)],     // Hook Pause -> End Run (Lulao random funny voice)
     [0x80035D68, jalWord(ADDR.Entry_SpawnLetter)],     // Hook 3D S-K-A-T-E -> T-A-X-A-S dynamic spawn (Lulao only!)
+    [0x80036858, jalWord(ADDR.Entry_GoalPickupSfx)],   // Hook School Miami Triplex box smash (SFX 83) + skater bump (0x80049D34)
     [0x8003C2E8, jalWord(ADDR.Entry_EndRunPause)],     // Hook Time-Up Natural End Run (Lulao random funny voice)
     [0x800813CC, jalWord(ADDR.Entry_EndRunPause)],     // Hook Script/Cheat End Run (Lulao random funny voice)
     [0x800368D4, jalWord(ADDR.Entry_CollectCash)],     // Hook Cash Pickup $250 (Lulao voice)
@@ -176,9 +177,9 @@ try {
     [0x80082EF0, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
     [0x80082F70, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
     [0x80082FD4, jalWord(ADDR.Entry_OverlaySync)],     // Hook Menu Sync
-    [0x800A294C, 0x3C04800F],                          // InitHeap lui -> 0x800F (signed addiu -0x5000 = 0x800EB000)
-    [0x800A2950, 0x2484B000],                          // InitHeap start -> 0x800EB000
-    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800EB000
+    [0x800A294C, 0x3C04800F],                          // InitHeap lui -> 0x800F (signed addiu -0x3800 = 0x800EC800)
+    [0x800A2950, 0x2484C800],                          // InitHeap start -> 0x800EC800 (above boot-resident CASHART @ 0x800EB000!)
+    [0x800E2674, ADDR.NewHeapStart],                   // THPS2 HeapStartPtr -> 0x800EC800
   ]);
   const isTextPool = (off) => (off >= 0x059BC0 && off < 0x05BC00) || (off >= 0x0A0000 && off < 0x0D2E74);
   const isModTail = (ram) => ram >= 0x800E2680 && ram < 0x800E2800;
@@ -362,13 +363,14 @@ try {
       wadUnexpected++;
     }
   }
-  // Verify playsel.bin (idx 61) ONLY modified +0x3388 (Scroll hook) and +0x100C (Confirm hook)
+  // Verify playsel.bin (idx 61) ONLY modified +0x3388 (Scroll hook), +0x100C (Confirm hook) and +0x415C (Fade 236->112)
   {
     const psOrig = getWadEntry(fdRed, 455, hedDisk, 61);
     const psMod  = getWadEntry(fdMod, 455, hedDisk, 61);
     const expPlaySelHooks = new Map([
       [0x3388, jalWord(ADDR.Tramp_PlaySelScroll)],
       [0x100C, jalWord(ADDR.Tramp_PlaySelConfirm)],
+      [0x415C, 0x24040070],
     ]);
     let psErr = 0;
     for (let o = 0; o < psOrig.length; o += 4) {
@@ -379,7 +381,7 @@ try {
         fail('WAD', `playsel.bin alterado fora dos hooks em +0x${o.toString(16)}: 0x${wO.toString(16)} -> 0x${wM.toString(16)}`); psErr++;
       }
     }
-    if (psErr === 0) pass('playsel.bin (idx=61): 2/2 hooks Skater Select (+0x3388 Scroll, +0x100C Confirm) validos, 31.632 B restantes intactos');
+    if (psErr === 0) pass('playsel.bin (idx=61): 3/3 patches (+0x3388 Scroll, +0x100C Confirm Zero-Seek, +0x415C Fade 236->112) validos, 31.628 B restantes intactos');
   }
   // Verify levelsel.bin (idx 33), levelsel.pre (idx 47) & options.bin (idx 37) match THPS1 20-level overlay patches bit-for-bit!
   {
@@ -903,12 +905,12 @@ try {
         gpErr++;
       }
       const cBaseOff = cashMeta.startSector * 2048;
-      if (cBaseOff + 6144 > voicesBuf.length || voicesBuf.readUInt32LE(cBaseOff) !== 0x43415348) {
-        fail('VOICES', `LULAO_CASHART invalido em VOICES.DAT @ setor +${cashMeta.startSector}!`);
+      if (cashMeta.startSector !== 17 || cBaseOff + 6144 > voicesBuf.length || voicesBuf.readUInt32LE(cBaseOff) !== 0x43415348) {
+        fail('VOICES', `LULAO_CASHART boot-residente invalido em VOICES.DAT @ setor +${cashMeta.startSector} (esperado setor 17)!`);
         gpErr++;
       }
       if (mipsInvErr === 0 && gpErr === 0) {
-        pass(`LULAO_GPBANK + BOLSO_GPBANK + CASHART Zero-Stall: Lulao 14x2 (@+${gpMeta.startSector}) + Bolsonaro 14x2 (@+${bolsoMeta.startSector}) + CashArt (@+${cashMeta.startSector}, 48 KB reserva), 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
+        pass(`LULAO_GPBANK + BOLSO_GPBANK + CASHART Boot-Residente: Lulao 14x2 (@+${gpMeta.startSector}) + Bolsonaro 14x2 (@+${bolsoMeta.startSector}) + CashArt (@+17 -> 0x800EB000, 0 seeks por fase!), 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
       }
     }
     const { buf: expLulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
@@ -968,7 +970,7 @@ try {
         if (!gotThps1Blk.equals(expThps1Blk)) {
           fail('VOICES', 'Setores 7..16 (THPS1_ENGINE 20.480 B) em VOICES.DAT diferem do bloco residente esperado!');
         } else {
-          pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): 17 setores residentes (MODCODE + VOICETBL + BailSfx + VoiceSelect + LULAO_CODE 6KB + LULAO_STRDATA + THPS1_ENGINE 20KB) + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
+          pass(`VOICES.DAT @ LBA ${voicesFile.lba} (${voicesSectors} set.): 20 setores residentes (MODCODE + VOICETBL + BailSfx + VoiceSelect + LULAO_CODE 6KB + LULAO_STRDATA + THPS1_ENGINE 20KB + CASHART 6KB) + ${totalClips}/41 clips SPU-ADPCM 100% validos (max ${maxSpu} B / 159.728 B SPU RAM)`);
         }
       }
     }
@@ -1029,15 +1031,28 @@ try {
         t1Err++;
       }
     }
+    // Verify all 3 Competition Invite/Loading BMPs (t1comp0/1/2.bmp: exact 512x240 8bpp 123,960 B matching s2bgd7/8/9.bmp!)
+    for (const cBmp of ['t1comp0.bmp', 't1comp1.bmp', 't1comp2.bmp']) {
+      const en = thps1Man.entries.find(e => e.name === cBmp);
+      if (!en || en.size !== 123960) {
+        fail('THPS1', `Tela de competicao ${cBmp} ausente ou tamanho invalido (${en ? en.size : 'missing'} != 123960)!`);
+        t1Err++; continue;
+      }
+      const cb = thps1Iso.subarray(en.relOffset, en.relOffset + en.size);
+      if (cb.readInt32LE(18) !== 512 || cb.readInt32LE(22) !== 240 || cb.readUInt16LE(28) !== 8 || cb.readUInt32LE(10) !== 1078) {
+        fail('THPS1', `${cBmp} cabecalho BMP fora do padrao s2bgd7/8/9.bmp (512x240 8bpp offBits=1078)!`);
+        t1Err++;
+      }
+    }
     const { THPS1_DEFS, THPS1_GAPS } = require('./thps1_engine_mod');
     const totalThps1Goals = THPS1_DEFS.reduce((s, d) => s + (d.goals ? d.goals.length : 0), 0);
     const totalInjectedCol = thps1Man.levels.reduce((s, l) => s + ((l.trgStats && l.trgStats.g5Injected) || 0), 0);
-    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 39) {
-      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/39 arquivos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, files=${thps1Man.totalFiles}`);
+    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 42) {
+      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/42 arquivos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, files=${thps1Man.totalFiles}`);
       t1Err++;
     }
     if (t1Err === 0) {
-      pass(`THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): ${thps1Man.totalFiles} arquivos (18 BMPs + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 6 PSXs base) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
+      pass(`THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): ${thps1Man.totalFiles} arquivos (18 BMPs LevelSel + 3 BMPs Comp Chicago/Burnside/Roswell + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 6 PSXs base) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
     }
   }
 

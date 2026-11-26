@@ -138,8 +138,8 @@ const THPS1_G5_SPAWNS = {
     coords: [
       [-48850, -2960, 22104], // #1 Right ahead of Mall entrance (visible Frame 1!)
       [-41536, -1870, 22495], // #2 Upstairs Atrium 1 (Ho_Upstairs01_Mall)
-      [-30233, -1762, 22251], // #3 Upstairs Atrium 2 (Ho_Upstairs02_Mall)
-      [-15235,   587, 17991], // #4 Mid Mall slope (Ho_Slope_Mall)
+      [-29583,  -869, 20791], // #3 Lower Atrium open floor by car (Ho_Car_Mall, minWallDist=498!)
+      [-13620,  2192,  7934], // #4 Mid-lower Mall open rail corridor (Ho_Rail_Mall, wide open!)
       [  3564,  3679,  8841], // #5 Dancing Waters fountain (Ho_Dancing_Waters_Mall)
     ],
   },
@@ -178,6 +178,40 @@ const THPS1_G5_SPAWNS = {
   },
 };
 
+// Per-level THPS1 -> THPS2 .TRG Type-1 (Baddy) Shatter (0x4309) & Script SFX (0x4290/0x4291/0x4508) Remap Table.
+// Every target ID is 100% verified present inside the level's assigned THPS2 .SFX/.VAB bank (resident SPU RAM, 0 ms CD stall!).
+// Note on CModel::KnockDown (0x80044218):
+//   - shatterType 1 -> SFX 104 (ny/ss) + 0x80049D34 skater bump + bounce 102/103
+//   - shatterType 3 -> SFX  60 (hangar/school2/venice/philly/mar) + 0x80049D34 skater bump + bounce 69
+//   - shatterType 5 in THPS1 Warehouse crates skips BOTH hit SFX and skater bump in THPS2 -> remap to 3!
+const THPS1_SFX_REMAP = {
+  'skware_t.trg': { // hangar.sfx: 60, 69, 106, 107, 256, 308, 309
+    shatter: { 1: 3, 4: 3, 5: 3 },
+    sfx:     { 83: 60, 84: 69, 86: 106, 87: 107, 88: 60, 152: 256, 153: 308, 154: 309 },
+  },
+  'skschl_t.trg': { // school2.sfx: 60, 69, 83, 84, 256, 267, 316
+    shatter: {},
+    sfx:     { 62: 256, 63: 83, 65: 267, 66: 60, 68: 69 },
+    injectG4Sfx: { nodeId: 252, sfxId: 83 }, // G4 "Grind 5 Mesas do MEC" -> crisp heavy wood/table smash!
+  },
+  'skmall_t.trg': { // ny.sfx: 102, 103, 104, 106, 107
+    shatter: { 4: 1, 5: 1 },
+    sfx:     { 83: 104, 76: 106, 77: 107, 85: 106, 89: 107 },
+  },
+  'skdown_t.trg': { // ny.sfx: 102, 103, 104, 106, 107
+    shatter: { 4: 1 },
+    sfx:     { 108: 104, 76: 106, 86: 106, 87: 107, 88: 106 },
+  },
+  'skjam_t.trg': {  // venice.sfx: 60, 69, 83, 84
+    shatter: { 1: 3, 2: 3 },
+    sfx:     { 93: 60, 94: 69, 95: 60, 96: 69, 97: 83, 98: 84, 99: 60, 100: 69, 101: 83 },
+  },
+  'sksf_t.trg': {   // philly.sfx: 60, 69
+    shatter: { 1: 3, 2: 3 },
+    sfx:     { 124: 60, 86: 60, 87: 69, 88: 60, 123: 69, 125: 60, 126: 69, 127: 60, 128: 69 },
+  },
+};
+
 /**
  * Convert THPS1 _TRG v2.0 buffer -> THPS2 _TRG v2.0 buffer with full self-verification
  * AND optional injection of 5 G5 custom 3D goal collectibles (Type 5, subtype 33 = 0x0021).
@@ -213,6 +247,9 @@ function convertThps1Trg(srcBuf, fname) {
   let secretTapes = 0;
   let cableRenamed = 0;
   let g5Injected = 0;
+  let shattersRemapped = 0;
+  let sfxRemapped = 0;
+  const sfxSpec = THPS1_SFX_REMAP[fname.toLowerCase()] || null;
 
   const limitBeforeTerm = addCount > 0 ? oldNumNodes - 1 : oldNumNodes;
 
@@ -288,7 +325,7 @@ function convertThps1Trg(srcBuf, fname) {
         curOff += pad;
       }
       newOffs[i] = curOff;
-      const nodeCopy = Buffer.from(srcBuf.subarray(o, end));
+      let nodeCopy = Buffer.from(srcBuf.subarray(o, end));
 
       if (type === 5) {
         // PowerUp: low byte = powerupType, high byte = cashBitIndex (0..63)
@@ -305,6 +342,40 @@ function convertThps1Trg(srcBuf, fname) {
           skateLetters++;
         } else if (sub === 16) {
           secretTapes++;
+        }
+      } else if (type === 1 && sfxSpec) {
+        // Baddy / Interactive Object script tail starts strictly AFTER Pos(12) + Angles(6)!
+        // Header: u16 type(1), u16 sub, u16 flags, u16 nLinks, u16 links[nLinks], u16 a, u16 b, pad-to-abs-4, Pos(12), Ang(6)
+        const nl = nodeCopy.readUInt16LE(6);
+        const posRel = ((o + 12 + nl * 2 + 3) & ~3) - o;
+        const scStart = posRel + 18;
+        if (scStart >= 30 && scStart + 2 <= nodeCopy.length) {
+          for (let p = scStart; p + 4 <= nodeCopy.length; p += 2) {
+            const op = nodeCopy.readUInt16LE(p);
+            const arg = nodeCopy.readUInt16LE(p + 2);
+            if (op === 0x4309 && sfxSpec.shatter[arg] !== undefined) {
+              nodeCopy.writeUInt16LE(sfxSpec.shatter[arg], p + 2);
+              shattersRemapped++;
+            } else if ((op === 0x4290 || op === 0x4291 || op === 0x4508) && sfxSpec.sfx[arg] !== undefined) {
+              nodeCopy.writeUInt16LE(sfxSpec.sfx[arg], p + 2);
+              sfxRemapped++;
+            }
+          }
+          // Optional 4-byte 0x4290(sfxId) injection right before G4 0x42C0 (exact +4 B preserves mod-4 parity!)
+          if (sfxSpec.injectG4Sfx && i === sfxSpec.injectG4Sfx.nodeId) {
+            let insPos = -1;
+            for (let p = scStart; p + 2 <= nodeCopy.length; p += 2) {
+              if (nodeCopy.readUInt16LE(p) === 0x42C0) { insPos = p; break; }
+            }
+            if (insPos < 0) {
+              throw new Error(`${fname} node #${i}: expected 0x42C0 for injectG4Sfx!`);
+            }
+            const ins = Buffer.alloc(4);
+            ins.writeUInt16LE(0x4290, 0);
+            ins.writeUInt16LE(sfxSpec.injectG4Sfx.sfxId, 2);
+            nodeCopy = Buffer.concat([nodeCopy.subarray(0, insPos), ins, nodeCopy.subarray(insPos)]);
+            sfxRemapped++;
+          }
         }
       }
 
@@ -405,8 +476,80 @@ function convertThps1Trg(srcBuf, fname) {
 
   return {
     buf: outBuf,
-    stats: { numNodes: newNumNodes, railsConverted, coinsConverted, skateLetters, secretTapes, cableRenamed, g5Injected },
+    stats: { numNodes: newNumNodes, railsConverted, coinsConverted, skateLetters, secretTapes, cableRenamed, g5Injected, shattersRemapped, sfxRemapped },
   };
+}
+
+/**
+ * Convert a THPS1 512x240 competition loading screen (loadcp1/2/3.bmp) into an exact THPS2
+ * s2bgd7/8/9.bmp-compatible 512x240 8bpp uncompressed Windows BMP (exact 123,960 B / 61 sectors,
+ * offBits=1078, nCol=0, imgSize=0), cropping out THPS1's baked-in bottom "LOADING..." bar so
+ * THPS2's native progress bar & "PRESS X TO CONTINUE" render cleanly over a dark slate footer!
+ */
+function buildCompLoadBmp(srcBmpPath, outBmpPath) {
+  const palPng = outBmpPath + '.pal.png';
+  const rawBmp = outBmpPath + '.raw.bmp';
+  // Keep top 512x174 (entire level screenshot + competition title + rules), frame cleanly inside 512x240
+  // on deep charcoal (#0a0c12) with crisp steel-gold border + divider line above THPS2's y=210 prompt!
+  const vfBase = [
+    'crop=512:174:0:0',
+    'pad=512:240:0:6:color=0x0a0c12',
+    'drawbox=x=0:y=6:w=512:h=174:color=0x464e62:t=1',
+    'drawbox=x=16:y=183:w=480:h=2:color=0xc89a2c:t=fill',
+    'drawbox=x=0:y=0:w=512:h=240:color=0x161a24:t=1',
+  ].join(',');
+
+  const r1 = spawnSync(FFMPEG, [
+    '-y', '-loglevel', 'error', '-i', srcBmpPath,
+    '-vf', `${vfBase},palettegen=max_colors=256:reserve_transparent=0:stats_mode=single`,
+    palPng,
+  ]);
+  if (r1.status !== 0) throw new Error(`ffmpeg comp palettegen failed for ${srcBmpPath}: ${r1.stderr?.toString()}`);
+
+  const r2 = spawnSync(FFMPEG, [
+    '-y', '-loglevel', 'error', '-i', srcBmpPath, '-i', palPng,
+    '-lavfi', `${vfBase} [x]; [x][1:v] paletteuse=dither=floyd_steinberg`,
+    '-pix_fmt', 'pal8', '-f', 'image2', rawBmp,
+  ]);
+  if (r2.status !== 0) throw new Error(`ffmpeg comp paletteuse failed for ${srcBmpPath}: ${r2.stderr?.toString()}`);
+
+  const b = fs.readFileSync(rawBmp);
+  const offBits = b.readUInt32LE(10);
+  const w = b.readInt32LE(18);
+  const h = b.readInt32LE(22);
+  const bpp = b.readUInt16LE(28);
+  if (w !== 512 || Math.abs(h) !== 240 || bpp !== 8) {
+    throw new Error(`Comp BMP verify failed for ${outBmpPath}: got ${w}x${h} ${bpp}bpp`);
+  }
+  const stride = 512;
+  const imgSize = stride * 240; // 122,880 B
+  // Match exact THPS2 s2bgd7/8/9.bmp specification: 1078 + 122880 + 2 = 123,960 B, imgSize=0, nCol=0!
+  const out = Buffer.alloc(123960, 0);
+  out.write('BM', 0, 'ascii');
+  out.writeUInt32LE(123960, 2);
+  out.writeUInt32LE(1078, 10);
+  out.writeUInt32LE(40, 14);
+  out.writeInt32LE(512, 18);
+  out.writeInt32LE(240, 22); // bottom-up
+  out.writeUInt16LE(1, 26);
+  out.writeUInt16LE(8, 28);
+  out.writeUInt32LE(0, 30);
+  out.writeUInt32LE(0, 34);  // biSizeImage = 0 (exact match to s2bgd7/8/9.bmp)
+  out.writeUInt32LE(0, 46);  // biClrUsed = 0 (256 full palette)
+  const palLen = Math.min(1024, offBits - 54);
+  b.copy(out, 54, 54, 54 + palLen);
+  if (h > 0) {
+    b.copy(out, 1078, offBits, offBits + imgSize);
+  } else {
+    for (let y = 0; y < 240; y++) {
+      const srcRow = offBits + (239 - y) * stride;
+      b.copy(out, 1078 + y * stride, srcRow, srcRow + stride);
+    }
+  }
+  fs.writeFileSync(outBmpPath, out);
+  try { fs.unlinkSync(palPng); } catch {}
+  try { fs.unlinkSync(rawBmp); } catch {}
+  return out;
 }
 
 /**
@@ -534,17 +677,28 @@ function main() {
     addFile(rendName, rendBuf);
     addFile(levlName, levlBuf);
 
+    // 3B. For THPS1 Competition levels (Chicago=3, Burnside=6, Roswell=8), generate full-screen
+    //     512x240 8bpp Competition Invite & Rules screen (t1comp0/1/2.bmp) matching THPS2 s2bgd7/8/9.bmp!
+    let compBmpName = null;
+    if (lv.isComp) {
+      const compIdx = lv.idx === 3 ? 0 : (lv.idx === 6 ? 1 : 2);
+      compBmpName = `t1comp${compIdx}.bmp`;
+      const compBuf = buildCompLoadBmp(srcLoad, path.join(STAGE_DIR, compBmpName));
+      addFile(compBmpName, compBuf);
+    }
+
     levelReports.push({
       ...lv,
       rendBmp: rendName,
       levlBmp: levlName,
+      compBmp: compBmpName,
       psxFiles: psxNames,
       trgStats: stats,
     });
     console.log(
       `  [${lv.idx}] ${lv.name.padEnd(13)} (id=${lv.id2}): ` +
-      `TRG=${trgOut.length}B (rails=${stats.railsConverted}, coins->$100=${stats.coinsConverted}, G5-3D=${stats.g5Injected}, SKATE=${stats.skateLetters}, tape=${stats.secretTapes}) ` +
-      `| PSX=${psxNames.length} | BMPs=${rendName},${levlName}`
+      `TRG=${trgOut.length}B (rails=${stats.railsConverted}, coins->$100=${stats.coinsConverted}, G5-3D=${stats.g5Injected}, shat=${stats.shattersRemapped}, sfx=${stats.sfxRemapped}) ` +
+      `| PSX=${psxNames.length} | BMPs=${rendName},${levlName}${compBmpName ? ',' + compBmpName : ''}`
     );
   }
 

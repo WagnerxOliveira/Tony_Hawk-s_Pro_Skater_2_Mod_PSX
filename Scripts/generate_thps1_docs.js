@@ -179,9 +179,9 @@ flowchart TB
     ISO["💿 Tony Hawk's Pro Skater (USA) .BIN/.CUE<br/>SLUS-00860 (1999)"] --> DUMP["dumpsxiso -> 01_ISO_Raiz/ (31 arquivos)"]
     DUMP --> EXT["Scripts/extract_thps1.js<br/>Parser CD.HED ASCII + Desempacotador .PRE"]
     EXT --> TREE["📂 EXTRAIDOS_ARQUIVOS_THPS1/<br/>669 arquivos do CD.WAD + 58 sub-arquivos .PRE<br/>organizados em 9 categorias / 25 subpastas"]
-    TREE --> PORT["Scripts/port_thps1_levels.js + mod_thps1_custom_objects.js<br/>• Converte 2.301 trilhos .TRG + 68 moedas -> $100 Cash<br/>• Esculpe 6 objetos 3D satiricos (fl=0x2003) nos sk*_o.psx<br/>• Injeta 30 coletaveis Type 5 subtype 33 (5 por fase regular)<br/>• Gera 18 BMPs Level Select + 60 metas + 24 Gaps ao vivo"]
-    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,47 MB • 751 setores • 39 arquivos prioritários"]
-    WAD --> ENG["⚡ Motor Residente MIPS (0x800E6000..0x800EAFFF)<br/>• g_ExtLevelTable[20] (60 metas THPS1) + g_Thps1GapList[24]<br/>• Hook_CdWadFallback + Entry_SetGapList + Entry_GapChecklistGuard<br/>• 70+13+8 relocações + Carrossel Intercalado 19 fases"]
+    TREE --> PORT["Scripts/port_thps1_levels.js + mod_thps1_custom_objects.js<br/>• Converte 2.301 trilhos .TRG + 68 moedas -> $100 Cash + 333 remapes SFX/Shatter<br/>• Esculpe 6 objetos 3D satiricos (fl=0x2003) nos sk*_o.psx<br/>• Injeta 30 coletaveis Type 5 subtype 33 (5 por fase regular, Mall #3/#4 auditados)<br/>• Gera 18 BMPs Level Select + 3 telas Comp (t1comp0..2.bmp) + 60 metas + 24 Gaps"]
+    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>${fmtMB(man.totalBytes)} • ${man.totalSectors} setores • ${man.totalFiles} arquivos prioritários"]
+    WAD --> ENG["⚡ Motor Residente MIPS (0x800E6000..0x800EC7FF)<br/>• g_ExtLevelTable[20] (60 metas) + g_Thps1GapList[24] + CASHART @ 0x800EB000<br/>• Hook_CdWadFallback + Entry_CompLoadBmp + FastBurst 1-Visita + Fade 2×<br/>• 70+13+8 relocações + Carrossel Intercalado 19 fases"]
 \`\`\`
 
 ---
@@ -251,11 +251,12 @@ Porém, **não era possível simplesmente apontar o THPS2 para essas sobras orig
 
 ### Solução Cirúrgica: Deduplicação + Prioridade Absoluta em \`Hook_CdWadFallback\`
 Em vez de duplicar 7,7 MB de geometria já presente no disco, [\`Scripts/port_thps1_levels.js\`](../Scripts/port_thps1_levels.js) + [\`Scripts/mod_thps1_custom_objects.js\`](../Scripts/mod_thps1_custom_objects.js) deduplicam automaticamente os \`.PSX\` idênticos e empacotam em **\`THPS1.WAD\`** (50º arquivo da ISO, imediatamente após \`VOICES.DAT\`, **zero deslocamento em 48/48 arquivos Redump**) **apenas os ${man.totalFiles} arquivos novos, esculpidos ou divergentes** (**\`${fmtMB(man.totalBytes)}\` / \`${man.totalSectors} setores\`**):
-- **18 BMPs de Level Select** (\`t1rend00..08.bmp\` \`176×48\` + \`t1levl00..08.bmp\` \`212×52\`, posicionados **contiguamente no início de \`THPS1.WAD\`** para carregamento instantâneo em 5 bursts \`CdRead\`!),
-- **9 arquivos \`.TRG\` integralmente convertidos** (2.301 trilhos + 68 moedas → \`$100 Cash\` + **30 coletáveis 3D \`Type 5 subtype 33\` injetados** — 5 por fase regular — + \`C_Cable → C_Cabl1\`),
+- **18 BMPs de Level Select** (\`t1rend00..08.bmp\` \`176×48\` + \`t1levl00..08.bmp\` \`212×52\`, posicionados **contiguamente nos setores \`0..98\` de \`THPS1.WAD\`** para carregamento em **1 única visita contígua** via \`FastBurst\`!),
+- **9 arquivos \`.TRG\` integralmente convertidos** (2.301 trilhos + 68 moedas → \`$100 Cash\` + **30 coletáveis 3D \`Type 5 subtype 33\` injetados** — 5 por fase regular, com Malas #3/#4 de *Mall NY* auditadas em espaço aberto contra os 11.126 triângulos — + **333 remapes cirúrgicos SFX/Shatter** (\`84\` shatters + \`249\` SFX) + \`C_Cable → C_Cabl1\`),
 - **6 arquivos \`sk*_o.psx\` com novos objetos 3D geométricos esculpidos** (\`skware_o\`, \`skschl_o\`, \`skmall_o\`, \`skdown_o\`, \`skjam_o\`, \`sksf_o\`: \`+2,8 KB..+3,9 KB\` cada, todos em \`fl = 0x2003\` full-quad + texturas \`64×48\` 4-bit 16 cores),
 - **4 \`.PSX\` divergentes do THPS1 USA** (\`skware.psx\`, \`skware_2.psx\`, \`skware_l.psx\`, \`skschl.psx\`),
-- **2 \`.PSX\` exclusivos ausentes no THPS2** (\`skvans_t.psx\` + \`c_cabl1.psx\` com as 11 texturas reais do bonde de São Francisco).
+- **2 \`.PSX\` exclusivos ausentes no THPS2** (\`skvans_t.psx\` + \`c_cabl1.psx\` com as 11 texturas reais do bonde de São Francisco),
+- **3 telas oficiais de competição \`512×240\` 8bpp** (\`t1comp0.bmp\` *Skate Park Chicago*, \`t1comp1.bmp\` *Burnside* e \`t1comp2.bmp\` *Roswell*, \`123.960 B\` / \`61\` set. cada, despachadas por \`Entry_CompLoadBmp @ 0x80022E2C\`).
 
 No executável, \`Hook_CdWadFallback @ 0x80054190\` consulta **\`g_Thps1Hed\` (${man.totalFiles} entradas) PRIMEIRO** como sobreposição prioritária (sem nunca chamar \`CdSearchFile\` em runtime — calcula \`thps1BaseLba = g_VoicesBaseLba + 1174\` diretamente da RAM!) e só cai para o \`CD.HED\` original quando o arquivo não está na tabela prioritária.
 
@@ -268,7 +269,8 @@ man.entries.forEach((en, idx) => {
   let role = 'Override/Asset THPS1';
   if (en.name.startsWith('t1rend')) role = 'Banner 3D/Render `176×48` 8bpp no carrossel do Level Select';
   else if (en.name.startsWith('t1levl')) role = 'Cartão/Mapa `212×52` 8bpp no painel direito do Level Select';
-  else if (en.name.endsWith('.trg')) role = '`.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D `subtype 33`)';
+  else if (en.name.startsWith('t1comp')) role = 'Tela oficial de competição `512×240` 8bpp (`123.960 B`, despachada por `Entry_CompLoadBmp`)';
+  else if (en.name.endsWith('.trg')) role = '`.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D + remapeamento SFX/Shatter)';
   else if (en.name.endsWith('_o.psx')) role = 'Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)**';
   else if (en.name === 'c_cabl1.psx') role = 'Bonde de San Francisco (11 texturas originais THPS1)';
   else if (en.name === 'skvans_t.psx') role = 'Geometria auxiliar de Skate Park Chicago (ausente no THPS2)';
@@ -369,24 +371,25 @@ for (const s of ALL_20_SLOTS) {
 }
 
 push(`
-### Mapa da Arena Residente MIPS (\`0x800E6000..0x800EAFFF\` — \`VOICES.DAT\` Setores \`7..16\`, \`20.480 B\`)
+### Mapa da Arena Residente MIPS (\`0x800E6000..0x800EC7FF\` — \`VOICES.DAT\` Setores \`7..19\`, \`26.624 B\`)
 
 | Endereço RAM | Tamanho | Estrutura / Código Residente | Papel no Motor de 20 Fases |
 | :--- | :---: | :--- | :--- |
 | \`0x800E6000..0x800E7D0F\` | \`7.440 B\` | \`g_ExtLevelTable[20]\` | Cópia expandida de \`0x800B8444\` (stride \`0x174\`): slots \`0..10\` do THPS2 intactos + slots \`11..19\` das 9 fases THPS1 (**60 objetivos satíricos completos \`G0..G9\`** nas 6 fases regulares + \`gapMin/gapMax\` disjuntos + \`+0x50 primBufDelta\` calibrado: \`+12000\` *Warehouse*, \`-20000\` *School*, \`-18000\` *Downtown*, \`-24000\` *Downhill Jam*, \`-28000\` *Mall*/*Streets SF*). Todas as **70 referências em \`SLUS_010.66\`**, **13 em \`levelsel.bin\`** e **8 em \`options.bin\`** foram relocadas para cá! |
 | \`0x800E7D20..0x800E7D6F\` | \`80 B\` | \`g_DisplayOrderWords[20]\` | Ordem intercalada do carrossel: \`[${DISPLAY_ORDER.join(', ')}]\`. |
 | \`0x800E7D70..0x800E7D83\` | \`20 B\` | \`g_SlotOfLevel[20]\` | Mapa inverso instantâneo \`levelId → displaySlot\`. |
-| \`0x800E7DE0..0x800E7E5F\` | \`128 B\` | \`FastBurst Descriptors\` | Tabelas de ordem contígua em disco + 5 descritores de rajada \`CdRead\` para carregar **40/40 fotos no Frame 1 (~1,5 s, zero \`LOADING...\`)**, com **vídeos preview inferiores restaurados** (\`vlcBufSize=16896\`, \`ringSec=16\`, \`90,8 KB\` livres na \`Heap[1]\`). |
+| \`0x800E7DE0..0x800E7E5F\` | \`128 B\` | \`FastBurst Descriptors\` | Descritores unificados **1-Visita a \`THPS1.WAD\`** (mantendo \`XA\` pausado entre \`CLevelRend\` e \`CLevelMap\`, \`-20%\` no Level Select: \`471f → 378f\`, **40/40 fotos no Frame 1**) + **vídeos preview inferiores restaurados** (\`vlcBufSize=16896\`, \`ringSec=16\`, \`90,8 KB\` livres na \`Heap[1]\`). |
 | \`0x800E7E60..0x800E7FFF\` | \`416 B\` | \`g_Thps1GapList[24+1]\` | **24 Gaps ao vivo do THPS1** (\`300 B\` usados / \`116 B\` livres: 4 por fase regular, \`1× G6 Trick+Gap\` + \`3× G7 Multi-Gap\`), selecionados dinamicamente por \`Entry_SetGapList @ 0x80083848\`. |
 | \`0x800E8000..0x800E840F\` | \`1.040 B\` | \`g_ExtLightTable[20]\` | Tabela expandida de iluminação direcional (stride \`52 B\`). |
 | \`0x800E8410..0x800E854F\` | \`320 B\` | \`g_ExtShadowTable[20]\` | Tabela expandida de cor/intensidade de sombra (stride \`16 B\`). |
 | \`0x800E8550..0x800E8A4F\` | \`1.280 B\` | \`g_ExtHighScoreTable[20]\` | Tabela expandida de recordes (*High Scores*, stride \`64 B\`), com 6 hooks seguros mantendo \`0..10\` nativos para compatibilidade de Memory Card! |
-| \`0x800E8A50..0x800E8C7F\` | \`560 B\` | \`g_Thps1Hed[39+1]\` | Índice residente em RAM de \`THPS1.WAD\` (**39 entradas prioritárias** + sentinela \`0xFFFFFFFF\`, suporte até 46 entradas). |
-| \`0x800E8C80..0x800E96DF\` | \`2.656 B\` | \`g_Thps1Strings\` (2 segmentos) | Pool compacto byte-packed em 2 segmentos (\`0x800E9000..0x800E96DF\` primário + \`0x800E8C80..0x800E8FFF\` spill, \`2.214 B\` usados / \`442 B\` livres): nomes das 9 fases, **60 títulos satíricos pixel-validados em \`s2goal.fnt\`**, rótulos HUD e **24 nomes de Gaps**. |
-| \`0x800E96E0..0x800E96FF\` | \`32 B\` | Estado de Runtime | \`g_Thps1BaseLba\`, \`g_VoicesTotalSectors (1174)\`, scratch \`off/sz\`. |
+| \`0x800E8A50..0x800E8C7F\` | \`560 B\` | \`g_Thps1Hed[${man.totalFiles}+1]\` | Índice residente em RAM de \`THPS1.WAD\` (**${man.totalFiles} entradas prioritárias** + sentinela \`0xFFFFFFFF\`, suporte até 46 entradas). |
+| \`0x800E8C80..0x800E96DF\` | \`2.656 B\` | \`g_Thps1Strings\` (2 segmentos) | Pool compacto byte-packed em 2 segmentos (\`0x800E9000..0x800E96DF\` primário + \`0x800E8C80..0x800E8FFF\` spill): nomes das 9 fases, **60 títulos satíricos pixel-validados em \`s2goal.fnt\`**, \`t1comp0..2.bmp\`, rótulos HUD e **24 nomes de Gaps**. |
+| \`0x800E96E0..0x800E96FF\` | \`32 B\` | Estado de Runtime | \`g_Thps1BaseLba\`, \`g_VoicesTotalSectors (1174)\`, \`g_SavedRendSprites @ 0x800E96F4\`, \`g_FastBurstXaSaved @ 0x800E96F8\`. |
 | \`0x800E9700..0x800E9ECF\` | \`2.000 B\` | \`g_ExtCareer[20 × 100 B]\` | Progresso completo (flags das **10 metas/fase**, medalhas, \`secretFlags\` via 6 hooks \`.TRG\`, bits de \`$100\` Cash) dos 20 skatistas nas 9 fases THPS1 (\`11..19\`), limpo em \`Career_InitAll @ 0x80023988\`. |
-| \`0x800EA000..0x800EAFFF\` | \`4.096 B\` | \`THPS1_CODE\` | **32 rotinas MIPS R3000A** (\`3.980 B\` usados / \`116 B\` livres): \`Hook_CdWadFallback\`, \`Hook_LevelSelFastRend/FastMap\`, contagem unificada **10 metas × 10% = 100%**, \`Entry_SetGapList @ 0x80083848\`, \`Entry_GapChecklistGuard @ 0x80024CD4\`, botão \`View Goals\`, prêmios/pódio de competição, High Scores, 6 hooks \`.TRG SecretFlag\` e despacho \`Hook_Car215/216_SetModel\`. |
-| \`0x800EB000..0x801FFFFF\` | \`~1,10 MB\` | \`NewHeapStart\` | Heap dinâmica principal do THPS2 (\`InitHeap @ 0x800A294C/50\` e \`HeapStartPtr @ 0x800E2674\`). |
+| \`0x800EA000..0x800EAFFF\` | \`4.096 B\` | \`THPS1_CODE\` | **32 rotinas MIPS R3000A** (\`4.072 B\` usados / \`24 B\` livres): \`Hook_CdWadFallback\`, \`Entry_CompLoadBmp @ 0x80022E2C\` (\`t1comp0/1/2.bmp\`), \`FastBurst\` 1-Visita, contagem **10 metas × 10% = 100%**, \`Entry_SetGapList @ 0x80083848\`, \`Entry_GapChecklistGuard @ 0x80024CD4\`, botão \`View Goals\`, prêmios/pódio de competição, High Scores, 6 hooks \`.TRG SecretFlag\` e despacho \`Hook_Car215/216_SetModel\`. |
+| \`0x800EB000..0x800EC7FF\` | \`6.144 B\` | \`LULAO_CASHART\` Boot-Residente | Arte das notas do Lulão (Setores \`17..19\` de \`VOICES.DAT\`) carregada no boot — zero seek de CD ao entrar em qualquer fase (\`-1,92 s\` em \`items.psx → bits.psx\`!). |
+| \`0x800EC800..0x801FFFFF\` | \`~1,09 MB\` | \`NewHeapStart\` | Heap dinâmica principal do THPS2 (\`InitHeap @ 0x800A294C/50\` e \`HeapStartPtr @ 0x800E2674\`). |
 
 ---
 
@@ -438,6 +441,11 @@ push(`---
     - \`[15] Downtown\` (**3D Cofre do Escândalo INSS**): \`G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=66,4%, Heap[1]=15,3 KB\`
     - \`[16] Downhill Jam\` (**3D Pedalinho de Atibaia**): \`G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=70,0%, Heap[1]=50,6 KB\`
     - \`[18] Streets SF\` (**3D Picanha da Promessa**): \`G5=5, G6=1, G7=3, GapList=0x800E7E60, PrimBuf=62,7%, Heap[1]=13,3 KB\`
+- **Aceleração de Menus, Telas de Competição, *Mall NY* #3/#4 & Áudio de Caixa Zero-Stall (Provados Ao Vivo via GDB no DuckStation):**
+  - **Velocidade de Menus/Carregamento:** \`PlaySel CONTINUE → State 2\` em \`49–50f (0,82 s)\` (zero seek); \`State 2 → LevelSel Ready\` de \`471f → 378f (-20% / -1,55 s)\`; \`items.psx → bits.psx\` do Lulão de \`139f → 24f (-1,92 s)\` via \`CASHART\` boot-residente (\`0x800EB000\`); carregamento total de *School Miami* de \`1.030f → 930f (-1,67 s)\`.
+  - **3/3 Telas de Competição THPS1 (\`t1comp0/1/2.bmp\` via \`Entry_CompLoadBmp\`):** *Skate Park Chicago (\`14\`)*, *Burnside (\`17\`)* e *Roswell (\`19\`)* exibem arte completa + título + regras + \`"PRESS (X) TO PLAY / (△) TO GO BACK"\` sem tela preta!
+  - ***Mall NY* Malas #3 e #4:** auditadas contra todos os \`11.126\` triângulos de \`skmall.psx\` (\`#3 [-29583, -869, 20791], minWall=498 u\` e \`#4 [-13620, 2192, 7934], minWall=335 u\`, 0 props em 800 u) e coletadas ao vivo (\`"1 OF 5 MALAS $$$"\` / \`"2 OF 5 MALAS $$$"\`).
+  - **Som de Caixa + Skatista (\`CdReads = 0\` / \`0,00 ms\` stall):** *School Miami* \`Triplex #1\` dispara \`SFX 316 + SFX 83 (vol=12288) + 0x80049D34()\`; caixas derrubáveis \`n711\` (*School*) e \`n244\` (*Warehouse*) disparam \`KnockDown(3) → SFX 60 (vol=12288) + Skater_BumpSfx + SFX 69 (vol=11264)\`.
 - **Smoke-Test 3D ao Vivo em Todas as 9/9 Fases do THPS1 + Regressão THPS2:** todas as 9 fases (incluindo as 3 competições *Skate Park Chicago*, *Burnside* e *Roswell*) + *The Hangar* (regressão) carregaram e renderizaram em 3D real a 60 FPS com 0 travamentos, 0 exceções MIPS e 0 \`FatalError\`, preservando 100% intactos os recursos do THPS2 e do Lulão!
 `);
 

@@ -61,6 +61,7 @@ const SYM = {
   Mesh_FindByHash:        0x800667BC,
   PSX_ParseAndUploadTex:  0x80066C5C,
   GetSelectedSkaterIdx:   0x8008A3A8,
+  Skater_BumpSfx:         0x80049D34,
   SFX_Play:               0x800526B4,
   SFX_FindGlobal:         0x80053A04,
   Mem_Alloc:              0x8005515C,
@@ -93,10 +94,11 @@ const SYM = {
   g_Career:               0x800C2958,
 };
 
-// Fixed Mod RAM Addresses (reserved below heap 0x800EB000 = 17 resident sectors from VOICES.DAT!)
+// Fixed Mod RAM Addresses (reserved below heap 0x800EC800 = 20 resident sectors from VOICES.DAT!)
 const ADDR = {
   HeapStartPtr:        0x800E2674,
-  NewHeapStart:        0x800EB000,
+  NewHeapStart:        0x800EC800,
+  CashArtBase:         0x800EB000, // Sectors 17..19 of VOICES.DAT (6,144 B boot-resident Lulao cash bills!)
   Mod_BootInit:        0x800E2680,
   Tramp_BootMovie:     0x800E2734,
   Tramp_PlaySelScroll: 0x800E2744,
@@ -138,6 +140,7 @@ const ADDR = {
   Entry_SpawnLetter:   0x800E3848,
   Entry_CarHitVoice:   0x800E3850,
   Entry_PsxUpload:     0x800E3858,
+  Entry_GoalPickupSfx: 0x800E3860,
   // Sectors 5..6 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup & Strings
   LulaoStrDataBase:    0x800E5000,
   LulaoOrigBackup:     0x800E5300, // 96 x 4 B = 384 B (0x800E5300..0x800E547F)
@@ -366,8 +369,8 @@ function assembleSlusTailCompact() {
   a.jal(SYM.CdControl);
   a.move(R.a2, R.zero);
 
-  // CdRead(17 sectors, 0x800E2800, 0x80) -> loads MODCODE (Sec0), VOICETBL+Sec1 (Sec1), LULAO_CODE (Sec2..4), LULAO_STRDATA (Sec5..6), THPS1_ENGINE (Sec7..16)
-  a.addiu(R.a0, R.zero, 17);
+  // CdRead(20 sectors, 0x800E2800, 0x80) -> loads MODCODE (Sec0), VOICETBL+Sec1 (Sec1), LULAO_CODE (Sec2..4), LULAO_STRDATA (Sec5..6), THPS1_ENGINE (Sec7..16), CASHART (Sec17..19)
+  a.addiu(R.a0, R.zero, 20);
   a.addiu(R.a1, R.s0, ADDR.ModCodeBase & 0xffff);
   a.jal(SYM.CdRead);
   a.addiu(R.a2, R.zero, 0x80);
@@ -1217,37 +1220,12 @@ function assembleModCode() {
 
   // --------------------------------------------------------------------------
   // 5. Hook_PlaySel_Confirm(sfxId, vol, pan)  [playsel.bin +0x100C]
+  //    Instant tail-jump to SFX_Play (ZERO blocking 318k-sector CD seek when
+  //    confirming Skater Select — skater already spoke on Hook_PlaySel_Scroll!).
   // --------------------------------------------------------------------------
   a.label('Hook_PlaySel_Confirm');
-  a.addiu(R.sp, R.sp, -32);
-  a.sw(R.ra, 24, R.sp);
-  a.sw(R.s0, 20, R.sp);
-  a.sw(R.s1, 16, R.sp);
-  a.jal(SYM.SFX_Play);
+  a.j(SYM.SFX_Play);
   a.nop();
-  a.move(R.s0, R.v0);
-
-  a.la(R.a0, SYM.g_Career);
-  a.jal(SYM.GetSelectedSkaterIdx);
-  a.nop();
-  a.move(R.s1, R.v0);
-
-  a.jal(ADDR.VoiceSelect_Lookup);
-  a.move(R.a0, R.s1);
-  a.beq(R.v0, R.zero, 'hc_ret');
-  a.nop();
-
-  a.jal('SkaterVoice_Play');
-  a.move(R.a0, R.s1);
-
-  a.label('hc_ret');
-  a.move(R.v0, R.s0);
-  a.lw(R.s1, 16, R.sp);
-  a.lw(R.s0, 20, R.sp);
-  a.lw(R.ra, 24, R.sp);
-  a.nop();
-  a.jr(R.ra);
-  a.addiu(R.sp, R.sp, 32);
 
   // --------------------------------------------------------------------------
   // 6. Hook_RunPlaySel(a0, a1, a2, a3)  [SLUS_010.66 @ 0x80082B80]
@@ -1532,6 +1510,7 @@ function assembleLulaoEngine(gpMeta) {
   a.j('Hook_SpawnLetter');    a.nop(); // 0x800E3848
   a.j('Hook_CarHitVoice');    a.nop(); // 0x800E3850
   a.j('Hook_PsxUpload');      a.nop(); // 0x800E3858
+  a.j('Hook_GoalPickupSfx');  a.nop(); // 0x800E3860
 
   // --------------------------------------------------------------------------
   // 1. Lulao_SyncStrings() — Backs up original pointers once, then sets Lulao
@@ -2840,10 +2819,9 @@ function assembleLulaoEngine(gpMeta) {
 
   // --------------------------------------------------------------------------
   // 12. Hook_PsxUpload(int bankIdx) [@ 0x8006833C/394/944/AA0 -> PSX_ParseAndUploadTex]
-  //     Dynamic Per-Skater Lulao Cash Bills ($100/$50/$250 in ALL levels)!
-  //     When "items" (.psx) finishes loading into RAM on the Loading Screen and selected skater
-  //     is Lulao (Slot 2), stamps Lulao's engraved monochrome portraits directly into T[0..2]
-  //     BEFORE native VRAM upload! All other skaters see 100% original Tony Hawk cash bills!
+  //     Dynamic Per-Skater Lulao Cash Bills ($100/$50/$250 in ALL levels) — 100% RAM-RESIDENT!
+  //     Reads straight from boot-resident ADDR.CashArtBase (0x800EB000, Sectors 17..19 of VOICES.DAT):
+  //     ZERO Mem_Alloc, ZERO CDWAD_WaitIdle, ZERO XA_Pause, ZERO 318k-sector CD seek (-2.0s per level load!).
   // --------------------------------------------------------------------------
   a.label('Hook_PsxUpload');
   a.la(R.t0, SYM.g_PsxBanks);
@@ -2860,13 +2838,11 @@ function assembleLulaoEngine(gpMeta) {
   a.bne(R.t1, R.zero, 'hpu_orig');
   a.nop();
 
-  // It IS "items"! Check if selected skater == 2 (Lulao) & cash art exists in VOICES.DAT!
-  a.addiu(R.sp, R.sp, -48);
-  a.sw(R.ra, 40, R.sp);
-  a.sw(R.s0, 36, R.sp);
-  a.sw(R.s1, 32, R.sp);
-  a.sw(R.s2, 28, R.sp);
-  a.sw(R.s3, 24, R.sp);
+  // It IS "items"! Check if selected skater == 2 (Lulao) & boot-resident CASHART is present!
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 28, R.sp);
+  a.sw(R.s0, 24, R.sp);
+  a.sw(R.s1, 20, R.sp);
   a.move(R.s0, R.a0);                    // s0 = bankIdx
   a.lw(R.s1, 20, R.t0);                  // s1 = raw items.psx RAM buffer!
 
@@ -2876,65 +2852,19 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.t0, R.zero, 2);              // Slot 2 = Lulao
   a.bne(R.v0, R.t0, 'hpu_done');
   a.nop();
-  a.lwSym(R.s3, 'g_CashArtStartSec');
-  a.nop();
-  a.beq(R.s3, R.zero, 'hpu_done');
-  a.nop();
   a.beq(R.s1, R.zero, 'hpu_done');
   a.nop();
+  a.la(R.t7, ADDR.CashArtBase);          // t7 = 0x800EB000 (boot-resident CASHART!)
 
-  // Temp alloc 6,144 B (3 sectors) on Loading Screen -> read CASHART -> stamp T[0..2] -> Mem_Free!
-  a.addiu(R.a0, R.zero, 6144);
-  a.move(R.a1, R.zero);
-  a.addiu(R.a2, R.zero, 1);
-  a.jal(SYM.Mem_Alloc);
-  a.move(R.a3, R.zero);
-  a.beq(R.v0, R.zero, 'hpu_done');
-  a.move(R.s2, R.v0);                    // s2 = temp 6144 B buffer
-
-  a.jal(SYM.CDWAD_WaitIdle);
-  a.nop();
-  // Safely pause XA if active (save flag at 16(sp))
-  a.sw(R.zero, 16, R.sp);
-  a.lw(R.t0, 14704, R.gp);
-  a.lw(R.t1, 14712, R.gp);
-  a.nop();
-  a.beq(R.t0, R.zero, 'hpu_read');
-  a.nop();
-  a.bne(R.t1, R.zero, 'hpu_read');
-  a.nop();
-  a.addiu(R.t2, R.zero, 1);
-  a.sw(R.t2, 16, R.sp);
-  a.jal(SYM.XA_Pause);
-  a.addiu(R.a0, R.zero, 1);
-
-  a.label('hpu_read');
-  a.move(R.a0, R.s3);                    // g_CashArtStartSec
-  a.addiu(R.a1, R.zero, 3);              // 3 sectors
-  a.jal('LulaoCache_CdReadSync');
-  a.move(R.a2, R.s2);
-
-  a.lw(R.t0, 16, R.sp);
-  a.nop();
-  a.beq(R.t0, R.zero, 'hpu_stamp');
-  a.nop();
-  a.jal(SYM.XA_SetMode);
-  a.nop();
-  a.jal(SYM.XA_Pause);
-  a.move(R.a0, R.zero);
-  a.jal(SYM.XA_UpdateVolume);
-  a.nop();
-
-  a.label('hpu_stamp');
-  a.lw(R.t0, 0, R.s2);                   // magic == 0x43415348 ("CASH")
+  a.lw(R.t0, 0, R.t7);                   // magic == 0x43415348 ("CASH")
   a.li(R.t1, 0x43415348);
-  a.bne(R.t0, R.t1, 'hpu_free');
+  a.bne(R.t0, R.t1, 'hpu_done');
   a.move(R.t0, R.zero);                  // billIdx = 0..2
-  a.addiu(R.t1, R.s2, 16);               // srcPtr = s2 + 16
+  a.addiu(R.t1, R.t7, 16);               // srcPtr = CashArtBase + 16
 
   a.label('hpu_bill_lp');
   a.sll(R.t2, R.t0, 2);
-  a.addu(R.t2, R.s2, R.t2);
+  a.addu(R.t2, R.t7, R.t2);
   a.lw(R.t3, 4, R.t2);                   // dataOff[billIdx]
   a.nop();
   a.addu(R.t3, R.s1, R.t3);
@@ -2959,21 +2889,58 @@ function assembleLulaoEngine(gpMeta) {
   a.bne(R.t0, R.t2, 'hpu_bill_lp');
   a.nop();
 
-  a.label('hpu_free');
-  a.jal(SYM.Mem_Free);
-  a.move(R.a0, R.s2);
-
   a.label('hpu_done');
   a.move(R.a0, R.s0);                    // restore bankIdx!
-  a.lw(R.s3, 24, R.sp);
-  a.lw(R.s2, 28, R.sp);
-  a.lw(R.s1, 32, R.sp);
-  a.lw(R.s0, 36, R.sp);
-  a.lw(R.ra, 40, R.sp);
-  a.addiu(R.sp, R.sp, 48);
+  a.lw(R.s1, 20, R.sp);
+  a.lw(R.s0, 24, R.sp);
+  a.lw(R.ra, 28, R.sp);
+  a.addiu(R.sp, R.sp, 32);
 
   a.label('hpu_orig');
   a.j(SYM.PSX_ParseAndUploadTex);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 13. Hook_GoalPickupSfx(sfxId, vol, pan) [@ 0x80036858 inside PowerUp_Pickup]
+  //     In School Miami (g_CurrentLevel == 12), collecting any of the 5 boxy
+  //     "Triplex do Guaruja" G5 objective collectibles (subtype 33 -> SFX 316)
+  //     triggers BOTH:
+  //       1. Heavy crate/box smash SFX 83 (vol 12288, resident school2.vab!)
+  //       2. Skater bump/reaction voice via Skater_BumpSfx (0x80049D34 -> Hook_BailSfx!)
+  //     100% resident PS1 SPU RAM -> ZERO CD-ROM access / 0.00 ms stall!
+  // --------------------------------------------------------------------------
+  a.label('Hook_GoalPickupSfx');
+  a.addiu(R.t0, R.zero, 316);            // subtype 33 G5 collectible SFX
+  a.bne(R.a0, R.t0, 'hgp_orig');
+  a.lw(R.t1, 14980, R.gp);               // delay slot: g_CurrentLevel
+  a.addiu(R.t0, R.zero, 12);             // 12 = School Miami (THPS1)
+  a.bne(R.t1, R.t0, 'hgp_orig');
+  a.nop();
+
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.s0, 16, R.sp);
+  // 1. Original pickup chime SFX 316 (save SPU voice handle in s0)
+  a.jal(SYM.SFX_Play);
+  a.nop();
+  a.move(R.s0, R.v0);
+  // 2. Heavy crate/box crash SFX 83 @ vol 12288 (resident school2.vab in SPU RAM!)
+  a.addiu(R.a0, R.zero, 83);
+  a.addiu(R.a1, R.zero, 12288);
+  a.jal(SYM.SFX_Play);
+  a.move(R.a2, R.zero);
+  // 3. Skater bump/reaction sound (0x80049D34 -> SFX 28..30 via Hook_BailSfx in resident skate2.vab!)
+  a.jal(SYM.Skater_BumpSfx);
+  a.nop();
+  a.move(R.v0, R.s0);
+  a.lw(R.s0, 16, R.sp);
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('hgp_orig');
+  a.j(SYM.SFX_Play);
   a.nop();
 
   // --------------------------------------------------------------------------
@@ -3101,9 +3068,9 @@ function applyAll() {
   patchWord(slus, ramToOff(0x800D50F8), 0x74756843, 0x6B63694B,                   'Fix School II G6 "Kick" @ 0x800D50F8');
   patchWord(slus, ramToOff(0x800D50FC), 0x6F686E69, 0x70696C66,                   'Fix School II G6 "flip" @ 0x800D50FC');
 
-  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000, 0x800E5800, 0x800E6000, 0x800EC000]);
+  patchWord(slus, ramToOff(0x800E2674), 0x800E2678, ADDR.NewHeapStart,            'HeapStartPtr @ 0x800E2674', [0x800E3800, 0x800E5000, 0x800E5800, 0x800E6000, 0x800EB000, 0x800EC000]);
   patchWord(slus, ramToOff(0x800A294C), 0x3C04800E, 0x3C04800F,                   'InitHeap lui @ 0x800A294C');
-  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x2484B000,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000, 0x24845800, 0x24846000, 0x2484C000]);
+  patchWord(slus, ramToOff(0x800A2950), 0x24842674, 0x2484C800,                   'InitHeap addiu @ 0x800A2950', [0x24843800, 0x24845000, 0x24845800, 0x24846000, 0x2484B000, 0x2484C000]);
   patchWord(slus, ramToOff(0x80053690), 0x28620018, 0x28620017,                   'Reserve SPU Voice 23 @ 0x80053690');
   patchWord(slus, ramToOff(0x800527B8), jalWord(SYM.SFX_FindGlobal),      jalWord(ADDR.Tramp_BailSfx),        'Hook SFX_Play Bail Round-Robin @ 0x800527B8');
   patchWord(slus, ramToOff(0x8006CAD4), jalWord(SYM.Movies_Init),         jalWord(ADDR.Mod_BootInit),         'Hook Movies_Init @ 0x8006CAD4');
@@ -3114,6 +3081,7 @@ function applyAll() {
   patchWord(slus, ramToOff(0x80082B80), jalWord(SYM.Overlay_Run),         jalWord(ADDR.Tramp_RunPlaySel),     'Hook Overlay_Run playsel @ 0x80082B80');
 
   // Lulao Career Mode: Cash Pickup ($250/$50/$100), End-of-Run (Normal/Comp/Pause), 60Hz Streamer & Lifecycle
+  patchWord(slus, ramToOff(0x80036858), jalWord(SYM.SFX_Play),            jalWord(ADDR.Entry_GoalPickupSfx),  'Hook School Miami Box+Skater SFX @ 0x80036858');
   patchWord(slus, ramToOff(0x800368D4), jalWord(SYM.Career_CollectCash),  jalWord(ADDR.Entry_CollectCash),    'Hook Cash Pickup $250 @ 0x800368D4');
   patchWord(slus, ramToOff(0x80036914), jalWord(SYM.Career_CollectCash),  jalWord(ADDR.Entry_CollectCash),    'Hook Cash Pickup $50  @ 0x80036914');
   patchWord(slus, ramToOff(0x80036954), jalWord(SYM.Career_CollectCash),  jalWord(ADDR.Entry_CollectCash),    'Hook Cash Pickup $100 @ 0x80036954');
@@ -3151,6 +3119,7 @@ function applyAll() {
   const wad = fs.readFileSync(wadPath);
   patchWord(wad, playselOff + 0x3388, jalWord(SYM.GetSelectedSkaterIdx), jalWord(ADDR.Tramp_PlaySelScroll),  'playsel.bin Scroll  +0x3388', [jalWord(0x800E2780)]);
   patchWord(wad, playselOff + 0x100C, jalWord(SYM.SFX_Play),             jalWord(ADDR.Tramp_PlaySelConfirm), 'playsel.bin Confirm +0x100C', [jalWord(0x800E27A8)]);
+  patchWord(wad, playselOff + 0x415C, 0x240400EC,                        0x24040070,                         'playsel.bin Fade->LevelSel 236->112 +0x415C');
 
   // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin)
   applyThps1EnginePatches(slus, wad, hed);
