@@ -61,6 +61,8 @@ const SYM = {
   Mesh_FindByHash:        0x800667BC,
   PSX_ParseAndUploadTex:  0x80066C5C,
   GetSelectedSkaterIdx:   0x8008A3A8,
+  GoalList_Loop:          0x80022FB4,
+  Pad_Update:             0x8006B978,
   Skater_BumpSfx:         0x80049D34,
   SFX_Play:               0x800526B4,
   SFX_FindGlobal:         0x80053A04,
@@ -141,9 +143,14 @@ const ADDR = {
   Entry_CarHitVoice:   0x800E3850,
   Entry_PsxUpload:     0x800E3858,
   Entry_GoalPickupSfx: 0x800E3860,
-  // Sectors 5..6 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup & Strings
+  Entry_GoalListAsync: 0x800E3868, // Hooks 0x80034890 (jal GoalList_Loop): starts async DMA LulaoCache during Goal List!
+  Entry_GoalListTick:  0x800E3870, // Hooks 0x800230D4 (jal Pad_Update inside GoalList_Loop): polls DMA & chains BOLSO_GPBANK!
+  Entry_BurstFree:     0x800E9F48, // TurboAux safe g_BurstBuf free helper (preserves all $s* regs)
+  // Sectors 5..6 of VOICES.DAT (4096 B): Lulao Career Goal/Medal/Cash Pointer Table, Orig Backup, Strings & GP Ring Tables
   LulaoStrDataBase:    0x800E5000,
-  LulaoOrigBackup:     0x800E5300, // 96 x 4 B = 384 B (0x800E5300..0x800E547F)
+  LulaoOrigBackup:     0x800E5300,
+  GpRingTableAddr:     0x800E5E00, // 28 x 8 B = 224 B (0x800E5E00..0x800E5EDF)
+  BolsoRingTableAddr:  0x800E5EE0, // 28 x 8 B = 224 B (0x800E5EE0..0x800E5FBF) // 96 x 4 B = 384 B (0x800E5300..0x800E547F)
   SpuVoiceBuf:         0x00058000, // Menu Skater Select SPU slot (0x58000..0x7EFF0 = 159,728 B free above shell.vab)
   SpuStreamHalfA:      0x0007F400, // Gameplay Ping-Pong Half A (1024 B, ABOVE bullring.vab 0x7F360!)
   SpuStreamHalfB:      0x0007F800, // Gameplay Ping-Pong Half B (1024 B, 0x7F800..0x7FBFF)
@@ -1307,7 +1314,7 @@ function assembleModCode() {
 // 2B. Build Lulao Career Mode Goal/Medal/Cash String Table (Sectors 3..4 -> 0x800E4000..0x800E4FFF, 4096 B)
 //     Dynamically swapped whenever Skater == Lulao (Slot 2), 100% restored for all other skaters!
 // ============================================================================
-function buildLulaoStrData() {
+function buildLulaoStrData(gpMeta = null) {
   const lvlBase = (lvl) => SYM.g_LevelTable + lvl * 0x174;
   const goalNamePtr = (lvl, g) => lvlBase(lvl) + 0x90 + g * 24;
   const goalShortPtr = (lvl, g) => lvlBase(lvl) + 0x88 + g * 24;
@@ -1441,10 +1448,12 @@ function buildLulaoStrData() {
     if (ptr < 0x800C0000 && val.length > 26) throw new Error(`Objetivo muito longo (${val.length} > 26): ${val}`);
   }
 
-  // Layout inside Sectors 4..5 (4096 B @ RAM 0x800E4800..0x800E57FF):
+  // Layout inside Sectors 5..6 (4096 B @ RAM 0x800E5000..0x800E5FFF):
   //   +0x000..+0x2FF (768 B): up to 95 x 8B pairs { uint32 targetPtr, uint32 lulaoValOrStrPtr } + {0,0}
   //   +0x300..+0x47F (384 B): runtime backup array g_OrigBackup[96] (zeroed in file, filled on first sync)
-  //   +0x480..+0xFFF (2944 B): NUL-terminated ASCII strings (deduplicated)
+  //   +0x480..+0xDFF (2432 B): NUL-terminated ASCII strings (deduplicated)
+  //   +0xE00..+0xEDF (224 B): g_GpRingTable (28 x 8 B)
+  //   +0xEE0..+0xFBF (224 B): g_BolsoRingTable (28 x 8 B)
   const buf = Buffer.alloc(4096, 0);
   const strPool = new Map();
   let strOff = 0x480;
@@ -1458,7 +1467,7 @@ function buildLulaoStrData() {
       let ramAddr = strPool.get(val);
       if (ramAddr === undefined) {
         const b = Buffer.from(val + '\0', 'ascii');
-        if (strOff + b.length > buf.length) throw new Error(`LULAO_STRDATA overflow em "${val}"!`);
+        if (strOff + b.length > 0xE00) throw new Error(`LULAO_STRDATA overflow em "${val}"!`);
         b.copy(buf, strOff);
         ramAddr = (ADDR.LulaoStrDataBase + strOff) >>> 0;
         strPool.set(val, ramAddr);
@@ -1469,9 +1478,22 @@ function buildLulaoStrData() {
     buf.writeUInt32LE(targetPtr >>> 0, i * 8);
     buf.writeUInt32LE(writeVal >>> 0, i * 8 + 4);
   }
+  // Embed 28-entry LULAO_GPBANK & BOLSO_GPBANK ring tables at fixed tail (+0xE00 / +0xEE0)
+  if (gpMeta) {
+    let off = 0xE00;
+    for (const e of gpMeta.ringEntries) {
+      buf.writeUInt32LE(e.byteOffsetInBank >>> 0, off); off += 4;
+      buf.writeUInt32LE(e.byteSize >>> 0, off); off += 4;
+    }
+    off = 0xEE0;
+    for (const e of gpMeta.bolso.ringEntries) {
+      buf.writeUInt32LE(e.byteOffsetInBank >>> 0, off); off += 4;
+      buf.writeUInt32LE(e.byteSize >>> 0, off); off += 4;
+    }
+  }
   // Terminator {0, 0} already zeroed!
 
-  console.log(`  [DATA] LULAO_STRDATA: 0x${ADDR.LulaoStrDataBase.toString(16)}..0x${(ADDR.LulaoStrDataBase + strOff).toString(16)} (${mappings.length} ponteiros, ${strOff - 0x480} B strings / 2944 B, livre: ${4096 - strOff} B)`);
+  console.log(`  [DATA] LULAO_STRDATA: 0x${ADDR.LulaoStrDataBase.toString(16)}..0x${(ADDR.LulaoStrDataBase + strOff).toString(16)} (${mappings.length} ponteiros, ${strOff - 0x480} B strings / 2432 B, livre: ${0xE00 - strOff} B + 448 B ringTables @ +0xE00)`);
   return { buf, mappings };
 }
 
@@ -1511,6 +1533,8 @@ function assembleLulaoEngine(gpMeta) {
   a.j('Hook_CarHitVoice');    a.nop(); // 0x800E3850
   a.j('Hook_PsxUpload');      a.nop(); // 0x800E3858
   a.j('Hook_GoalPickupSfx');  a.nop(); // 0x800E3860
+  a.j('Hook_GoalListAsync');  a.nop(); // 0x800E3868
+  a.j('Hook_GoalListTick');   a.nop(); // 0x800E3870
 
   // --------------------------------------------------------------------------
   // 1. Lulao_SyncStrings() — Backs up original pointers once, then sets Lulao
@@ -1715,6 +1739,40 @@ function assembleLulaoEngine(gpMeta) {
   a.jr(R.ra);
   a.addiu(R.sp, R.sp, 24);
 
+  // Hook_GoalListAsync [@ 0x80034890: replaces jal GoalList_Loop]
+  //   Frees any leftover g_BurstBuf, starts non-blocking DMA preload of LULAO_GPBANK while the player reads
+  //   the Goal List / Competition Invite screen, polls in GoalList_Loop (chaining BOLSO_GPBANK in School II),
+  //   and finishes any remaining sectors right on exit (0 frames if player viewed goals >= ~1.4s!).
+  a.label('Hook_GoalListAsync');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal(ADDR.Entry_BurstFree);
+  a.nop();
+  a.jal('LulaoCache_StartAsync');
+  a.nop();
+  a.jal(SYM.GoalList_Loop);
+  a.nop();
+  a.jal('LulaoCache_FinishAsync');
+  a.nop();
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  // Hook_GoalListTick [@ 0x800230D4 inside GoalList_Loop: replaces jal Pad_Update]
+  //   Runs Pad_Update + non-blocking 5us CdReadSync(1,0) poll every 60 Hz frame!
+  a.label('Hook_GoalListTick');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal(SYM.Pad_Update);
+  a.nop();
+  a.jal('LulaoCache_PollAsync');
+  a.nop();
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
   a.label('Hook_GameplayStart');
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
@@ -1724,20 +1782,11 @@ function assembleLulaoEngine(gpMeta) {
   a.swSym(R.zero, R.t0, 'g_PendingVoiceMode');
   a.jal('Lulao_SyncStrings');
   a.nop();
-  // Preload RAM voice cache ONCE per level load (skipped on Retry when g_CacheBuf != 0!)
-  a.lwSym(R.t0, 'g_CacheBuf');
+  // Ensure RAM voice cache is loaded (0 frames when already preloaded asynchronously during GoalList_Loop!)
+  a.jal('LulaoCache_StartAsync');
   a.nop();
-  a.bne(R.t0, R.zero, 'hgs_enter');
+  a.jal('LulaoCache_FinishAsync');
   a.nop();
-  a.la(R.a0, SYM.g_Career);
-  a.jal(SYM.GetSelectedSkaterIdx);
-  a.nop();
-  a.addiu(R.t0, R.zero, 2);              // Slot 2 = Lulao
-  a.bne(R.v0, R.t0, 'hgs_enter');
-  a.nop();
-  a.jal('LulaoCache_Load');
-  a.nop();
-  a.label('hgs_enter');
   a.lw(R.ra, 20, R.sp);
   a.nop();
   a.j(SYM.Gameplay_MainLoop);
@@ -1746,6 +1795,8 @@ function assembleLulaoEngine(gpMeta) {
   a.label('Hook_GameplayExit');
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
+  a.jal(ADDR.Entry_BurstFree);
+  a.nop();
   a.jal('LulaoCache_Free');
   a.nop();
   a.lw(R.ra, 20, R.sp);
@@ -1846,10 +1897,58 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
 
   // --------------------------------------------------------------------------
-  // 5C-1. Helper: LulaoCache_CdReadSync(lbaOffsetFromVoices $a0, readSectors $a1, dstPtr $a2)
-  //       Executes ONE synchronous CdRead into dstPtr (caller handles CDWAD_WaitIdle & XA pause/resume!).
+  // 5C-1. Helpers: Heap1_LargestFree(), Tricks_Commit($a0), LulaoCache_PrepCd(),
+  //       LulaoCache_CdKickAbs(absLba $a0, readSectors $a1, dstPtr $a2)
   // --------------------------------------------------------------------------
-  a.label('LulaoCache_CdReadSync');
+  a.label('Heap1_LargestFree');
+  a.lw(R.t0, 19112, R.gp);
+  a.move(R.v0, R.zero);
+  a.label('hlf_lp');
+  a.beq(R.t0, R.zero, 'hlf_ret');
+  a.nop();
+  a.lw(R.t1, 0, R.t0);
+  a.lw(R.t0, 4, R.t0);
+  a.srl(R.t1, R.t1, 4);
+  a.sltu(R.t2, R.v0, R.t1);
+  a.beq(R.t2, R.zero, 'hlf_lp');
+  a.nop();
+  a.j('hlf_lp');
+  a.move(R.v0, R.t1);
+  a.label('hlf_ret');
+  a.jr(R.ra);
+  a.nop();
+
+  // Executes Neversoft's native Tricks_Load pointer fixup tail @ 0x80014140 (sets g_TricksBuf + 7 ptrs!)
+  a.label('Tricks_Commit');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 16, R.sp);
+  a.j(0x80014140);
+  a.move(R.v0, R.a0);
+
+  // Waits for CDWAD idle and pauses XA once if active & unpaused (sets g_AsyncXaSaved = 1)
+  a.label('LulaoCache_PrepCd');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal(SYM.CDWAD_WaitIdle);
+  a.nop();
+  a.lw(R.t0, 14704, R.gp);               // xaActive
+  a.lw(R.t1, 14712, R.gp);               // xaPaused
+  a.nop();
+  a.beq(R.t0, R.zero, 'lpc_ret');
+  a.nop();
+  a.bne(R.t1, R.zero, 'lpc_ret');
+  a.nop();
+  a.addiu(R.t2, R.zero, 1);
+  a.swSym(R.t2, R.t0, 'g_AsyncXaSaved');
+  a.jal(SYM.XA_Pause);
+  a.addiu(R.a0, R.zero, 1);
+  a.label('lpc_ret');
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('LulaoCache_CdKickAbs');
   a.addiu(R.sp, R.sp, -40);
   a.sw(R.ra, 36, R.sp);
   a.sw(R.s0, 32, R.sp);
@@ -1857,10 +1956,7 @@ function assembleLulaoEngine(gpMeta) {
   a.move(R.s0, R.a1);                    // s0 = readSectors
   a.move(R.s1, R.a2);                    // s1 = dstPtr
 
-  a.lwSym(R.t0, ADDR.g_VoicesBaseLba);
-  a.nop();
-  a.addu(R.a0, R.t0, R.a0);              // abs LBA
-  a.jal(SYM.CdIntToPos);
+  a.jal(SYM.CdIntToPos);                 // $a0 = absLba
   a.addiu(R.a1, R.sp, 16);
 
   a.addiu(R.a0, R.zero, 2);              // CdlSetloc
@@ -1873,18 +1969,6 @@ function assembleLulaoEngine(gpMeta) {
   a.jal(SYM.CdRead);
   a.addiu(R.a2, R.zero, 0x80);
 
-  a.label('crs_wait');
-  a.addiu(R.a0, R.zero, 1);
-  a.jal(SYM.CdReadSync);
-  a.move(R.a1, R.zero);
-  a.blez(R.v0, 'crs_done');
-  a.move(R.a0, R.zero);
-  a.jal(SYM.VSync);
-  a.nop();
-  a.j('crs_wait');
-  a.nop();
-
-  a.label('crs_done');
   a.lw(R.s1, 28, R.sp);
   a.lw(R.s0, 32, R.sp);
   a.lw(R.ra, 36, R.sp);
@@ -1893,14 +1977,147 @@ function assembleLulaoEngine(gpMeta) {
   a.addiu(R.sp, R.sp, 40);
 
   // --------------------------------------------------------------------------
-  // 5C. LulaoCache_Load() — Runs ONCE on Level Load for Lulao (Slot 2)!
-  //     1. Walks native Heap[1] freeList @ *(gp + 19112) to find EXACT largestFree.
-  //     2. Preserves an UNTOUCHABLE 48 KB (49,152 B) calibrated safety reserve for THPS2 runtime objects.
-  //     3. In School II (14976(gp) == 1), splits usable audio RAM cleanly between LULAO_GPBANK (50%)
-  //        and BOLSO_GPBANK (remaining 50%+ for Golf Cart run-over!), allocating ONE persistent g_CacheBuf!
-  //        In all other levels, 100% of usable audio RAM goes to LULAO_GPBANK!
+  // 5C-2. LulaoCache_PollAsync() -> $v0 = 1 if DMA still active, 0 if idle/complete!
+  //       State machine polled at 60 Hz inside GoalList_Loop (Hook_GoalListTick) & FinishAsync:
+  //         State 3 (Phase 0): tricks.bin (17s) -> Tricks_Commit -> chains Phase 1 (LULAO_GPBANK)
+  //         State 1 (Phase 1): LULAO_GPBANK -> commit clips -> chains Phase 2 (BOLSO_GPBANK in School II)
+  //         State 2 (Phase 2): BOLSO_GPBANK -> commit clips -> restore XA & idle (State 0)
   // --------------------------------------------------------------------------
-  a.label('LulaoCache_Load');
+  a.label('LulaoCache_PollAsync');
+  a.lwSym(R.t0, 'g_AsyncState');
+  a.nop();
+  a.beq(R.t0, R.zero, 'lcp_idle');
+  a.nop();
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.addiu(R.a0, R.zero, 1);
+  a.jal(SYM.CdReadSync);
+  a.move(R.a1, R.zero);
+  a.bgtz(R.v0, 'lcp_busy');
+  a.nop();
+
+  a.lwSym(R.t0, 'g_AsyncState');
+  a.addiu(R.t1, R.zero, 3);
+  a.bne(R.t0, R.t1, 'lcp_chk_p1');
+  a.nop();
+
+  // Phase 0 finished -> commit tricks.bin (zero-seek Gameplay_Init for ALL skaters!)
+  a.lwSym(R.a0, 'g_PendTricksBuf');
+  a.swSym(R.zero, R.t2, 'g_PendTricksBuf');
+  a.jal('Tricks_Commit');
+  a.nop();
+  a.lwSym(R.a1, 'g_PendLulaoSec');
+  a.nop();
+  a.beq(R.a1, R.zero, 'lcp_all_done');
+  a.nop();
+  a.lwSym(R.t2, ADDR.g_VoicesBaseLba);
+  a.lwSym(R.t3, 'g_PendLulaoLbaRel');
+  a.lwSym(R.t4, 'g_CacheBuf');
+  a.addu(R.a0, R.t2, R.t3);
+  a.jal('LulaoCache_CdKickAbs');
+  a.addiu(R.a2, R.t4, 1024);
+  a.addiu(R.t0, R.zero, 1);
+  a.swSym(R.t0, R.t1, 'g_AsyncState');
+  a.j('lcp_busy');
+  a.nop();
+
+  a.label('lcp_chk_p1');
+  a.addiu(R.t1, R.zero, 1);
+  a.bne(R.t0, R.t1, 'lcp_fin_bolso');
+  a.nop();
+
+  // Phase 1 finished -> commit LULAO_GPBANK!
+  a.lwSym(R.t2, 'g_PendLulaoClips');
+  a.lwSym(R.a1, 'g_PendBolsoSec');
+  a.swSym(R.t2, R.t3, 'g_CacheClipCount');
+  a.beq(R.a1, R.zero, 'lcp_all_done');
+  a.nop();
+
+  // School II: immediately kick non-blocking BOLSO_GPBANK DMA (Phase 2)!
+  a.lwSym(R.t2, ADDR.g_VoicesBaseLba);
+  a.lwSym(R.t3, 'g_PendBolsoLbaRel');
+  a.lwSym(R.a2, 'g_PendBolsoPtr');
+  a.jal('LulaoCache_CdKickAbs');
+  a.addu(R.a0, R.t2, R.t3);
+  a.addiu(R.t0, R.zero, 2);
+  a.swSym(R.t0, R.t1, 'g_AsyncState');
+  a.j('lcp_busy');
+  a.nop();
+
+  a.label('lcp_fin_bolso');
+  a.lwSym(R.t2, 'g_PendBolsoPtr');
+  a.lwSym(R.t3, 'g_PendBolsoClips');
+  a.swSym(R.t2, R.t0, 'g_BolsoDataPtr');
+  a.swSym(R.t3, R.t0, 'g_BolsoClipCount');
+
+  a.label('lcp_all_done');
+  a.swSym(R.zero, R.t0, 'g_AsyncState');
+  a.lwSym(R.t0, 'g_AsyncXaSaved');
+  a.nop();
+  a.beq(R.t0, R.zero, 'lcp_done0');
+  a.nop();
+  a.swSym(R.zero, R.t1, 'g_AsyncXaSaved');
+  a.jal(SYM.XA_SetMode);
+  a.nop();
+  a.jal(SYM.XA_Pause);
+  a.move(R.a0, R.zero);
+  a.jal(SYM.XA_UpdateVolume);
+  a.nop();
+
+  a.label('lcp_done0');
+  a.move(R.v0, R.zero);
+  a.j('lcp_epil');
+  a.nop();
+
+  a.label('lcp_busy');
+  a.addiu(R.v0, R.zero, 1);
+
+  a.label('lcp_epil');
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+
+  a.label('lcp_idle');
+  a.jr(R.ra);
+  a.move(R.v0, R.zero);
+
+  // --------------------------------------------------------------------------
+  // 5C-3. LulaoCache_FinishAsync() — Drains any still-in-flight async DMA (0 frames if already done!)
+  // --------------------------------------------------------------------------
+  a.label('LulaoCache_FinishAsync');
+  a.lwSym(R.t0, 'g_AsyncState');
+  a.nop();
+  a.beq(R.t0, R.zero, 'lcfa_fast');
+  a.nop();
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.label('lcfa_lp');
+  a.jal('LulaoCache_PollAsync');
+  a.nop();
+  a.bne(R.v0, R.zero, 'lcfa_lp');
+  a.nop();
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+  a.label('lcfa_fast');
+  a.jr(R.ra);
+  a.nop();
+
+  // --------------------------------------------------------------------------
+  // 5C. LulaoCache_StartAsync() — Starts right before GoalList_Loop (and idempotently at GameplayStart):
+  //     Phase 0 (ALL skaters): Async DMA preload of tricks.bin (CD.WAD sec=668, 17s = 34,816 B) so
+  //       Gameplay_Init @ 0x8003B0CC sees g_TricksBuf != 0 and skips CD seek+read completely (0 frames)!
+  //     Phase 1/2 (Lulao Slot 2): Allocates ONE persistent g_CacheBuf (leaving 24 KB THPS2 / 48 KB THPS1
+  //       untouched AFTER tricks.bin!) and chains LULAO_GPBANK (+ BOLSO_GPBANK in School II) DMA!
+  // --------------------------------------------------------------------------
+  a.label('LulaoCache_StartAsync');
+  a.lwSym(R.t1, 'g_AsyncState');
+  a.nop();
+  a.bne(R.t1, R.zero, 'lcl_fast_ret');
+  a.nop();
+
   a.addiu(R.sp, R.sp, -80);
   a.sw(R.ra, 72, R.sp);
   a.sw(R.s0, 68, R.sp);
@@ -1912,38 +2129,74 @@ function assembleLulaoEngine(gpMeta) {
   a.sw(R.s6, 44, R.sp);
   a.sw(R.s7, 40, R.sp);
 
-  // Reset Bolsonaro cache state first
+  a.swSym(R.zero, R.t0, 'g_PendTricksBuf');
+  a.swSym(R.zero, R.t0, 'g_PendLulaoSec');
+  a.swSym(R.zero, R.t0, 'g_PendBolsoSec');
+  a.swSym(R.zero, R.t0, 'g_AsyncXaSaved');
+
+  // Phase 0 (ALL skaters): If g_TricksBuf (0x800D6268) == 0 & Heap[1] >= 40 KB, kick async tricks.bin DMA!
+  a.lui(R.t0, 0x800D);
+  a.lw(R.t1, 0x6268, R.t0);
+  a.nop();
+  a.bne(R.t1, R.zero, 'lcl_chk_lulao');
+  a.nop();
+  a.jal('Heap1_LargestFree');
+  a.nop();
+  a.li(R.t1, 40960);                     // Safe floor: 34.8 KB + 6 KB margin (must use li+sltu since 40960 > 32767!)
+  a.sltu(R.t0, R.v0, R.t1);
+  a.bne(R.t0, R.zero, 'lcl_ret');
+  a.nop();
+  a.li(R.a0, 34816);                     // 17 sectors * 2048 B (exact sector-aligned size of tricks.bin!)
+  a.addiu(R.a1, R.zero, 1);              // Heap[1]
+  a.addiu(R.a2, R.zero, 1);              // top-down (same as CDWAD_LoadFile)
+  a.jal(SYM.Mem_Alloc);
+  a.move(R.a3, R.zero);
+  a.beq(R.v0, R.zero, 'lcl_ret');
+  a.move(R.s6, R.v0);
+  a.swSym(R.s6, R.t0, 'g_PendTricksBuf');
+  a.jal('LulaoCache_PrepCd');
+  a.nop();
+  a.lw(R.a0, 24440, R.gp);               // g_CdWadStartLba (455)
+  a.addiu(R.a1, R.zero, 17);             // 17 sectors
+  a.addiu(R.a0, R.a0, 668);              // CD.HED[11] tricks.bin sector offset = 668!
+  a.jal('LulaoCache_CdKickAbs');
+  a.move(R.a2, R.s6);
+  a.addiu(R.t0, R.zero, 3);
+  a.swSym(R.t0, R.t1, 'g_AsyncState');   // Phase 0 (tricks.bin) DMA in flight!
+
+  a.label('lcl_chk_lulao');
+  // Phase 1/2: Only preload LULAO_GPBANK (+ BOLSO_GPBANK) once per level & for Lulao (Slot 2)
+  a.lwSym(R.t0, 'g_CacheBuf');
+  a.nop();
+  a.bne(R.t0, R.zero, 'lcl_ret');
+  a.nop();
+  a.la(R.a0, SYM.g_Career);
+  a.jal(SYM.GetSelectedSkaterIdx);
+  a.nop();
+  a.addiu(R.t0, R.zero, 2);
+  a.bne(R.v0, R.t0, 'lcl_ret');
+  a.nop();
+
+  a.swSym(R.zero, R.t0, 'g_CacheClipCount');
   a.swSym(R.zero, R.t0, 'g_BolsoClipCount');
   a.swSym(R.zero, R.t0, 'g_BolsoDataPtr');
 
-  // Step 1: Walk Heap[1] freeList @ 19112(gp) -> s0 = largestFree contiguous block
-  a.lw(R.t0, 19112, R.gp);
-  a.move(R.s0, R.zero);
-  a.label('lcl_fl_lp');
-  a.beq(R.t0, R.zero, 'lcl_fl_done');
+  // Step 1: Walk Heap[1] freeList (AFTER tricks.bin 34.8 KB is already allocated!)
+  a.jal('Heap1_LargestFree');
   a.nop();
-  a.lw(R.t1, 0, R.t0);
-  a.lw(R.t0, 4, R.t0);
-  a.srl(R.t1, R.t1, 4);
-  a.sltu(R.t2, R.s0, R.t1);
-  a.beq(R.t2, R.zero, 'lcl_fl_lp');
-  a.nop();
-  a.j('lcl_fl_lp');
-  a.move(R.s0, R.t1);
+  a.move(R.s0, R.v0);
 
-  a.label('lcl_fl_done');
-  // Adaptive Heap[1] safety reserve:
-  //   - THPS2 levels (0..10): 48 KB (49,152 B) -> empirically verified across all 10 THPS2 levels (MaxDelta=34.3 KB)
-  //   - THPS1 levels (11..19): 80 KB (81,920 B) -> covers large THPS1 levels (School/Downtown/SF) + 34 KB post-init allocs!
-  a.li(R.t2, 49152);
+  // Adaptive post-tricks safety reserve:
+  //   - THPS2 levels (0..10): 24 KB (24,576 B) AFTER tricks.bin (equivalent to 59 KB pre-tricks!)
+  //   - THPS1 levels (11..19): 48 KB (49,152 B) AFTER tricks.bin (equivalent to 83 KB pre-tricks!)
+  a.li(R.t2, 24576);
   a.lw(R.t0, 14980, R.gp);               // g_CurrentLevel @ gp+14980
   a.nop();
   a.sltiu(R.t1, R.t0, 11);
   a.bne(R.t1, R.zero, 'lcl_have_res');
   a.nop();
-  a.li(R.t2, 81920);                     // 80 KB safety reserve for THPS1 levels (11..19)
+  a.li(R.t2, 49152);
   a.label('lcl_have_res');
-  // Require largestFree >= reserve + 8192 (min cache)
   a.addiu(R.t0, R.t2, 8192);
   a.sltu(R.t1, R.s0, R.t0);
   a.bne(R.t1, R.zero, 'lcl_ret');
@@ -1973,7 +2226,7 @@ function assembleLulaoEngine(gpMeta) {
   a.divu(R.v0, R.a1);
   a.mfhi(R.a3);                          // random startClip (0..13)
   a.move(R.a0, R.s7);                    // budgetAudioBytes
-  a.la(R.a2, 'g_GpRingTable');
+  a.la(R.a2, ADDR.GpRingTableAddr);
   a.jal('LulaoCache_FitSlice');
   a.nop();
   a.beq(R.v0, R.zero, 'lcl_ret');
@@ -2002,7 +2255,7 @@ function assembleLulaoEngine(gpMeta) {
   a.divu(R.v0, R.a1);
   a.mfhi(R.a3);                          // random bolsoStartClip (0..13)
   a.move(R.a0, R.s7);
-  a.la(R.a2, 'g_BolsoRingTable');
+  a.la(R.a2, ADDR.BolsoRingTableAddr);
   a.jal('LulaoCache_FitSlice');
   a.nop();
   a.sw(R.v0, 16, R.sp);                  // bolsoClipCount
@@ -2026,81 +2279,58 @@ function assembleLulaoEngine(gpMeta) {
   a.beq(R.v0, R.zero, 'lcl_ret');
   a.move(R.s6, R.v0);                    // s6 = g_CacheBuf
 
-  // Step 5: Pause XA once if active, execute contiguous CdRead(s) on Loading Screen, restore XA!
-  a.jal(SYM.CDWAD_WaitIdle);
-  a.nop();
-  a.sw(R.zero, 36, R.sp);                // 36(sp) = xaWasPaused
-  a.lw(R.t0, 14704, R.gp);
-  a.lw(R.t1, 14712, R.gp);
-  a.nop();
-  a.beq(R.t0, R.zero, 'lcl_reads');
-  a.nop();
-  a.bne(R.t1, R.zero, 'lcl_reads');
-  a.nop();
-  a.addiu(R.t2, R.zero, 1);
-  a.sw(R.t2, 36, R.sp);
-  a.jal(SYM.XA_Pause);
-  a.addiu(R.a0, R.zero, 1);
-
-  a.label('lcl_reads');
-  // Read Lulao slice into g_CacheBuf + 1024
-  a.lwSym(R.t0, 'g_GpBankStartSec');
-  a.nop();
-  a.addu(R.a0, R.t0, R.s2);
-  a.move(R.a1, R.s5);
-  a.jal('LulaoCache_CdReadSync');
-  a.addiu(R.a2, R.s6, 1024);
-
-  // If in School II & bolsoSectors > 0, read Bolsonaro slice into g_CacheBuf + 1024 + lulaoSectors*2048!
-  a.lw(R.a1, 20, R.sp);                  // bolsoSectors
-  a.nop();
-  a.beq(R.a1, R.zero, 'lcl_cd_done');
-  a.nop();
-  a.lwSym(R.t0, 'g_BolsoBankStartSec');
-  a.lw(R.t1, 28, R.sp);                  // bolsoFirstSecRel
-  a.sll(R.t2, R.s5, 11);                 // lulaoBytes
-  a.addu(R.a0, R.t0, R.t1);
-  a.addiu(R.a2, R.s6, 1024);
-  a.jal('LulaoCache_CdReadSync');
-  a.addu(R.a2, R.a2, R.t2);
-
-  a.label('lcl_cd_done');
-  a.lw(R.t0, 36, R.sp);
-  a.nop();
-  a.beq(R.t0, R.zero, 'lcl_commit');
-  a.nop();
-  a.jal(SYM.XA_SetMode);
-  a.nop();
-  a.jal(SYM.XA_Pause);
-  a.move(R.a0, R.zero);
-  a.jal(SYM.XA_UpdateVolume);
-  a.nop();
-
-  // Step 6: Commit Lulao & (if School II) Bolsonaro cache descriptors — gameplay is 100% CD-ROM-FREE!
-  a.label('lcl_commit');
+  // Step 5: Record descriptors (counts stay 0 until DMA completes!).
   a.swSym(R.s6, R.t0, 'g_CacheBuf');
   a.swSym(R.s1, R.t0, 'g_CacheStartClip');
-  a.swSym(R.s4, R.t0, 'g_CacheClipCount');
+  a.swSym(R.s4, R.t0, 'g_PendLulaoClips');
+  a.swSym(R.s5, R.t0, 'g_PendLulaoSec');
   a.swSym(R.s3, R.t0, 'g_CacheBaseOff');
+  a.lwSym(R.t3, 'g_GpBankStartSec');
   a.addiu(R.t1, R.zero, -1);
+  a.addu(R.t3, R.t3, R.s2);
+  a.swSym(R.t3, R.t0, 'g_PendLulaoLbaRel');
   a.swSym(R.t1, R.t0, 'g_LastClipIdx');
 
-  a.lw(R.t2, 16, R.sp);                  // bolsoClipCount
+  // If in School II & bolsoSectors > 0, save Phase 2 BOLSO_GPBANK descriptor for automatic chaining!
+  a.lw(R.t2, 20, R.sp);                  // bolsoSectors
   a.nop();
-  a.beq(R.t2, R.zero, 'lcl_ret');
+  a.beq(R.t2, R.zero, 'lcl_kick_cd');
   a.nop();
-  a.sll(R.t3, R.s5, 11);
+  a.swSym(R.t2, R.t0, 'g_PendBolsoSec');
+  a.lw(R.t3, 16, R.sp);                  // bolsoClipCount
+  a.lw(R.t4, 24, R.sp);                  // bolsoStartClip
+  a.swSym(R.t3, R.t0, 'g_PendBolsoClips');
+  a.swSym(R.t4, R.t0, 'g_BolsoStartClip');
+  a.lw(R.t3, 32, R.sp);                  // bolsoBaseOff
+  a.lw(R.t4, 28, R.sp);                  // bolsoFirstSecRel
+  a.swSym(R.t3, R.t0, 'g_BolsoBaseOff');
+  a.lwSym(R.t3, 'g_BolsoBankStartSec');
+  a.nop();
+  a.addu(R.t3, R.t3, R.t4);              // bolsoLbaRel
+  a.swSym(R.t3, R.t0, 'g_PendBolsoLbaRel');
+  a.sll(R.t3, R.s5, 11);                 // lulaoBytes
   a.addiu(R.t4, R.s6, 1024);
-  a.addu(R.t4, R.t4, R.t3);              // g_BolsoDataPtr
-  a.swSym(R.t4, R.t0, 'g_BolsoDataPtr');
-  a.swSym(R.t2, R.t0, 'g_BolsoClipCount');
-  a.lw(R.t3, 24, R.sp);                  // bolsoStartClip
-  a.lw(R.t4, 32, R.sp);                  // bolsoBaseOff
-  a.nop();
-  a.swSym(R.t3, R.t0, 'g_BolsoStartClip');
-  a.swSym(R.t4, R.t0, 'g_BolsoBaseOff');
+  a.addu(R.t4, R.t4, R.t3);              // bolsoDstPtr
+  a.swSym(R.t4, R.t0, 'g_PendBolsoPtr');
   a.addiu(R.t1, R.zero, -1);
   a.swSym(R.t1, R.t0, 'g_BolsoLastClipIdx');
+
+  a.label('lcl_kick_cd');
+  // If Phase 0 (tricks.bin) DMA is already running, PollAsync will automatically chain Phase 1!
+  a.lwSym(R.t0, 'g_AsyncState');
+  a.nop();
+  a.bne(R.t0, R.zero, 'lcl_ret');
+  a.nop();
+  a.jal('LulaoCache_PrepCd');
+  a.nop();
+  a.lwSym(R.t0, ADDR.g_VoicesBaseLba);
+  a.lwSym(R.t1, 'g_PendLulaoLbaRel');
+  a.move(R.a1, R.s5);                    // lulaoSectors
+  a.addu(R.a0, R.t0, R.t1);              // absLba
+  a.jal('LulaoCache_CdKickAbs');
+  a.addiu(R.a2, R.s6, 1024);             // dstPtr = g_CacheBuf + 1024
+  a.addiu(R.t1, R.zero, 1);
+  a.swSym(R.t1, R.t0, 'g_AsyncState');   // Phase 1 DMA in flight!
 
   a.label('lcl_ret');
   a.lw(R.s7, 40, R.sp);
@@ -2116,12 +2346,21 @@ function assembleLulaoEngine(gpMeta) {
   a.jr(R.ra);
   a.addiu(R.sp, R.sp, 80);
 
+  a.label('lcl_fast_ret');
+  a.jr(R.ra);
+  a.nop();
+
   // --------------------------------------------------------------------------
   // 5D. LulaoCache_Free() — Called ONCE on Hook_GameplayExit (0x800E3840)
+  //     Safely drains any still-in-flight async DMA & unloads tricks.bin BEFORE freeing g_CacheBuf!
   // --------------------------------------------------------------------------
   a.label('LulaoCache_Free');
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
+  a.jal('LulaoCache_FinishAsync');
+  a.nop();
+  a.jal(0x800141D0);                     // Tricks_Unload() (safe idempotent cleanup if exited early!)
+  a.nop();
   a.jal('LulaoStream_Stop');
   a.nop();
   a.swSym(R.zero, R.t0, 'g_EndRunSpoken');
@@ -2518,7 +2757,7 @@ function assembleLulaoEngine(gpMeta) {
   a.nop();
   a.lwSym(R.t0, 'g_CacheStartClip');
   a.lwSym(R.t3, 'g_CacheBaseOff');
-  a.la(R.t1, 'g_GpRingTable');
+  a.la(R.t1, ADDR.GpRingTableAddr);
   a.addiu(R.t4, R.s0, 1024);             // dataBase = g_CacheBuf + 1024
   a.j('lsf_src_calc');
   a.nop();
@@ -2526,7 +2765,7 @@ function assembleLulaoEngine(gpMeta) {
   a.label('lsf_src_bolso');
   a.lwSym(R.t0, 'g_BolsoStartClip');
   a.lwSym(R.t3, 'g_BolsoBaseOff');
-  a.la(R.t1, 'g_BolsoRingTable');
+  a.la(R.t1, ADDR.BolsoRingTableAddr);
   a.lwSym(R.t4, 'g_BolsoDataPtr');       // dataBase = g_BolsoDataPtr
   a.nop();
 
@@ -2985,17 +3224,16 @@ function assembleLulaoEngine(gpMeta) {
   a.label('g_CashArtStartSec');    a.word((gpMeta.cashArt?.startSector || 0) >>> 0);
   a.label('g_RevMuted');           a.word(0);
   a.label('g_SavedRevVol');        a.word(0);
-
-  a.label('g_GpRingTable');
-  for (const e of gpMeta.ringEntries) {
-    a.word(e.byteOffsetInBank >>> 0);
-    a.word(e.byteSize >>> 0);
-  }
-  a.label('g_BolsoRingTable');
-  for (const e of gpMeta.bolso.ringEntries) {
-    a.word(e.byteOffsetInBank >>> 0);
-    a.word(e.byteSize >>> 0);
-  }
+  a.label('g_AsyncState');         a.word(0);
+  a.label('g_AsyncXaSaved');       a.word(0);
+  a.label('g_PendTricksBuf');      a.word(0);
+  a.label('g_PendLulaoLbaRel');    a.word(0);
+  a.label('g_PendLulaoSec');       a.word(0);
+  a.label('g_PendLulaoClips');     a.word(0);
+  a.label('g_PendBolsoClips');     a.word(0);
+  a.label('g_PendBolsoLbaRel');    a.word(0);
+  a.label('g_PendBolsoSec');       a.word(0);
+  a.label('g_PendBolsoPtr');       a.word(0);
 
   const lulaoUsed = a.pc() - ADDR.LulaoCodeBase;
   if (lulaoUsed > 6144) throw new Error(`LULAO_CODE excede 6144 B (${lulaoUsed} B)!`);
@@ -3039,19 +3277,23 @@ function applyAll() {
     }
   }
 
-  // 1. Assemble resident SLUS tail, MODCODE, Hook_BailSfx, Lulao Career strings & THPS1 Engine Block (24 KB)
+  // 1. Assemble resident SLUS tail, MODCODE, Hook_BailSfx & THPS1 Engine Block (24 KB)
   const slusTail = assembleSlusTailCompact();
   const modCode = assembleModCode();
   const bailHookCode = assembleBailHookCode();
-  const { buf: lulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
   const { block: thps1Block } = buildThps1ResidentBlock();
 
   // 2. Build/update VOICES.DAT (41 menu clips @ 11025 Hz + ring-doubled LULAO_GPBANK @ 6890.625 Hz)
-  //    and assemble LULAO_CODE with the exact finalized GPBANK startSector & 28-entry ring table!
+  //    and assemble LULAO_CODE + LULAO_STRDATA with the exact finalized GPBANK startSector & ring tables!
   console.log('');
   let lulaoCode = null;
   let lulaoLabels = null;
+  let lulaoStrData = null;
+  let lulaoMappings = null;
   const manifest = buildVoicesBank(modCode, false, bailHookCode, (gpMeta) => {
+    const strBuilt = buildLulaoStrData(gpMeta);
+    lulaoStrData = strBuilt.buf;
+    lulaoMappings = strBuilt.mappings;
     const built = assembleLulaoEngine(gpMeta);
     lulaoCode = built.buf;
     lulaoLabels = built.labels;
@@ -3091,6 +3333,8 @@ function applyAll() {
   patchWord(slus, ramToOff(0x8003C2E8), jalWord(SYM.Panel_EndRunPause),   jalWord(ADDR.Entry_EndRunPause),    'Hook EndRun Time-Up Natural @ 0x8003C2E8');
   patchWord(slus, ramToOff(0x800813CC), jalWord(SYM.Panel_EndRunPause),   jalWord(ADDR.Entry_EndRunPause),    'Hook EndRun Script/Cheat @ 0x800813CC');
   patchWord(slus, ramToOff(0x8003CB48), jalWord(SYM.XA_Update),           jalWord(ADDR.Entry_FrameTick),      'Hook 60Hz FrameTick (XA_Update) @ 0x8003CB48');
+  patchWord(slus, ramToOff(0x80034890), jalWord(SYM.GoalList_Loop),       jalWord(ADDR.Entry_GoalListAsync),  'Hook GoalList Async DMA Preload @ 0x80034890');
+  patchWord(slus, ramToOff(0x800230D4), jalWord(SYM.Pad_Update),          jalWord(ADDR.Entry_GoalListTick),   'Hook GoalList Tick DMA Poll @ 0x800230D4');
   patchWord(slus, ramToOff(0x8003D71C), jalWord(SYM.Gameplay_MainLoop),   jalWord(ADDR.Entry_GameplayStart),  'Hook GameplayStart/Retry @ 0x8003D71C');
   patchWord(slus, ramToOff(0x8003D828), jalWord(SYM.Level_Unload),        jalWord(ADDR.Entry_GameplayExit),   'Hook GameplayExit Cleanup @ 0x8003D828');
   patchWord(slus, ramToOff(0x80035D68), jalWord(SYM.Mesh_FindByHash),     jalWord(ADDR.Entry_SpawnLetter),    'Hook 3D T-A-X-A-S Spawn @ 0x80035D68');
@@ -3127,7 +3371,9 @@ function applyAll() {
   fs.writeFileSync(slusPath, slus);
   console.log(`  [OK] SLUS_010.66 gravado (${slus.length} B — tamanho 100% preservado!)`);
   fs.writeFileSync(wadPath, wad);
-  console.log(`  [OK] CD.WAD gravado (${wad.length} B — todos os offsets 100% preservados!)`);
+  console.log(`  [OK] CD.WAD gravado (${wad.length} B — todos os offsets THPS2 100% preservados!)`);
+  fs.writeFileSync(hedPath, hed);
+  console.log(`  [OK] CD.HED gravado (${hed.length} B — levelsel.pre +s2arrow8/9 sincronizado!)`);
 
   return { slusTail, modCode, bailHookCode, lulaoCode, lulaoStrData, lulaoMappings, manifest };
 }

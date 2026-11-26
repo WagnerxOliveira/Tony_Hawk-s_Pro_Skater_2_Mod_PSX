@@ -64,15 +64,17 @@ const THPS1_ADDR = {
   S2RendDiscOrder:   0x800E7DE0, // 11 B (padded 16 B): exact CD.WAD sector order for s2rend01..11 (sec 9553..9607)
   S2LevlDiscOrder:   0x800E7DF0, // 11 B (padded 16 B): exact CD.WAD sector order for s2levl00..10 (sec 9476..9541)
   T1DiscOrder:       0x800E7E00, //  9 B (padded 16 B): exact THPS1.WAD sector order [11..19]
-  FastBurstRendDesc: 0x800E7E10, //  1 * 16 B = 16 B -> 0x800E7E20 (CD.WAD s2rend burst)
-  FastBurstMapDesc:  0x800E7E20, //  4 * 16 B = 64 B -> 0x800E7E60 (CD.WAD s2levl x2 + 1-visit THPS1.WAD t1rend+t1levl!)
-  Thps1GapList:      0x800E7E60, // 24+1 * 12 B = 300 B -> 0x800E7F8C (live THPS1 G6/G7 gap table, 116 B free!)
+  FastBurstRendDesc: 0x800E7E10, //  reused as start of 5-descriptor FastBurstMapDesc (80 B -> 0x800E7E60)!
+  FastBurstMapDesc:  0x800E7E10, //  5 * 16 B = 80 B -> 0x800E7E60 (all 5 strictly ascending CD.WAD bursts, max 55s = 112 KB!)
+  Thps1GapList:      0x800E7E60, // 24+1 * 12 B = 300 B -> 0x800E7F8C (live THPS1 G6/G7 gap table)
+  g_TurboState:      0x800E7F90, // 32 B -> 0x800E7FB0: LastBarFrame(+0), LastPadFrame(+4), BurstBuf(+8), StartSec(+12), EndSec(+16), XaSaved(+20)
 
   ExtLightTable:     0x800E8000, // 20 * 52 = 1,040 B -> 0x800E8410
   ExtShadowTable:    0x800E8410, // 20 * 16 = 320 B   -> 0x800E8550
   ExtSkyTable:       0x800E8550, // 20 * 64 = 1,280 B -> 0x800E8A50
-  Thps1Hed:          0x800E8A50, // up to 46 * 12 = 552 B -> 0x800E8C78 (42 entries = 508 B!)
-  Thps1StringsSpill: 0x800E8C80, // 896 B overflow string pool -> 0x800E9000 (ZERO NewHeapStart shift!)
+  Thps1Hed:          0x800E8A50, // up to 7 * 12 + 4 = 88 B -> 0x800E8AA8 (5 THPS1.WAD entries = 64 B!)
+  TurboBurstBase:    0x800E8AB0, // 672 B -> 0x800E8D50: Entry_BurstCdOpen (contiguous CD-ROM streaming cache!)
+  Thps1StringsSpill: 0x800E8D50, // 688 B overflow string pool -> 0x800E9000 (ZERO NewHeapStart shift!)
 
   Thps1Strings:      0x800E9000, // 1,760 B primary string pool -> 0x800E96E0
   g_Thps1BaseLba:    0x800E96E0,
@@ -80,10 +82,15 @@ const THPS1_ADDR = {
   g_Thps1ScratchOff: 0x800E96E8,
   g_Thps1ScratchSz:  0x800E96EC,
   g_Thps1StrPathPtr: 0x800E96F0,
-  g_SavedRendSprites:0x800E96F4, // CLevelRend->spritesBase for 1-visit THPS1.WAD burst!
-  g_FastBurstXaSaved:0x800E96F8, // XA paused state carried seamlessly from FastRend -> FastMap!
+  g_SavedRendSprites:0x800E96F4, // CLevelRend->spritesBase for unified ascending FastMap burst!
+  g_FastBurstXaSaved:0x800E96F8, // XA paused state across FastMap!
 
   ExtCareer:         0x800E9700, // 20 skaters * 100 B = 2,000 B -> 0x800E9ED0
+  TurboAuxBase:      0x800E9ED0, // 304 B -> 0x800EA000: Entry_LoadingBarThrottle, Entry_CdPollPadThrottle, Entry_BurstFree
+  Entry_BurstCdOpen:        0x800E8AB0,
+  Entry_LoadingBarThrottle: 0x800E9ED0,
+  Entry_CdPollPadThrottle:  0x800E9F10,
+  Entry_BurstFree:          0x800E9F48,
 
   CodeBase:          0x800EA000, // 4,096 B -> 0x800EAFFF
   Entry_CdWadFallback:        0x800EA000,
@@ -597,28 +604,33 @@ function buildThps1ResidentBlock() {
     block.writeUInt8(SLOT_OF_LEVEL[i] & 0xFF, (THPS1_ADDR.SlotOfLevel - THPS1_ADDR.Base) + i);
     block.writeUInt32LE(i >>> 0, (THPS1_ADDR.LoadOrderWords - THPS1_ADDR.Base) + i * 4);
   }
-  // Exact contiguous disc-LBA order of all 40 Level Select BMPs (verified gap-free against CD.HED & THPS1.WAD):
-  //   - s2rend: CD.WAD sec 9553..9607 (55 sec, stride 5 sec = 10,240 B)
-  //   - s2levl: CD.WAD sec 9476..9541 (66 sec, stride 6 sec = 12,288 B)
-  //   - t1rend: THPS1.WAD sec  0..44  (45 sec, stride 5 sec = 10,240 B)
-  //   - t1levl: THPS1.WAD sec 45..98  (54 sec, stride 6 sec = 12,288 B)
+  // Exact contiguous disc-LBA order of all 40 Level Select BMPs — 100% INSIDE CD.WAD (ZERO Minute-71 seeks!):
+  //   - t1rend: CD.WAD[573] sec 7500..7544 (45 sec, stride 5 sec = 10,240 B, LBA 7955)
+  //   - t1levl: CD.WAD[578] sec 7594..7647 (54 sec, stride 6 sec = 12,288 B, LBA 8049)
+  //   - s2levl: CD.WAD      sec 9476..9541 (66 sec, stride 6 sec = 12,288 B, LBA 9931)
+  //   - s2rend: CD.WAD      sec 9553..9607 (55 sec, stride 5 sec = 10,240 B, LBA 10008)
   const S2_REND_DISC_ORDER = [2, 5, 3, 1, 6, 0, 4, 7, 8, 9, 10];
   const S2_LEVL_DISC_ORDER = [9, 2, 5, 3, 1, 6, 4, 0, 7, 8, 10];
   const T1_DISC_ORDER      = [11, 12, 13, 14, 15, 16, 17, 18, 19];
-  // Self-verify THPS1.WAD t1rend (sec 0..44, stride 5) & t1levl (sec 45..98, stride 6) contiguity!
+  const inPlace = manifest.cdWadInPlace;
+  if (!inPlace || !Array.isArray(inPlace.bmps) || inPlace.bmps.length !== 18) {
+    throw new Error('thps1_manifest.json sem cdWadInPlace.bmps (rode tools/port_thps1_levels.js primeiro!)');
+  }
+  const T1_REND_CD_SEC = inPlace.rendBaseSec; // 7500 (LBA 7955)
+  const T1_LEVL_CD_SEC = inPlace.levlBaseSec; // 7594 (LBA 8049)
   for (let k = 0; k < 9; k++) {
     const rName = `t1rend0${k}.bmp`, lName = `t1levl0${k}.bmp`;
-    const rEnt = manifest.entries.find(e => e.name === rName);
-    const lEnt = manifest.entries.find(e => e.name === lName);
-    if (!rEnt || rEnt.relOffset !== k * 5 * 2048) throw new Error(`FastBurst mismatch: ${rName} relOffset=${rEnt ? rEnt.relOffset : 'missing'}`);
-    if (!lEnt || lEnt.relOffset !== (45 + k * 6) * 2048) throw new Error(`FastBurst mismatch: ${lName} relOffset=${lEnt ? lEnt.relOffset : 'missing'}`);
+    const rEnt = inPlace.bmps.find(e => e.name === rName);
+    const lEnt = inPlace.bmps.find(e => e.name === lName);
+    if (!rEnt || (rEnt.cdWadOff >> 11) !== T1_REND_CD_SEC + k * 5) throw new Error(`FastBurst mismatch: ${rName}`);
+    if (!lEnt || (lEnt.cdWadOff >> 11) !== T1_LEVL_CD_SEC + k * 6) throw new Error(`FastBurst mismatch: ${lName}`);
   }
   putAt(THPS1_ADDR.S2RendDiscOrder, Buffer.from(S2_REND_DISC_ORDER));
   putAt(THPS1_ADDR.S2LevlDiscOrder, Buffer.from(S2_LEVL_DISC_ORDER));
   putAt(THPS1_ADDR.T1DiscOrder,     Buffer.from(T1_DISC_ORDER));
 
   // Write burst descriptor tables:
-  //   { u32 srcFlags (bit0: 0=CD.WAD, 1=THPS1.WAD; bit1: 1=upload to g_SavedRendSprites with mode=-1),
+  //   { u32 srcFlags (bit0: 0=CD.WAD; bit1: 1=upload to g_SavedRendSprites with mode=-1),
   //     u32 secOff, u16 count, u16 strideSec, u32 orderPtr }
   function writeBurstDesc(ram, srcFlags, secOff, count, strideSec, orderPtr) {
     const off = ram - THPS1_ADDR.Base;
@@ -628,14 +640,14 @@ function buildThps1ResidentBlock() {
     block.writeUInt16LE(strideSec & 0xFFFF, off + 10);
     block.writeUInt32LE(orderPtr >>> 0, off + 12);
   }
-  // Unified 1-Visit THPS1.WAD FastBurst (eliminates 4 full-disc seeks between CD.WAD, COMPILED.XA & THPS1.WAD!):
-  //   - CLevelRend (1 burst in CD.WAD, keeps XA paused for s2levl11/s2arrow8/9 + CLevelMap!)
-  writeBurstDesc(THPS1_ADDR.FastBurstRendDesc +  0, 0, 9553, 11, 5, THPS1_ADDR.S2RendDiscOrder);
-  //   - CLevelMap (2 contiguous bursts in CD.WAD + ONE SINGLE VISIT to THPS1.WAD for all 99 contiguous sectors t1rend+t1levl!)
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc  +  0, 0, 9476,  6, 6, THPS1_ADDR.S2LevlDiscOrder + 0);
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc  + 16, 0, 9512,  5, 6, THPS1_ADDR.S2LevlDiscOrder + 6);
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc  + 32, 3,    0,  9, 5, THPS1_ADDR.T1DiscOrder); // THPS1.WAD sec 0..44 -> CLevelRend!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc  + 48, 1,   45,  9, 6, THPS1_ADDR.T1DiscOrder); // THPS1.WAD sec 45..98 -> CLevelMap!
+  // Single-Pass Strictly Ascending CD.WAD-ONLY FastBurst (ZERO Minute-71 seeks, ZERO backward seeks, max 55s = 112 KB!):
+  //   - FastRend saves CLevelRend->spritesBase and returns immediately in 0 frames!
+  //   - FastMap frees g_BurstBuf and reads all 40 BMPs monotonically forward from LBA 7955 -> LBA 10062!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc +  0, 2, T1_REND_CD_SEC, 9, 5, THPS1_ADDR.T1DiscOrder);         // CD.WAD[573] LBA 7955  (45s) -> CLevelRend!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 16, 0, T1_LEVL_CD_SEC, 9, 6, THPS1_ADDR.T1DiscOrder);         // CD.WAD[578] LBA 8049  (54s) -> CLevelMap!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 32, 0, 9476,           6, 6, THPS1_ADDR.S2LevlDiscOrder + 0); // CD.WAD      LBA 9931  (36s) -> CLevelMap!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 48, 0, 9512,           5, 6, THPS1_ADDR.S2LevlDiscOrder + 6); // CD.WAD      LBA 9967  (30s) -> CLevelMap!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 64, 2, 9553,          11, 5, THPS1_ADDR.S2RendDiscOrder);     // CD.WAD      LBA 10008 (55s) -> CLevelRend!
 
   // --- C2. Build Live THPS1 Gap Table @ 0x800E7E60 (24 gaps + sentinel = 300 B <= 416 B!) ---
   let gapOff = THPS1_ADDR.Thps1GapList - THPS1_ADDR.Base;
@@ -679,10 +691,10 @@ function buildThps1ResidentBlock() {
     }
   }
 
-  // --- E. THPS1.HED Lookup Table @ 0x800E8A50 (must stop cleanly before Thps1StringsSpill @ 0x800E8C80!) ---
-  const maxHedEntries = Math.floor((THPS1_ADDR.Thps1StringsSpill - THPS1_ADDR.Thps1Hed - 4) / 12);
+  // --- E. THPS1.HED Lookup Table @ 0x800E8A50 (must stop cleanly before TurboBurstBase @ 0x800E8AB0!) ---
+  const maxHedEntries = Math.floor((THPS1_ADDR.TurboBurstBase - THPS1_ADDR.Thps1Hed - 4) / 12);
   if (manifest.entries.length > maxHedEntries) {
-    throw new Error(`Too many THPS1.WAD entries (${manifest.entries.length} > ${maxHedEntries} before Thps1StringsSpill)`);
+    throw new Error(`Too many THPS1.WAD entries (${manifest.entries.length} > ${maxHedEntries} before TurboBurstBase)`);
   }
   let hedOff = THPS1_ADDR.Thps1Hed - THPS1_ADDR.Base;
   for (const e of manifest.entries) {
@@ -692,6 +704,10 @@ function buildThps1ResidentBlock() {
     hedOff += 12;
   }
   block.writeUInt32LE(0, hedOff); // null terminator
+
+  // --- E2. Assemble Turbo CD-ROM Burst Cache @ 0x800E8AB0 (464 B) & Throttle/Free Helpers @ 0x800E9ED0 (304 B) ---
+  putAt(THPS1_ADDR.TurboBurstBase, assembleTurboBurstCode());
+  putAt(THPS1_ADDR.TurboAuxBase,   assembleTurboAuxCode());
 
   // --- F. Assemble THPS1_CODE @ 0x800EA000 (4,096 B) ---
   const codeBuf = assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1Comp1, strT1Comp2);
@@ -906,6 +922,8 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.la(R.s1, THPS1_ADDR.g_Thps1ScratchOff);
   a.sw(R.t2, 0, R.s1);
   a.sw(R.t5, 4, R.s1);
+  a.jal(THPS1_ADDR.Entry_BurstFree); // auto-evict any active CD.WAD burst cache before THPS1.WAD read!
+  a.nop();
   a.j(0x800541F4);
   a.nop();
 
@@ -916,7 +934,15 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.nop();
 
   a.label('cw_found_orig');
+  // Contiguous CD-ROM Burst Streaming Cache: serves hot clusters in 0.00f from RAM via native PreMgr memcpy!
+  a.jal(THPS1_ADDR.Entry_BurstCdOpen);
+  a.nop();
+  a.bne(R.v0, R.zero, 'cw_burst_hit');
+  a.nop();
   a.j(0x800541F4);
+  a.nop();
+  a.label('cw_burst_hit');
+  a.j(0x80054244);                // CDWAD_Open epilogue (v0 = fileSize, g_IsPreFile=1!)
   a.nop();
 
   // --------------------------------------------------------------------------
@@ -1746,28 +1772,29 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.nop();
 
   // --------------------------------------------------------------------------
-  // 27. Instant Level Select Unified 1-Visit THPS1.WAD Contiguous CD-ROM Loader
-  //     - Hook_LevelSelFastRend: saves CLevelRend->spritesBase, pauses XA ONCE, reads CD.WAD s2rend (55 sec),
-  //       and leaves XA paused while levelsel reads s2levl11/s2arrow8/9 right next door in CD.WAD (0 seeks!).
-  //     - Hook_LevelSelFastMap: reads CD.WAD s2levl (36+30 sec), makes ONE SINGLE VISIT to THPS1.WAD for all
-  //       99 contiguous sectors (t1rend -> g_SavedRendSprites & t1levl -> CLevelMap->sprites), then resumes XA ONCE!
-  //     Eliminates 4 full-disc laser seeks (-3.0..4.5 s on every Level Select entry)!
+  // 27. Zero-Minute-71-Seek Strictly Ascending CD.WAD-ONLY Level Select Loader
+  //     - Hook_LevelSelFastRend: saves CLevelRend->spritesBase and returns in 0 frames (ZERO seek, ZERO back-and-forth!).
+  //     - Hook_LevelSelFastMap: frees g_BurstBuf (s2win4..s2arrow8), pauses XA ONCE, then streams ALL 40 LevelSel BMPs
+  //       monotonically forward inside CD.WAD:
+  //         Burst 0: CD.WAD[573] LBA 7955  (45s) -> t1rend00..08 -> CLevelRend!
+  //         Burst 1: CD.WAD[578] LBA 8049  (54s) -> t1levl00..08 -> CLevelMap!
+  //         Burst 2: CD.WAD      LBA 9931  (66s) -> s2levl00..10 -> CLevelMap! (1 single CdRead!)
+  //         Burst 3: CD.WAD      LBA 10008 (55s) -> s2rend01..11 -> CLevelRend! (+11s forward!)
+  //       then resumes XA ONCE! Eliminates the 64-frame Minute-71 seek AND all backward seeks!
   // --------------------------------------------------------------------------
   a.label('Hook_LevelSelFastRend');
-  a.addiu(R.a0, R.s1, 300);        // spritesBase = &CLevelRend->sprites[0]
-  a.la(R.t0, THPS1_ADDR.g_SavedRendSprites);
-  a.sw(R.a0, 0, R.t0);             // remember for 1-visit THPS1.WAD upload during FastMap!
-  a.addiu(R.a1, R.zero, -1);       // modeOrNeg1 = -1 (FastRend: keep XA paused until FastMap finishes!)
-  a.la(R.a2, THPS1_ADDR.FastBurstRendDesc);
-  a.j('Helper_RunFastBurstGroup');
-  a.addiu(R.a3, R.zero, 1);        // 1 burst: CD.WAD s2rend (55 sec)
+  a.addiu(R.t0, R.s1, 300);        // spritesBase = &CLevelRend->sprites[0]
+  a.la(R.t1, THPS1_ADDR.g_SavedRendSprites);
+  a.sw(R.t0, 0, R.t1);             // remember for single-pass ascending upload during FastMap!
+  a.jr(R.ra);
+  a.nop();
 
   a.label('Hook_LevelSelFastMap');
   a.addiu(R.a0, R.s2, 624);        // spritesBase = &CLevelMap->sprites[0]
-  a.lw(R.a1, 36, R.s2);            // modeOrNeg1 = CLevelMap->gameMode (>= 0 -> resumes XA after all 4 bursts!)
+  a.lw(R.a1, 36, R.s2);            // modeOrNeg1 = CLevelMap->gameMode (>= 0)
   a.la(R.a2, THPS1_ADDR.FastBurstMapDesc);
   a.j('Helper_RunFastBurstGroup');
-  a.addiu(R.a3, R.zero, 4);        // 4 bursts: CD.WAD s2levl (36+30 sec) + THPS1.WAD t1rend (45) + t1levl (54)!
+  a.addiu(R.a3, R.zero, 5);        // 5 strictly ascending CD.WAD bursts (t1rend + t1levl + s2levl x2 + s2rend)!
 
   // Helper_RunFastBurstGroup($a0=spritesBase, $a1=modeOrNeg1, $a2=descPtr, $a3=numDescs)
   // Stack frame (64 B): 0..15=argSave, 16..19=CdlLOC, 20=totalSec/rem, 24=activeMode, 28..60=s0..s7,ra
@@ -1783,11 +1810,15 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.sw(R.s1, 32, R.sp);
   a.sw(R.s0, 28, R.sp);
   a.move(R.s0, R.a0);              // s0 = spritesBase
-  a.move(R.s1, R.a1);              // s1 = modeOrNeg1 (<0 = FastRend, >=0 = FastMap)
+  a.move(R.s1, R.a1);              // s1 = gameMode (>= 0)
   a.move(R.s2, R.a2);              // s2 = descPtr
   a.move(R.s3, R.a3);              // s3 = numDescs
 
-  // Temp burst buffer: 55 * 2048 = 112,640 B top-down in Heap[1]
+  // Free LevelSel s2win4..s2arrow8 burst buffer BEFORE allocating 55-sector buffer (0 B leaked!)
+  a.jal(THPS1_ADDR.Entry_BurstFree);
+  a.nop();
+
+  // Temp burst buffer: 55 * 2048 = 112,640 B top-down in Heap[1] (proven safe inside LevelSel!)
   a.li(R.a0, 112640);
   a.addiu(R.a1, R.zero, 1);
   a.addiu(R.a2, R.zero, 1);
@@ -1796,16 +1827,11 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.beq(R.v0, R.zero, 'fbg_epilogue');
   a.move(R.s4, R.v0);              // s4 = buf
 
-  // Reset g_FastBurstXaSaved = 0 on FastRend entry (s1 < 0)
-  a.bgez(R.s1, 'fbg_wait_cd');
-  a.nop();
-  a.la(R.t0, THPS1_ADDR.g_FastBurstXaSaved);
-  a.sw(R.zero, 0, R.t0);
-
-  // Wait CDWAD idle & pause XA if active and not yet paused (persisted across FastRend -> FastMap!)
-  a.label('fbg_wait_cd');
+  // Wait CDWAD idle & pause XA ONCE if active and not yet paused
   a.jal(0x800544C4);               // CDWAD_WaitIdle
   a.nop();
+  a.la(R.t2, THPS1_ADDR.g_FastBurstXaSaved);
+  a.sw(R.zero, 0, R.t2);
   a.lw(R.t0, 14704, R.gp);         // xaActive
   a.lw(R.t1, 14712, R.gp);         // xaPaused
   a.nop();
@@ -1813,31 +1839,15 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.nop();
   a.bne(R.t1, R.zero, 'fbg_desc_loop');
   a.nop();
-  a.la(R.t2, THPS1_ADDR.g_FastBurstXaSaved);
   a.addiu(R.t3, R.zero, 1);
   a.sw(R.t3, 0, R.t2);
   a.jal(0x80038D60);               // XA_Pause(1)
   a.addiu(R.a0, R.zero, 1);
 
   a.label('fbg_desc_loop');
-  a.lw(R.t0, 0, R.s2);             // srcFlags (bit0: 0=CD.WAD, 1=THPS1.WAD; bit1: 1=SavedRendSprites)
+  a.lw(R.t0, 24440, R.gp);         // CD.WAD start LBA (455) — ALL 4 bursts live inside CD.WAD!
   a.lw(R.t1, 4, R.s2);             // secOff
   a.nop();
-  a.andi(R.t0, R.t0, 1);
-  a.bne(R.t0, R.zero, 'fbg_src_thps1');
-  a.nop();
-  a.lw(R.t0, 24440, R.gp);         // CD.WAD start LBA
-  a.j('fbg_lba_ready');
-  a.nop();
-  a.label('fbg_src_thps1');
-  a.lui(R.t2, 0x800E);
-  a.lw(R.t0, 0x27C4, R.t2);        // g_VoicesBaseLba
-  a.la(R.t3, THPS1_ADDR.g_Thps1Inited);
-  a.lw(R.t3, 0, R.t3);             // g_VoicesTotalSectors
-  a.nop();
-  a.addu(R.t0, R.t0, R.t3);        // thps1BaseLba
-
-  a.label('fbg_lba_ready');
   a.addu(R.a0, R.t0, R.t1);        // target LBA = baseLba + secOff
   a.lhu(R.t2, 8, R.s2);            // count
   a.lhu(R.t3, 10, R.s2);           // strideSec
@@ -1857,15 +1867,12 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.jal(0x800A5B30);               // CdRead(totalSectors, buf, CdlModeSpeed 0x80)
   a.addiu(R.a2, R.zero, 0x80);
 
+  // Tight zero-VSync CdReadSync(1, 0) poll -> immediate handoff to next contiguous burst!
   a.label('fbg_cd_wait');
   a.addiu(R.a0, R.zero, 1);
   a.jal(0x800A5CCC);               // CdReadSync(1, 0)
   a.move(R.a1, R.zero);
-  a.blez(R.v0, 'fbg_upload_init');
-  a.move(R.a0, R.zero);
-  a.jal(0x800A38C4);               // VSync(0)
-  a.nop();
-  a.j('fbg_cd_wait');
+  a.bgtz(R.v0, 'fbg_cd_wait');
   a.nop();
 
   // Select target sprite array (s5) & activeMode (24(sp)): bit1 of srcFlags redirects t1rend -> CLevelRend!
@@ -2020,6 +2027,276 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   if (used > 4096) throw new Error(`THPS1_CODE exceeds 4096 B (${used} B)!`);
   console.log(`  [ASM] THPS1_CODE  : 0x${THPS1_ADDR.CodeBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / 4096 B, livre: ${4096 - used} B)`);
   a.padTo(THPS1_ADDR.CodeBase + 4096);
+  return a.emit();
+}
+
+// ============================================================================
+// 2B. Assemble Turbo CD-ROM Contiguous Streaming Cache @ 0x800E8AB0 (464 B)
+//     Called from Hook_CdWadFallback (cw_found_orig) with $s1 = &hedEntry.offset.
+//     Serves hot contiguous clusters in ONE single CdRead (0.00f RAM memcpy via PreMgr!):
+//       - sec 0    (s2bgd6..skate2.sfx, 147s = 301 KB) on EVERY regular level load!
+//       - sec 61   (s2_scrib..skate2.sfx, 86s = 176 KB) on EVERY competition level load!
+//       - sec 347  (items.psx + bits.psx, 25s = 51 KB) on EVERY level load!
+//       - sec 4569 (s2win4 + s2medal1..3 + s2arrow9/8, 24s = 49 KB) in LevelSel (survives s2face*.bmp <= 3s)!
+// ============================================================================
+function assembleTurboBurstCode() {
+  const a = new MipsAsm(THPS1_ADDR.TurboBurstBase);
+  const MAX_BYTES = THPS1_ADDR.Thps1StringsSpill - THPS1_ADDR.TurboBurstBase; // 464 B
+
+  a.label('Entry_BurstCdOpen');
+  a.addiu(R.sp, R.sp, -56);
+  a.sw(R.ra, 52, R.sp);
+  a.sw(R.s7, 48, R.sp);
+  a.sw(R.s6, 44, R.sp);
+  a.sw(R.s5, 40, R.sp);
+  a.sw(R.s4, 36, R.sp);
+  a.sw(R.s0, 32, R.sp);
+
+  // Note: 0x80054274 in CDWAD_Read is NOPped so 18968($gp) (g_IsPreFile) works even when no .PRE is loaded!
+  a.lw(R.t1, 0, R.s1);             // byteOff
+  a.lw(R.s4, 4, R.s1);             // s4 = fileSize
+  a.nop();
+  a.srl(R.s5, R.t1, 11);           // s5 = fileSec
+  a.addiu(R.t2, R.s4, 2047);
+  a.srl(R.s6, R.t2, 11);           // s6 = fileSecs
+  a.bne(R.s6, R.zero, 'bco_chk_act');
+  a.nop();
+  a.addiu(R.s6, R.zero, 1);
+
+  a.label('bco_chk_act');
+  a.la(R.s0, THPS1_ADDR.g_TurboState);
+  a.lw(R.t0, 8, R.s0);             // g_BurstBuf
+  a.nop();
+  a.beq(R.t0, R.zero, 'bco_try_pre');
+  a.lw(R.t1, 12, R.s0);            // g_BurstStartSec
+  a.lw(R.t2, 16, R.s0);            // g_BurstEndSec
+  a.sltu(R.t3, R.s5, R.t1);        // fileSec < StartSec ?
+  a.bne(R.t3, R.zero, 'bco_evict');
+  a.addu(R.t4, R.s5, R.s6);        // fileEndSec
+  a.sltu(R.t3, R.t2, R.t4);        // EndSec < fileEndSec ?
+  a.beq(R.t3, R.zero, 'bco_hit');
+  a.nop();
+
+  a.label('bco_evict');
+  // Immediately evict & free g_BurstBuf on first miss -> ZERO Heap[1] fragmentation!
+  a.jal(THPS1_ADDR.Entry_BurstFree);
+  a.nop();
+
+  a.label('bco_try_pre');
+  a.lw(R.t0, 18928, R.gp);         // g_CdState: only prefetch when idle!
+  a.nop();
+  a.bne(R.t0, R.zero, 'bco_miss0');
+  a.nop();
+
+  a.beq(R.s5, R.zero, 'bco_c0');
+  a.addiu(R.t0, R.zero, 61);
+  a.beq(R.s5, R.t0, 'bco_c61');
+  a.addiu(R.t0, R.zero, 4569);
+  a.beq(R.s5, R.t0, 'bco_c4569');
+  a.nop();
+  a.j('bco_miss0');
+  a.nop();
+
+  a.label('bco_c0');
+  a.addiu(R.s6, R.zero, 67);       // s2bgd6 + s2_scrib + s2pressx (137 KB, freed BEFORE skate2.vab permanent .VH -> 0 frag!)
+  a.j('bco_alloc');
+  a.lui(R.t5, 0x0004);             // minFree = 262,144 B
+
+  a.label('bco_c61');
+  a.addiu(R.s6, R.zero, 6);        // s2_scrib + s2pressx (12 KB, Competitions, freed BEFORE skate2.vab!)
+  a.j('bco_alloc');
+  a.lui(R.t5, 0x0002);             // minFree = 131,072 B
+
+  a.label('bco_c4569');
+  a.addiu(R.s6, R.zero, 12);       // s2win4 + s2medal1..3 (24 KB, LevelSel, all temp -> freed before s2face2!)
+  a.lui(R.t5, 0x0003);             // minFree = 196,608 B
+
+  a.label('bco_alloc');
+  // Walk Heap[1] freeList @ 19112(gp) -> t6 = largestFree (100% OOM-proof!)
+  a.lw(R.t0, 19112, R.gp);
+  a.move(R.t6, R.zero);
+  a.label('bco_fl');
+  a.beq(R.t0, R.zero, 'bco_fl_done');
+  a.nop();
+  a.lw(R.t1, 0, R.t0);
+  a.lw(R.t0, 4, R.t0);
+  a.srl(R.t1, R.t1, 4);
+  a.sltu(R.t2, R.t6, R.t1);
+  a.beq(R.t2, R.zero, 'bco_fl');
+  a.nop();
+  a.j('bco_fl');
+  a.move(R.t6, R.t1);
+
+  a.label('bco_fl_done');
+  a.sltu(R.t2, R.t6, R.t5);
+  a.bne(R.t2, R.zero, 'bco_miss0');
+  a.sll(R.a0, R.s6, 11);           // allocBytes = nSec * 2048
+  a.addiu(R.a1, R.zero, 1);
+  a.addiu(R.a2, R.zero, 1);
+  a.jal(0x8005515C);               // Mem_Alloc(bytes, 1, 1, 0)
+  a.move(R.a3, R.zero);
+  a.beq(R.v0, R.zero, 'bco_miss0');
+  a.move(R.s7, R.v0);              // s7 = buf
+
+  // Stop active FMV & pause XA only if playing
+  a.jal(0x8007AFE4);               // Movie_Stop
+  a.nop();
+  a.lw(R.t0, 14704, R.gp);         // xaActive
+  a.lw(R.t1, 14712, R.gp);         // xaPaused
+  a.sw(R.zero, 20, R.s0);          // g_BurstXaSaved = 0
+  a.beq(R.t0, R.zero, 'bco_cd_go');
+  a.nop();
+  a.bne(R.t1, R.zero, 'bco_cd_go');
+  a.nop();
+  a.addiu(R.t2, R.zero, 1);
+  a.sw(R.t2, 20, R.s0);
+  a.jal(0x80038D60);               // XA_Pause(1)
+  a.addiu(R.a0, R.zero, 1);
+
+  a.label('bco_cd_go');
+  a.lw(R.t0, 24440, R.gp);         // CD.WAD base LBA
+  a.nop();
+  a.addu(R.a0, R.t0, R.s5);        // absLba
+  a.jal(0x800A1698);               // CdIntToPos(absLba, sp+16)
+  a.addiu(R.a1, R.sp, 16);
+  a.addiu(R.a0, R.zero, 2);        // CdlSetloc
+  a.addiu(R.a1, R.sp, 16);
+  a.jal(0x800A08C4);               // CdControl
+  a.move(R.a2, R.zero);
+  a.move(R.a0, R.s6);              // nSec
+  a.move(R.a1, R.s7);              // buf
+  a.jal(0x800A5B30);               // CdRead(nSec, buf, 0x80)
+  a.addiu(R.a2, R.zero, 0x80);
+
+  a.label('bco_wait');
+  a.addiu(R.a0, R.zero, 1);
+  a.jal(0x800A5CCC);               // CdReadSync(1, 0)
+  a.move(R.a1, R.zero);
+  a.blez(R.v0, 'bco_cd_done');
+  a.nop();
+  a.jal(THPS1_ADDR.Entry_LoadingBarThrottle);
+  a.nop();
+  a.j('bco_wait');
+  a.nop();
+
+  a.label('bco_cd_done');
+  a.lw(R.t0, 20, R.s0);
+  a.nop();
+  a.beq(R.t0, R.zero, 'bco_commit');
+  a.nop();
+  a.sw(R.zero, 20, R.s0);
+  a.jal(0x800387A8);               // XA_SetMode
+  a.nop();
+  a.jal(0x80038D60);               // XA_Pause(0)
+  a.move(R.a0, R.zero);
+
+  a.label('bco_commit');
+  a.sw(R.s7, 8, R.s0);             // g_BurstBuf = buf
+  a.sw(R.s5, 12, R.s0);            // g_BurstStartSec = fileSec
+  a.addu(R.t1, R.s5, R.s6);
+  a.sw(R.t1, 16, R.s0);            // g_BurstEndSec = fileSec + nSec
+
+  a.label('bco_hit');
+  a.lw(R.t0, 8, R.s0);             // g_BurstBuf
+  a.lw(R.t1, 12, R.s0);            // g_BurstStartSec
+  a.addiu(R.t3, R.zero, 1);
+  a.subu(R.t2, R.s5, R.t1);        // relSec
+  a.sll(R.t2, R.t2, 11);
+  a.addu(R.t2, R.t0, R.t2);        // dataPtr
+  a.sw(R.t3, 18968, R.gp);         // g_IsPreFile = 1
+  a.sw(R.t2, 18972, R.gp);         // g_PreDataPtr = dataPtr
+  a.sw(R.s4, 18976, R.gp);         // g_PreDataSize = fileSize
+  a.sw(R.t3, 18936, R.gp);         // g_FileOpen = 1
+  a.sw(R.s4, 19012, R.gp);         // g_FileSize = fileSize
+  a.j('bco_ret');
+  a.move(R.v0, R.s4);
+
+  a.label('bco_miss0');
+  a.move(R.v0, R.zero);
+
+  a.label('bco_ret');
+  a.lw(R.s0, 32, R.sp);
+  a.lw(R.s4, 36, R.sp);
+  a.lw(R.s5, 40, R.sp);
+  a.lw(R.s6, 44, R.sp);
+  a.lw(R.s7, 48, R.sp);
+  a.lw(R.ra, 52, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 56);
+
+  const used = a.pc() - THPS1_ADDR.TurboBurstBase;
+  if (used > MAX_BYTES) throw new Error(`TURBO_BURST exceeds ${MAX_BYTES} B (${used} B)!`);
+  console.log(`  [ASM] TURBO_BURST : 0x${THPS1_ADDR.TurboBurstBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / ${MAX_BYTES} B, livre: ${MAX_BYTES - used} B)`);
+  a.padTo(THPS1_ADDR.TurboBurstBase + MAX_BYTES);
+  return a.emit();
+}
+
+// ============================================================================
+// 2C. Assemble Turbo CD Throttle & Free Helpers @ 0x800E9ED0 (304 B)
+//     - Entry_LoadingBarThrottle (0x800E9ED0): 60 Hz GPU ClearImage throttle on LoadingBar_Draw
+//     - Entry_CdPollPadThrottle  (0x800E9F10): 60 Hz SIO Pad_Update throttle inside CDWAD_Poll
+//     - Entry_BurstFree          (0x800E9F48): Safe Mem_Free(g_BurstBuf) preserving all $s* regs
+// ============================================================================
+function assembleTurboAuxCode() {
+  const a = new MipsAsm(THPS1_ADDR.TurboAuxBase);
+  const MAX_BYTES = THPS1_ADDR.CodeBase - THPS1_ADDR.TurboAuxBase; // 304 B
+
+  a.padTo(THPS1_ADDR.Entry_LoadingBarThrottle);
+  a.lui(R.t1, 0x800D);
+  a.lw(R.t2, 28872, R.t1);         // g_FrameCounter (0x800D70C8)
+  a.la(R.t3, THPS1_ADDR.g_TurboState);
+  a.lw(R.t4, 0, R.t3);             // g_LastBarFrame
+  a.nop();
+  a.beq(R.t2, R.t4, 'lbt_skip');
+  a.nop();
+  a.sw(R.t2, 0, R.t3);
+  a.j(0x80022AB4);                 // continue original LoadingBar_Draw (0x80022AB4 is addiu sp,-32 -> fills load delay!)
+  a.lw(R.v0, 22380, R.t1);         // replay original 0x80022AB0 in delay slot!
+  a.label('lbt_skip');
+  a.jr(R.ra);
+  a.nop();
+
+  a.padTo(THPS1_ADDR.Entry_CdPollPadThrottle);
+  a.lui(R.t1, 0x800D);
+  a.lw(R.t2, 28872, R.t1);         // g_FrameCounter
+  a.la(R.t3, THPS1_ADDR.g_TurboState);
+  a.lw(R.t4, 4, R.t3);             // g_LastPadFrame
+  a.nop();
+  a.beq(R.t2, R.t4, 'cppt_skip');
+  a.nop();
+  a.sw(R.t2, 4, R.t3);
+  a.j(0x8006B978);                 // tail-call Pad_Update once per VBlank!
+  a.nop();
+  a.label('cppt_skip');
+  a.jr(R.ra);
+  a.nop();
+
+  a.padTo(THPS1_ADDR.Entry_BurstFree);
+  a.la(R.t0, THPS1_ADDR.g_TurboState);
+  a.lw(R.a0, 8, R.t0);             // g_BurstBuf
+  a.nop();
+  a.beq(R.a0, R.zero, 'bf_ret');
+  a.nop();
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.sw(R.zero, 8, R.t0);           // clear g_BurstBuf BEFORE Mem_Free!
+  a.sw(R.zero, 12, R.t0);
+  a.sw(R.zero, 16, R.t0);
+  a.jal(0x800551A8);               // Mem_Free(a0)
+  a.nop();
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+  a.label('bf_ret');
+  a.jr(R.ra);
+  a.nop();
+
+  const used = a.pc() - THPS1_ADDR.TurboAuxBase;
+  if (used > MAX_BYTES) throw new Error(`TURBO_AUX exceeds ${MAX_BYTES} B (${used} B)!`);
+  console.log(`  [ASM] TURBO_AUX   : 0x${THPS1_ADDR.TurboAuxBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / ${MAX_BYTES} B, livre: ${MAX_BYTES - used} B)`);
+  a.padTo(THPS1_ADDR.TurboAuxBase + MAX_BYTES);
   return a.emit();
 }
 
@@ -2197,6 +2474,21 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   patchExact(slusBuf, r2f(0x80082B48), 0x240400EC, 0x24040070, 'Fade_Start MainMenu->PlaySel 236->112 @ 0x80082B48');
   patchExact(slusBuf, r2f(0x80083328), 0x240400EC, 0x24040070, 'Fade_Start Gameplay->Menu 236->112 @ 0x80083328');
   patchExact(slusBuf, r2f(0x8002310C), 0x24040034, 0x24040022, 'Fade_Start GoalList->Game 52->34 @ 0x8002310C');
+
+  // TURBO CDWAD ENGINE (Zero rotational-overshoot polling + 60 Hz GPU/SIO throttling + Pre-less RAM Burst):
+  //   - 0x80054274: NOP redundant g_PreMgr!=0 guard in CDWAD_Read (g_IsPreFile @ 18968(gp) is already 0 unless PreMgr or TURBO_BURST hit!)
+  //   - 0x80054440: immediately jump to 0x800543CC (zero g_CdState & g_FileOpen) on CdReadSync(1)==0 (delay slot writes bytesRead!)
+  //   - 0x800544EC: NOP duplicate LoadingBar_Draw inside CDWAD_WaitIdle spin-loop
+  //   - 0x80054504: NOP redundant trailing CDWAD_Poll after CDWAD_WaitIdle exits
+  //   - 0x80022AAC: throttle LoadingBar_Draw GPU ClearImage to 60 Hz (eliminates 500x/frame GPU FIFO stalls!)
+  //   - 0x800543DC: throttle Pad_Update inside CDWAD_Poll to 60 Hz (microsecond CdReadSync handoff!)
+  patchExact(slusBuf, r2f(0x80054274), 0x1040000C, 0x00000000,                           'CDWAD_Read allow g_IsPreFile without PreMgr @ 0x80054274');
+  patchExact(slusBuf, r2f(0x80054440), 0x00000000, jW(0x800543CC),                       'CDWAD_Poll instant idle on sync==0 @ 0x80054440');
+  patchExact(slusBuf, r2f(0x800544EC), 0x0C008AAB, 0x00000000,                           'CDWAD_WaitIdle drop dup LoadingBar @ 0x800544EC');
+  patchExact(slusBuf, r2f(0x80054504), 0x0C0150C3, 0x00000000,                           'CDWAD_WaitIdle drop extra Poll @ 0x80054504');
+  patchExact(slusBuf, r2f(0x80022AAC), 0x3C02800D, jW(THPS1_ADDR.Entry_LoadingBarThrottle), 'LoadingBar_Draw 60Hz throttle j @ 0x80022AAC');
+  patchExact(slusBuf, r2f(0x80022AB0), 0x8C42576C, 0x00000000,                           'LoadingBar_Draw 60Hz throttle nop @ 0x80022AB0');
+  patchExact(slusBuf, r2f(0x800543DC), 0x0C01AE5E, jalW(THPS1_ADDR.Entry_CdPollPadThrottle), 'CDWAD_Poll Pad_Update 60Hz throttle @ 0x800543DC');
 
   // Pause Menu "View Goals" button visibility for THPS1 levels @ 0x8002D900 (jal in nop slot; nop @ 0x8002D904; original bne @ 0x8002D908 untouched!)
   patchExact(slusBuf, r2f(0x8002D900), 0x00000000, jalW(THPS1_ADDR.Entry_ShowGoalsBtn),        'PauseMenu ShowGoalsBtn jal @ 0x8002D900');
@@ -2395,9 +2687,34 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   patchLs(0x2F7C, 0x10800010, 0x10800010, 'CLevelRend bottom preview FMV ENABLED (ringSec=20)');
 
   // Write patched levelsel.bin to BOTH WAD[33] AND levelsel.pre (WAD[47] + 0x18)!
+  // Also append s2arrow8.bmp (248 B) & s2arrow9.bmp (248 B) into levelsel.pre's 1,400 B free slack (281,224 -> 281,760 B,
+  // SAME 138 sectors, 0 offset shift!) so s2arrow8/9 load in 0.00f with ZERO backward seek and ZERO Heap[1] fragmentation!
   lsMod.copy(wadBuf, lsOff);
   lsMod.copy(wadBuf, lsPreOff);
-  console.log(`  [OK] levelsel.bin atualizado em WAD[33] (0x${lsOff.toString(16)}) e levelsel.pre (0x${lsPreOff.toString(16)})`);
+  const origHed = fs.readFileSync(ORIG_HED_PATH);
+  const lpBase = hedBuf.readUInt32LE(47 * 12 + 4);
+  const lpOrigSz = origHed.readUInt32LE(47 * 12 + 8);
+  const lpSlotSz = origHed.readUInt32LE(48 * 12 + 4) - lpBase;
+  const a8Off = origHed.readUInt32LE(477 * 12 + 4), a8Sz = origHed.readUInt32LE(477 * 12 + 8);
+  const a9Off = origHed.readUInt32LE(476 * 12 + 4), a9Sz = origHed.readUInt32LE(476 * 12 + 8);
+  const a8Data = origWad.subarray(a8Off, a8Off + a8Sz);
+  const a9Data = origWad.subarray(a9Off, a9Off + a9Sz);
+  const packPreItem = (name, data) => {
+    const nLen = (name.length + 1 + 3) & ~3;
+    const dLen = (data.length + 3) & ~3;
+    const out = Buffer.alloc(nLen + 4 + dLen, 0);
+    out.write(name, 0, 'ascii');
+    out.writeUInt32LE(data.length >>> 0, nLen);
+    data.copy(out, nLen + 4);
+    return out;
+  };
+  const extraPre = Buffer.concat([packPreItem('s2arrow8.bmp', a8Data), packPreItem('s2arrow9.bmp', a9Data)]);
+  const lpNewSz = lpOrigSz + extraPre.length;
+  if (lpNewSz > lpSlotSz) throw new Error(`levelsel.pre overflow: ${lpNewSz} > ${lpSlotSz}`);
+  wadBuf.writeUInt32LE(22, lpBase); // 20 -> 22 archived files!
+  extraPre.copy(wadBuf, lpBase + lpOrigSz);
+  hedBuf.writeUInt32LE(lpNewSz >>> 0, 47 * 12 + 8);
+  console.log(`  [OK] levelsel.bin atualizado em WAD[33] (0x${lsOff.toString(16)}) e levelsel.pre (0x${lsPreOff.toString(16)}, +s2arrow8/9 -> ${lpNewSz}/${lpSlotSz} B, mesmos 138 setores!)`);
 
   // --- C. Patch options.bin (WAD[37]) ---
   console.log('\n=== Aplicando Relocacao g_LevelTable em options.bin ===');

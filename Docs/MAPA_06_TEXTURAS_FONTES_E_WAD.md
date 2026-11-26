@@ -10,11 +10,11 @@
 | Categoria | Quantidade | Resolvidos por Nome | Tamanho Total | Descrição |
 | :--- | :-: | :-: | :---: | :--- |
 | **`BMP`** | 1040 | 793 (76%) | 10.32 MB | Texturas 2D, roupas de skatista, rostos, decks, telas de loading e UI (BMP 4-bit/8-bit indexado) |
-| **`PSX`** | 227 | 146 (64%) | 27.34 MB | Modelos 3D, geometria de fases, skyboxes e texturas VRAM embutidas (magic `04 00 02 00`) |
+| **`PSX`** | 227 | 146 (64%) | 27.36 MB | Modelos 3D, geometria de fases, skyboxes e texturas VRAM embutidas (magic `04 00 02 00`) |
 | **`PSH`** | 74 | 74 (100%) | 0.12 MB | Headers C em texto plano (`#ifndef ..._PSH`) com hierarquia de ossos/esqueletos |
 | **`DATA`** | 53 | 25 (47%) | 0.56 MB | Fontes (`.fnt`), `tricks.bin`, tabelas de animação e dados binários |
 | **`PRK`** | 50 | 50 (100%) | 0.21 MB | 50 parques pré-fabricados do Park Editor (`park0.prk`..`park49.prk`, 2.560 B cada) |
-| **`TRG`** | 25 | 13 (52%) | 0.51 MB | Triggers, spawns, coletáveis, rails e gaps das fases (`_TRG v2.0`) |
+| **`TRG`** | 25 | 13 (52%) | 0.49 MB | Triggers, spawns, coletáveis, rails e gaps das fases (`_TRG v2.0`) |
 | **`VAB`** | 17 | 17 (100%) | 4.64 MB | Bancos de efeitos sonoros PSX (`pBAV`: header `.VH` + corpo ADPCM `.VB`) |
 | **`OVL_BIN`** | 15 | 15 (100%) | 0.39 MB | 15 overlays de código MIPS R3000A relocáveis (menus, editor, opções) |
 | **`PRE`** | 14 | 14 (100%) | 2.43 MB | 14 sub-arquivos empacotados de telas/HUD (contêm `.bmp`, `.fnt`, `.psx` e `.bin`) |
@@ -42,8 +42,8 @@ Formato interno de um `.PRE`: `uint32 file_count`, seguido por `file_count` bloc
 ### `cresel.pre` (CD.HED idx=46 | Hash `0xA7DCE1DB` | `CD.WAD +0x002E0000` | 194924 B | **13 arquivos internos**)
 `mainf.fnt` (12808 B) • `s2font1.fnt` (5792 B) • `s2font2.fnt` (3412 B) • `s2tricks.fnt` (8948 B) • `s2bgd4.bmp` (123960 B) • `s2arrow8.bmp` (248 B) • `s2arrow9.bmp` (248 B) • `s2prmpt0.bmp` (1352 B) • `s2prmpt1.bmp` (1292 B) • `s2prmpt2.bmp` (1316 B) • `s2prmpt3.bmp` (1288 B) • `s2prmpt5.bmp` (848 B) • `tricks.bin` (33168 B)
 
-### `levelsel.pre` (CD.HED idx=47 | Hash `0xEE59B265` | `CD.WAD +0x00310000` | 281224 B | **20 arquivos internos**)
-`levelsel.bin` (24012 B) • `levelsel.rel` (1540 B) • `mainf.fnt` (12808 B) • `s2font2.fnt` (3412 B) • `s2font1.fnt` (5792 B) • `ingame1.fnt` (6212 B) • `s2tricks.fnt` (8948 B) • `s2bgd3.bmp` (123960 B) • `s2prmpt0.bmp` (1352 B) • `s2prmpt1.bmp` (1292 B) • `s2prmpt2.bmp` (1316 B) • `s2prmpt4.bmp` (880 B) • `s2prmpt5.bmp` (848 B) • `s2versus.bmp` (3088 B) • `globe.psx` (43940 B) • `s2crossh.bmp` (416 B) • `levna.bmp` (9528 B) • `s2win5.bmp` (17880 B) • `s2levl11.bmp` (12104 B) • `s2lvgoal.bmp` (1524 B)
+### `levelsel.pre` (CD.HED idx=47 | Hash `0xEE59B265` | `CD.WAD +0x00310000` | 281760 B | **22 arquivos internos**)
+`levelsel.bin` (24012 B) • `levelsel.rel` (1540 B) • `mainf.fnt` (12808 B) • `s2font2.fnt` (3412 B) • `s2font1.fnt` (5792 B) • `ingame1.fnt` (6212 B) • `s2tricks.fnt` (8948 B) • `s2bgd3.bmp` (123960 B) • `s2prmpt0.bmp` (1352 B) • `s2prmpt1.bmp` (1292 B) • `s2prmpt2.bmp` (1316 B) • `s2prmpt4.bmp` (880 B) • `s2prmpt5.bmp` (848 B) • `s2versus.bmp` (3088 B) • `globe.psx` (43940 B) • `s2crossh.bmp` (416 B) • `levna.bmp` (9528 B) • `s2win5.bmp` (17880 B) • `s2levl11.bmp` (12104 B) • `s2lvgoal.bmp` (1524 B) • `s2arrow8.bmp` (248 B) • `s2arrow9.bmp` (248 B)
 
 ### `equipsel.pre` (CD.HED idx=48 | Hash `0xBBFE5E24` | `CD.WAD +0x00355000` | 330544 B | **23 arquivos internos**)
 `equipsel.bin` (26824 B) • `equipsel.rel` (1900 B) • `s2font2.fnt` (3412 B) • `s2font1.fnt` (5792 B) • `s2menu1.fnt` (2928 B) • `s2bgd5.bmp` (123960 B) • `s2prmpt0.bmp` (1352 B) • `s2prmpt1.bmp` (1292 B) • `s2prmpt2.bmp` (1316 B) • `s2prmpt4.bmp` (880 B) • `s2prmpt5.bmp` (848 B) • `s2dots2.bmp` (1160 B) • `s2win6.bmp` (10480 B) • `s2arrow1.bmp` (552 B) • `s2arrow2.bmp` (548 B) • `s2arrow4.bmp` (360 B) • `s2arrow5.bmp` (360 B) • `s2eqicn1.bmp` (3868 B) • `s2eqicn2.bmp` (2680 B) • `s2eqicn3.bmp` (2164 B) • `barrel.psx` (105364 B) • `s2d__00z.bmp` (16508 B) • `truck.psx` (15564 B)

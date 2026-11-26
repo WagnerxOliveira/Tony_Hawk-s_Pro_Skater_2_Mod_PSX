@@ -582,20 +582,134 @@ Montamos uma correção em **3 camadas simultâneas**, 100% em **SPU RAM residen
 
 ---
 
-## Capítulo 17 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
+## Capítulo 17 — Engenharia de Hardware PS1 ao Limite: Acelerando `PlaySel → LevelSel` (`-1,55 s`) e `LevelSel → Gameplay` (`-3,3 s` a `-4,5 s`, `0 CdReads` Pós-`X`!)
+
+Mesmo depois de todos os ganhos do Capítulo 16, o usuário percebeu algo muito claro ao jogar de verdade: **duas transições específicas** ainda podiam ficar **muito mais rápidas**:
+1. **Ao terminar de escolher o personagem (`PlaySel`) e ir para a Seleção de Fases (`LevelSel`)**;
+2. **Ao terminar de escolher a fase (`LevelSel`) até o skatista realmente entrar jogando na pista** (tanto nas fases do THPS2 quanto nas 9 fases integradas do THPS1!).
+
+Em vez de "trapacear" usando aceleração artificial de emulador ou sacrificar um único pixel dos gráficos ou dos vídeos preview, fizemos o que engenheiros de sistemas embarcados fazem em hardware real de 1994: **medimos cada frame individual de `Open(...)` e `CdRead(...)` ao vivo via GDB no DuckStation (velocidade real de drive 2×)** para descobrir **exatamente** onde cada milissegundo estava sendo desperdiçado.
+
+### O Raio-X Forense: 5 Vilões Invisíveis que Travavam o Drive 2× do PS1
+
+Quando olhamos o cronômetro frame a frame (`60 Hz`), descobrimos **cinco gargalos físicos e arquiteturais** que ninguém vê a olho nu:
+
+1. **Vilão #1 — O "Martelo" de GPU e Controle dentro de `CDWAD_Poll` (`0x800543DC`) + Perda de Rotação do Disco (`0x80054440`):**
+   - Enquanto o leitor de CD do PS1 estava trazendo um arquivo, o loop de espera `CDWAD_WaitIdle` (`0x800544C4`) ficava chamando **`Pad_Update` (leitura serial SIO do controle!)** e **`LoadingBar_Draw` (`ClearImage` na GPU!)** **centenas de vezes por segundo** — bloqueando a CPU exatamente no microssegundo em que o setor final chegava (`CdReadSync == 0`)!
+   - Pior: em `0x80054440`, quando `CdReadSync(1, 0)` retornava `0` (leitura concluída!), o código original **não** marcava `g_CdState = 0` imediatamente — ele saía da função para esperar a *próxima* chamada! Até lá, o disco físico já tinha girado além do próximo setor contíguo (*rotational overshoot*), desperdiçando `3` a `6` frames em quase todo arquivo!
+2. **Vilão #2 — O "Salto Transoceânico" ao Minuto 71 (`LBA 319.067`, `THPS1.WAD`):**
+   - Um CD-ROM 2× do PlayStation 1 tem **~320.000 setores** (do centro em `LBA 455` até a borda externa no Minuto 71, em `LBA 319.067`).
+   - Cada viagem de ida e volta do canhão laser entre o miolo do disco (`CD.WAD`, `LBA 455..25.066`) e a borda extrema (`THPS1.WAD`, `LBA 319.067`) custa **`~0,6 s` a `1,0 s` só de deslocamento mecânico do motor de passo!**
+   - E nós estávamos obrigando o laser a fazer essa viagem intercontinental:
+     - Na **Seleção de Fases**, para buscar as 18 fotos `t1rend00..08.bmp` e `t1levl00..08.bmp`;
+     - Em **cada fase do THPS1**, **2 a 4 vezes por carregamento**, para buscar os `.TRG`, os `sk*_o.psx` esculpidos e os `.PSX` modificados!
+3. **Vilão #3 — Mini-Seeks Desperdiçados em Blocos Contíguos e em `s2arrow8/9.bmp`:**
+   - Na entrada da Seleção de Fases, o jogo abria `s2win4.bmp` → `s2medal1.bmp` → `s2medal2.bmp` → `s2medal3.bmp` em **4 leituras separadas** (embora sejam `12` setores perfeitamente contíguos no `CD.WAD`!), e no final ainda fazia um **seek reverso** para buscar dois ícones minúsculos de apenas **248 bytes cada** (`s2arrow8.bmp` e `s2arrow9.bmp`)!
+   - Na entrada de toda fase, o jogo também fazia **3 leituras separadas** para `s2bgd6.bmp` + `s2_scrib.bmp` + `s2pressx.bmp` (que são `67` setores 100% contíguos começando no setor `0` do `CD.WAD`!).
+4. **Vilão #4 — O "Congelamento Fantasma" de ~2,5 s DEPOIS de Apertar `X` na Tela de Objetivos (`GoalList`)!**
+   - Você já notou que, quando a lista de objetivos aparece na tela e você aperta `X` para finalmente andar de skate, o jogo ainda dava uma "engasgada" de **2 a 3 segundos** antes de o skatista aparecer na pista?!
+   - Descobrimos **DOIS culpados** escondidos ali:
+     1. **`LulaoCache_Load` (nosso pré-cache de vozes do Lulão e do Bolsonaro em `School II`)** estava sendo disparado de forma **bloqueante** em `Hook_GameplayStart` (`0x8003D71C`), **DEPOIS** de o jogador apertar `X` — mandando o laser ao Minuto 71 (`VOICES.DAT`) justo no pior momento possível!
+     2. **Descoberta Arqueológica na Engine da Própria Neversoft (`Tricks_Load @ 0x80014114`):** durante o carregamento da fase (`Skater_Init @ 0x800888D4`), o próprio THPS2 carrega `tricks.bin` (`17` setores / `33 KB`), monta os combos do skatista, **libera `tricks.bin` em `0x800889F8`** para economizar RAM enquanto carrega o cenário 3D... e depois, **DEPOIS que você aperta `X` na tela de objetivos**, `Gameplay_Init @ 0x8003B0CC` manda o laser buscar **`tricks.bin` de novo no CD**, adicionando mais `~0,6 s` de espera escondida em **TODAS as fases, para TODOS os skatistas**!
+5. **A Lei de Ouro da `Heap[1]` Top-Down (`a2 = 1`) — Uma Lição Real de Sistemas Embarcados:**
+   - Durante os testes ao vivo no DuckStation, ao tentarmos manter um buffer temporário de *burst* aberto por tempo demais (atravessando `globe.psx` no `LevelSel` ou `skate2.vab` na entrada de fase), descobrimos um comportamento crucial do alocador da Neversoft:
+   - Arquivos como `skate2.vab` (cujo cabeçalho `.VH` fica residente!) e `globe.psx` fazem alocações **permanentes** pelo topo da `Heap[1]` (`a2 = 1`). Se um buffer temporário estiver segurando o topo da pilha naquele instante, a alocação permanente fica "presa embaixo" dele — **fragmentando a `Heap[1]` ao meio** e causando OOM em `sk2anim.psx` (`604 KB`) ou `FastMap` (`112 KB`)!
+   - **Regra arquitetural gravada em pedra:** *só fazemos burst de clusters 100% temporários (BMPs que vão para a VRAM e são liberados na hora!), liberando o buffer ANTES de qualquer arquivo residente como `skate2.vab` ou `globe.psx`!*
+
+---
+
+### A Solução Cirúrgica em 5 Pilares (100% Hardware-Real, 0 Degradação Visual, 0 OOM!)
+
+```mermaid
+sequenceDiagram
+    participant J as 🎮 Jogador
+    participant CPU as ⚙️ CPU MIPS R3000A (Turbo CDWAD)
+    participant CD as 💿 Drive 2× PS1 (Zero Minuto 71!)
+    participant RAM as 🧠 Heap[1] + VRAM
+
+    Note over J,RAM: TRANSIÇÃO A — PlaySel → LevelSel (381f → 288f / -1,55 s!)
+    J->>CPU: Confirma skatista (X)
+    CPU->>CD: 1) levelsel.pre (já contém s2arrow8/9 nos 1.400 B de folga!)
+    CPU->>CD: 2) Burst 12s (s2win4+s2medal1..3 -> 0f nos 3 medalhões!)
+    CPU->>CD: 3) FastMap 5 rajadas ESTRITAMENTE CRESCENTES só no CD.WAD:<br/>LBA 7.955 (t1rend) → LBA 8.049 (t1levl) → LBA 9.931 (s2levl) → LBA 10.008 (s2rend)
+    CD-->>RAM: 40/40 fotos na VRAM + 148 KB livres + Vídeo Preview FMV rodando!
+
+    Note over J,RAM: TRANSIÇÃO B — LevelSel → Gameplay (School Miami -4,53 s | 0 CdReads pós-X!)
+    J->>CPU: Seleciona fase (X)
+    CPU->>CD: 1) Burst 67s (s2bgd6+s2_scrib+s2pressx -> liberado ANTES de skate2.vab!)
+    CPU->>CD: 2) Fase THPS1 lida IN-PLACE na zona CD.WAD[1127..1185]<br/>em ordem exata (_T.trg → _o.psx → _l.psx → .psx, ZERO seek ao Minuto 71!)
+    CPU-->>J: Tela de Objetivos (GoalList) aparece IMEDIATAMENTE!
+    par Enquanto o jogador lê os objetivos (~1,5–2,5 s)
+        CPU->>CD: DMA Assíncrono Fase 0: tricks.bin (17s @ CD.WAD+668) → Tricks_Commit (0x80014140)!
+        CD-->>RAM: DMA Assíncrono Fase 1: LULAO_GPBANK (até 14 clipes em RAM)
+        CD-->>RAM: DMA Assíncrono Fase 2 (School II): BOLSO_GPBANK encadeado!
+    end
+    J->>CPU: Aperta X na Tela de Objetivos
+    CPU-->>RAM: g_TricksBuf != 0 + Vozes já em RAM → 0 CdReads! Drop-in INSTANTÂNEO!
+```
+
+Veja cada um dos **5 pilares** implementados e provados ao vivo no DuckStation:
+
+1. **Pilar 1 — Motor `CDWAD` Turbo em `SLUS_010.66` + `TURBO_AUX @ 0x800E9ED0` (`196 B / 304 B`):**
+   - `0x80054440`: salto imediato `j 0x800543CC` ao detectar `CdReadSync(1, 0) == 0`, zerando `g_CdState`/`g_FileOpen` no mesmo microssegundo (eliminando o *rotational overshoot* do CD!).
+   - `0x800544EC` & `0x80054504`: removidos `LoadingBar_Draw` duplicado e `CDWAD_Poll` redundante no fim de `CDWAD_WaitIdle`.
+   - `0x80022AAC` (`Entry_LoadingBarThrottle @ 0x800E9ED0`) & `0x800543DC` (`Entry_CdPollPadThrottle @ 0x800E9F10`): limitam o redesenho `ClearImage` da barra e o polling serial `Pad_Update` exatamente a **60 Hz** (`g_FrameCounter @ 0x800D70C8`), liberando a CPU para pegar o fim de cada `CdRead` instantaneamente!
+   - `0x80054274`: removida guarda redundante `g_PreMgr != 0` em `CDWAD_Read`, permitindo que `g_IsPreFile` funcione limpamente antes mesmo de `panel.pre` abrir.
+
+2. **Pilar 2 — `TURBO_BURST @ 0x800E8AB0` (`572 B / 672 B`) + Injeção de `s2arrow8/9.bmp` na Folga de `levelsel.pre`:**
+   - **3 clusters 100% temporários (zero fragmentação de `Heap[1]`):**
+     - `sec 0` (`s2bgd6.bmp + s2_scrib.bmp + s2pressx.bmp`, `67s = 137 KB`, liberado antes de `skate2.vab`!);
+     - `sec 61` (`s2_scrib.bmp + s2pressx.bmp`, `6s = 12 KB` em fases de Competição);
+     - `sec 4569` (`s2win4.bmp + s2medal1..3.bmp`, `12s = 24 KB` no `LevelSel`, zerando o tempo dos 3 medalhões e liberado antes de `s2face*.bmp`!).
+   - **`s2arrow8.bmp` (`248 B`) + `s2arrow9.bmp` (`248 B`) dentro de `levelsel.pre`:** descobrimos que `levelsel.pre` (`CD.HED[47]`) ocupava `281.224 B` dentro de `138` setores (`282.624 B`), deixando **`1.400 B` de espaço ocioso** no último setor! Empacotamos as duas setinhas ali dentro (`281.224 → 281.760 B`, **mesmos `138` setores, `0` deslocamento no `CD.WAD`!**) — eliminando completamente o seek reverso final do `LevelSel` (`0 frames`)!
+
+3. **Pilar 3 — Arquitetura Zero-Minuto-71 no `CD.WAD` (37 dos 42 Ativos THPS1 Movidos *In-Place* com `0` Deslocamento em Todos os `1.472` Itens THPS2!):**
+   - **Slots Órfãos 100% Sombreados por `.PRE` (provados em todo `SLUS` + overlays):**
+     - `CD.WAD[573]` (`s2bgd3.bmp`, `61s` @ `LBA 7.955`) era **100% morto** porque `levelsel.bin` sempre roda com `levelsel.pre` carregado (que já contém `s2bgd3.bmp`)! Alojamos ali todos os **9 `t1rend00..08.bmp` (`45s`, stride `5s`)**!
+     - `CD.WAD[578]` (`s2bgd5.bmp`, `61s` @ `LBA 8.049`) era **100% morto** porque `equipsel.bin` sempre roda com `equipsel.pre`! Alojamos ali todos os **9 `t1levl00..08.bmp` (`54s`, stride `6s`)**!
+   - **Reempacotamento em Zona Fechada `CD.WAD[1127..1185]` (`4.577 → 4.577` setores exatos, `Delta = 0`!):**
+     - Ao converter os 9 `.TRG` do THPS1 (removendo 8 B por trilho em 2.301 trilhos), liberamos **exatamente `10` setores** dentro da antiga faixa `[1127..1185]` — o número **exato** de setores extras necessários para encaixar os **6 `sk*_o.psx` esculpidos em 3D** + os **4 `.PSX` divergentes** + os **9 `.TRG` convertidos** **100% dentro de `CD.WAD[1127..1185]`**, ordenados na sequência física real de leitura da engine (`_T.trg → _o.psx → _l.psx → .psx`, `salto = 0 setores`!) e preservando **ZERO deslocamento em todas as `1.472` entradas do THPS2 (`[0..1126]` e `[1186..1530]`)**!
+   - Como resultado, **`THPS1.WAD` encolheu de `42` arquivos (`1,82 MB` / `934` setores) para apenas `5` arquivos exclusivos (`0,39 MB` / `202` setores):** `skvans_t.psx`, `t1comp0/1/2.bmp` e `c_cabl1.psx` — reduzindo a ISO inteira em `732` setores (`320.151 → 319.419`)!
+
+4. **Pilar 4 — `FastMap` 100% Crescente no `CD.WAD` (0 Seeks ao Minuto 71 + 0 Seeks Reversos no `LevelSel`):**
+   - `Hook_LevelSelFastMap` agora lê **todas as 40 imagens (`220` setores)** exclusivamente dentro do `CD.WAD` em **5 rajadas estritamente crescentes** (`LBA 7.955 → 8.049 → 9.931 → 9.967 → 10.008`), com buffer seguro de `112 KB` e polling apertado zero-`VSync` (`CdReadSync(1, 0)`): **`139 frames (2,32 s)`** — ~**95 setores/segundo** efetivos incluindo decodificação BMP e upload na VRAM, com **`148.276 B` livres na `Heap[1]`** e o vídeo preview inferior rodando normalmente (`movActive = 1`)!
+
+5. **Pilar 5 — Pipeline DMA Assíncrono em 3 Fases Durante a Tela de Objetivos (`Hook_GoalListAsync @ 0x80034890` + `Hook_GoalListTick @ 0x800230D4`):**
+   - Em vez de deixar o leitor de CD parado enquanto você lê os objetivos da fase, no instante exato em que `GoalList_Loop` abre (já depois de todo o cenário `.PSX` ter liberado seus buffers temporários, com `0 B` de diferença na `Heap[1]`!), nossa máquina de estados em **3 fases não-bloqueantes** roda a `60 Hz` (`5 µs/frame`!) no fundo:
+     - **Fase 0 (TODOS os skatistas — `g_AsyncState = 3`):** lê `tricks.bin` (`17` setores @ `CD.WAD + 668` usando `24440($gp)`) em DMA de fundo e chama nosso trampolim de 4 instruções `Tricks_Commit → 0x80014140` (reaproveitando o parser nativo da Neversoft!). Quando o jogador aperta `X`, `Gameplay_Init @ 0x8003B0CC` vê `g_TricksBuf != 0` e **pula o segundo carregamento de `tricks.bin` inteiro (`0 frames`)**!
+     - **Fase 1 (Lulão — `g_AsyncState = 1`):** encadeia automaticamente o DMA de `LULAO_GPBANK` (`14` clipes em *Hangar* / *Chicago Comp*), deixando reserva segura de `24 KB` (THPS2) / `48 KB` (THPS1) **após** `tricks.bin` (`58,8 KB` / `82,8 KB` totais pré-tricks!).
+     - **Fase 2 (*School II* — `g_AsyncState = 2`):** encadeia automaticamente o DMA de `BOLSO_GPBANK` (vozes do Bolsonaro no carrinho de golfe)!
+   - *(Para caber tudo com `240 B` de folga em `LULAO_CODE` sem mover `NewHeapStart = 0x800EC800`, realocamos as duas tabelas estáticas `g_GpRingTable` e `g_BolsoRingTable` — `448 B` — para a folga final de `LULAO_STRDATA @ 0x800E5E00..0x800E5FBF`, deixando ainda `727 B` livres para strings!)*
+
+---
+
+### Benchmark Oficial Ao Vivo no DuckStation (Drive 2× Real, `60 Hz` — 4 Fases + LevelSel)
+
+| Transição / Fase Medida Ao Vivo (GDB) | Antes (v2.0 Cap. 16) | Depois (v2.0 Turbo Cap. 17) | Ganho Real | Prova de Integridade em Hardware PS1 |
+| :--- | :---: | :---: | :---: | :--- |
+| **`PlaySel` → `LevelSel` (`State 2 → Pronto`)** | `381f` (`6,35 s`) | **`288f` (`4,80 s`)** *(c/ saída: `337f = 5,62 s`)* | **`-93f` (`-1,55 s` / `-24,4%`)** *(vs pré-mod `~11 s`: `-5,4 s`!)* | `Heap[1]@FastMap = 148.276 B`, `movActive = 1` (FMV preview ativo), **0 seeks Minuto 71**! |
+| **The Hangar (THPS2) — `Load → GoalList`** | `703f` (`11,72 s`) | **`692f` (`11,53 s`)** | **`-11f` (`-0,18 s`)** | Burst `67s` (`s2_scrib = 0f`, `s2pressx = 4f`) liberado antes de `skate2.vab` |
+| **The Hangar (THPS2) — `GoalList X → Gameplay`** | `~170f` (`~2,83 s`, 2 `CdRead`s) | **`0 CdReads` (instantâneo!)** | **`~-169f` (`~-2,81 s`!)** | `tricks = 0x801a9b38` + `L = 14` clipes prontos via DMA! `postXCdReads = 0`, **`gpCdReads = 0`**, `Heap[1] = 50.980 B` |
+| **School II (THPS2) — `GoalList X → Gameplay`** | `~200f` (`~3,33 s`, 3 `CdRead`s) | **`0 CdReads` (instantâneo!)** | **`~-199f` (`~-3,31 s`!)** | `tricks = 0x801cf594` + **`L = 1` + `B = 1`** (Lulão + Bolsonaro!) encadeados em DMA! `postXCdReads = 0`, **`gpCdReads = 0`**, `Heap[1] = 29.428 B` |
+| **School Miami (THPS1) — `Load → GoalList` + `X → Gameplay`** | `1.004f` (`16,73 s`) + `~40f` `tricks` | **`772f` (`12,87 s`) + `0 CdReads` pós-`X`!** | **`-272f` (`-4,53 s`!)** | `tricks = 0x801db458` pré-carregado em DMA! `postXCdReads = 0`, **`gpCdReads = 0`**, `Heap[1] = 11.660 B`, ZERO OOM! |
+| **Skate Park Chicago (THPS1) — `GoalList X → Gameplay`** | `~170f` (`~2,83 s`, 2 `CdRead`s) | **`0 CdReads` (instantâneo!)** | **`~-169f` (`~-2,81 s`!)** | `t1comp0.bmp` + `tricks = 0x8019f87c` + `L = 14` clipes prontos em DMA! `postXCdReads = 0`, **`gpCdReads = 0`**, `Heap[1] = 141.516 B` |
+
+---
+
+## Capítulo 18 — A Arquitetura Completa Hoje (Mapa Geral & Números Finais)
 
 ```mermaid
 flowchart TB
     subgraph RAM["🧠 Mapa da Main RAM do PS1 (2 MB: 0x80000000..0x801FFFFF)"]
         K["0x80000000..0x8000FFFF — Kernel BIOS PS1"]
-        E["0x80010000..0x800E267F — SLUS_010.66<br/>301 Hooks/Relocs MIPS + 217 Strings + 5 Words PT-BR Font + Fade 2× + Preview STR 81.5 KB"]
+        E["0x80010000..0x800E267F — SLUS_010.66<br/>310 Hooks/Relocs MIPS + Turbo CDWAD + 217 Strings + 5 Words PT-BR Font + Fade 2× + Preview STR 81.5 KB"]
         B["0x800E2680..0x800E27FF — Mod_BootInit (20 set.) & Trampolins"]
         M["0x800E2800..0x800E37FF — MODCODE + VOICETBL + BailSfx + VoiceSelect"]
-        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Dual Cache + Streamer SPU 2 KB Anti-Chiado + SpawnLetter + CarHitVoice + PsxUpload 0-Seek + GoalPickupSfx)"]
-        S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + Vento Estocado + Diploma no Buteco + Roubei)"]
-        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] 60 Metas + g_Thps1GapList[24] + FastBurst 1-Visita + g_ExtCareer[20] + g_Thps1Hed[42] + THPS1_CODE incl. CompLoadBmp)"]
+        L["0x800E3800..0x800E4FFF — LULAO_CODE (6 KB: Pipeline DMA Assíncrono 3 Fases tricks+Lulao+Bolso + Streamer SPU 2 KB Anti-Chiado + SpawnLetter + CarHitVoice + PsxUpload 0-Seek + GoalPickupSfx)"]
+        S["0x800E5000..0x800E5FFF — LULAO_STRDATA (93 Ponteiros Carreira + T-A-X-A-S + RingTables GPBANK @ +0xE00/+0xEE0)"]
+        T["0x800E6000..0x800EAFFF — THPS1_ENGINE (20 KB: g_ExtLevelTable[20] 60 Metas + g_Thps1GapList[24] + TURBO_BURST/AUX 60Hz + FastMap 100% CD.WAD + g_ExtCareer[20] + g_Thps1Hed[5] + CompLoadBmp)"]
         C["0x800EB000..0x800EC7FF — LULAO_CASHART Boot-Residente (6 KB / Setores 17..19 — 0 ms seek em toda fase!)"]
-        H["0x800EC800..0x801FFFFF — Heap Dinâmica THPS2 (~1,09 MB) + Pré-Cache LULAO_GPBANK & BOLSO_GPBANK"]
+        H["0x800EC800..0x801FFFFF — Heap Dinâmica THPS2 (~1,09 MB) + Pré-Cache Assíncrono tricks.bin + LULAO_GPBANK & BOLSO_GPBANK"]
     end
     K --> E --> B --> M --> L --> S --> T --> C --> H
 ```
@@ -604,17 +718,17 @@ flowchart TB
 
 | Dimensão | Quantidade / Métrica Verificada |
 | :--- | :--- |
-| **Integridade da ISO Compilada** | **320.151 / 320.151 setores** (`718,1 MB`, **50 arquivos**) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
+| **Integridade da ISO Compilada** | **319.419 / 319.419 setores** (`716,5 MB`, **50 arquivos** — `732` setores menor!) • **10/10 Estágios PASS • 0 Erros • 0 Avisos** |
 | **Compatibilidade Redump** | **48/48 arquivos originais** com LBA, tamanho e atributos CD-XA preservados + **16 setores de licença NTSC-U** |
-| **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.531 entradas** |
-| **Velocidade de Menus & Carregamento** | **`CASHART` Boot-Residente (`0x800EB000`)** (`items.psx→bits.psx`: `139f → 24f` / **`-1,92 s`**) + **`FastBurst` 1-Visita a `THPS1.WAD`** (`471f → 378f` / **`-20%`** no Level Select) + **`PlaySel` zero-seek (`0,82 s`)** + **`Fade_Start` 2×** (`236→112` / `52→34`) |
+| **Deslocamento de Offsets no `CD.WAD`** | **`0` bytes deslocados** em todas as **1.472 entradas THPS2** (`[0..1126]` & `[1186..1530]`) + zona fechada THPS1 `[1127..1185]` exata (`4.577/4.577` setores, `Delta = 0`, `0` overlap) |
+| **Velocidade de Menus & Carregamento (PS1 2× Real)** | **`PlaySel → LevelSel`:** `381f → 288f` (`-1,55 s` / `-24,4%`, **0 seeks Minuto 71**, `s2arrow8/9` dentro de `levelsel.pre`) • **Fases THPS1 (`School Miami`):** **`1.004f → 772f` (`-3,87 s`)** em zona fechada `CD.WAD[1127..1185]` • **Pós-`X` na `GoalList` → Gameplay:** **`0 CdReads` (`-2,8 s` a `-3,3 s`!)** via DMA assíncrono em 3 fases (`tricks.bin` → `LULAO_GPBANK` → `BOLSO_GPBANK`) + `TURBO_BURST` (`67s`/`12s`/`6s`) + `CDWAD_Poll` 60 Hz + `CASHART` boot-residente (`0x800EB000`) |
 | **Fases Integradas no Modo Carreira** | **19 fases jogáveis intercaladas** (**10 THPS2 intactas + todas as 9/9 fases do THPS1 comprovadas ao vivo**, com **60 novos objetivos satíricos `10 × 6`**, **3 telas oficiais de competição `t1comp0/1/2.bmp`** para *Chicago*, *Burnside* e *Roswell*, **24 Gaps reais ao vivo**, **2.301 trilhos** convertidos, **68 nós de moedas → `$100` Cash** para Stats e **333 remapes SFX/Shatter `.TRG`**) + Custom Park |
-| **Level Select & Vídeos Preview** | **40/40 fotos instantâneas no Frame 1** via **`FastBurst` 1-Visita (`-20%`, zero `LOADING...`)** + **vídeos preview inferiores restaurados (`vlcBufSize = 16.896 B`, `ringSec = 16`, `90,8 KB` livres na `Heap[1]`, 0 OOM, 0 leak)** |
+| **Level Select & Vídeos Preview** | **40/40 fotos instantâneas no Frame 1** via **`FastMap` 100% crescente no `CD.WAD` (`139f = 2,32 s`, 0 seeks Minuto 71!)** + **vídeos preview inferiores restaurados (`vlcBufSize = 16.896 B`, `ringSec = 16`, `148 KB` livres na `Heap[1]`, `movActive = 1`, 0 OOM, 0 leak)** |
 | **Renderização 3D Zero-Artefatos** | **Zero linhas vazias/fendas no chão** (*School II* / *NY City*), **zero céu/objetos sumindo** via perfil `SLUS-01066.ini` (`PGXPEnable = false`, `PGXPDepthBuffer = false`, `WidescreenHack = false`, `5× HD Nearest`, `4:3`) + `PrimBuf` calibrado + 6 hooks `.TRG SecretFlag` |
-| **Hooks & Relocações MIPS R3000A** | **301 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` (`3/3`) + `levelsel.bin`/`levelsel.pre` + `options.bin` + **20 setores residentes** em `VOICES.DAT` (`1.174` set., `NewHeapStart = 0x800EC800`) + **`THPS1.WAD`** (`1,82 MB` / `934` set., **42 arquivos prioritários** incl. 6 `sk*_o.psx` esculpidos + `t1comp0..2.bmp`) |
+| **Hooks & Relocações MIPS R3000A** | **310 palavras cirúrgicas** em `SLUS_010.66` + `playsel.bin` (`3/3`) + `levelsel.bin`/`levelsel.pre` (`+s2arrow8/9`) + `options.bin` + **20 setores residentes** em `VOICES.DAT` (`1.174` set., `NewHeapStart = 0x800EC800`) + **37 ativos THPS1 in-place em `CD.WAD`** + **`THPS1.WAD` ultraleve (`0,39 MB` / `202` set., `5` arquivos exclusivos)** |
 | **Skatistas Personalizados** | **7 skatistas** (*Silvio Santos*, *Lulao*, *Bolsonaro*, *Wagner*, *Francis*, *Valter*, *Natan*) = **28 modelos `.PSX` + 7 retratos `s2face*.bmp`** |
 | **Mundo 3D & Coletáveis Customizados** | **THPS2:** Letra 3D **`X`** (`T-A-X-A-S`) + **Barris 51 / Lulão** + **Notas Dinâmicas do Lulão** + **Garrafa 3D de 51 + Aura Dourada Aditiva (`ABR=1`)** em todas as fases + **5 Haddads 3D** (*Hangar*) + **5 Dilmas no Barril 3D**, **5 Ventos Estocados 3D** & **Carrinho de Golfe Bolsonaro 3D** (*School II*) + **5 Garrafas 3D de Pitú** (*Venice*) • **THPS1 (`30` coletáveis 3D `fl=0x2003`):** **5 Mandiocas da Dilma** (*Warehouse*) + **5 Triplex do Guarujá** (*School*) + **5 Malas do Mensalão** (*Mall*, #3/#4 auditadas em espaço aberto `minWall = 498 / 335 u`) + **5 Cofres do Escândalo INSS** (*Downtown*) + **5 Pedalinhos de Atibaia** (*Downhill Jam*) + **5 Picanhas da Promessa** (*Streets SF*) |
-| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc)** + **9 gritos de queda (`0 B` SPU RAM extra)** + **Som de Caixa + Skatista Zero-Stall** (`Entry_GoalPickupSfx` + `CModel::KnockDown` reforçado + 333 remapes `.TRG`, `CdReads = 0`!) |
+| **Motor de Áudio & Vídeos** | **20 vídeos `.STR`** (3 sorteados no boot via Setor 60) + **`COMPILED.XA` (8 canais)** + **41 vozes menu** + **14×2 `LULAO_GPBANK` + 14×2 `BOLSO_GPBANK` Zero-Stall & Zero-Chiado (`0 ms`, `-26,5 dB` ruído SPU Reverb eliminado, DSP `afftdn` + Kaiser-sinc, pré-carregados via DMA assíncrono na `GoalList`!)** + **9 gritos de queda (`0 B` SPU RAM extra)** + **Som de Caixa + Skatista Zero-Stall** (`Entry_GoalPickupSfx` + `CModel::KnockDown` reforçado + 333 remapes `.TRG`, `CdReads = 0`!) |
 | **Idioma, Fonte & Documentação** | **32 linhas de biografias PT-BR** com acentos nativos `á, ã, ç, é, ê, í, ó` em `s2bio.fnt` + **93 strings dinâmicas** do Lulão + **60 objetivos satíricos THPS1 pixel-validados em `s2goal.fnt`** + **14 Mapas Técnicos** (incl. enciclopédia completa de 669 arquivos do THPS1 em `MAPA_14`) |
 
 ---
@@ -631,14 +745,16 @@ flowchart TB
 - **Frequência de Nyquist & Anti-Aliasing**: a maior frequência representável sem distorção equivale à metade da taxa de amostragem (`3.445 Hz` em `6.890,625 Hz`). Filtrar o áudio antes da reamostragem (*anti-aliasing*) impede que frequências agudas "dobrem" para dentro da voz em forma de chiado metálico.
 - **GTE (*Geometry Transformation Engine*)**: coprocessador 3D do PS1 que projeta triângulos e quads na tela e descarta faces viradas para trás (*back-face culling* via `NCLIP`).
 - **`M3dAsm` × PGXP**: o renderizador assembly `M3dAsm` da Neversoft (`0x800956B8..0x80097F00`) subdivide polígonos próximos em inteiros na CPU MIPS para evitar distorção de textura. O PGXP do DuckStation tenta reconstruir coordenadas em ponto flutuante, o que desalinha polígonos subdivididos dos vizinhos e abre fendas/linhas brancas no chão (*School II*, *NY City*); desativar o PGXP no perfil `SLUS-01066.ini` devolve chão 100% sólido mantendo resolução `5× HD`.
-- **Burst `CdRead` Contíguo 1-Visita (`Helper_RunFastBurstGroup`)**: técnica de ler dezenas de arquivos consecutivos em rajadas contínuas mantendo o XA pausado entre `CLevelRend` e `CLevelMap` e visitando `THPS1.WAD` apenas **1 vez** (`t1rend` + `t1levl` em sequência, 0 seek extra), derrubando o carregamento do Level Select em `-20%` (`471f → 378f`, 40/40 fotos prontas no Frame 1).
+- **Pipeline DMA Assíncrono em 3 Fases (`Hook_GoalListAsync` / `Hook_GoalListTick`)**: enquanto o jogador lê a lista de objetivos da fase, o hardware CD-ROM transfere silenciosamente em segundo plano `tricks.bin` (`17s` → `Tricks_Commit @ 0x80014140`), `LULAO_GPBANK` e (em *School II*) `BOLSO_GPBANK`, garantindo **`0 CdReads` após apertar `X`** e entrada instantânea na pista!
+- **Zona Fechada `CD.WAD[1127..1185]` & Slots Sombreados `[573]`/`[578]`**: técnica de reposicionamento físico *in-place* dentro do `CD.WAD` que elimina 100% dos seeks ao Minuto 71 (`LBA 319.067`) na Seleção de Fases (`FastMap` 100% crescente `139f = 2,32 s`) e nas 9 fases do THPS1 (`School Miami` `-4,53 s`!), mantendo `0` deslocamento em todas as `1.472` entradas do THPS2.
+- **`TURBO_BURST` (`0x800E8AB0`) & `TURBO_AUX` (`0x800E9ED0`)**: motor de rajadas temporárias sem fragmentação da `Heap[1]` (`s2bgd6..s2pressx`, `s2win4..s2medal3`) somado à limitação de 60 Hz em `LoadingBar_Draw` / `Pad_Update` e encerramento instantâneo em `CDWAD_Poll @ 0x80054440`.
 - **`CASHART` Boot-Residente (`0x800EB000..0x800EC7FF`)**: bloco de 6 KB (setores `17..19` de `VOICES.DAT`) carregado uma única vez no boot para estampar o rosto do Lulão nas notas de dinheiro direto da RAM (`< 0,15 ms`), economizando `-1,92 s` (`139f → 24f`) em toda entrada de fase do Lulão.
 - **`Hook_CompLoadBmp` (`0x80022E2C`)**: despachante MIPS dentro de `GoalList_Open` que carrega as telas oficiais `t1comp0/1/2.bmp` (`512×240` 8bpp, `123.960 B`) nas 3 competições do THPS1 (*Skate Park Chicago*, *Burnside* e *Roswell*), eliminando a tela preta antes da competição.
 - **`Entry_GoalPickupSfx` (`0x80036858`) & `CModel::KnockDown` (`0x80044318`)**: hooks de áudio em SPU RAM residente que tocam simultaneamente o impacto de caixa (`SFX 83/60` com volume reforçado `12288`) e a reação do skatista (`0x80049D34`) sem qualquer leitura de CD (`0,00 ms` stall).
-- **`vlcBufSize` & `ringSec` (`g_MovieTable @ 0x800C1CB4`)**: parâmetros por vídeo que controlam o tamanho dos 2 buffers de saída MDEC VLC e do anel de leitura CD-ROM (em setores de 2 KB). Ajustá-los ao tamanho real dos 11 vídeos `176×48` (`16.896 B` e `16` setores) reduziu o consumo de `182,8 KB` para `81,5 KB`, restaurando os vídeos preview inferiores com `90,8 KB` livres na `Heap[1]`.
-- **Hook MIPS (`Hook_PsxUpload`, `Hook_CarHitVoice`, `Hook_LevelSelFastRend`, `Entry_SetGapList`, `Entry_CompLoadBmp`, `Entry_GoalPickupSfx`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`/`j`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
+- **`vlcBufSize` & `ringSec` (`g_MovieTable @ 0x800C1CB4`)**: parâmetros por vídeo que controlam o tamanho dos 2 buffers de saída MDEC VLC e do anel de leitura CD-ROM (em setores de 2 KB). Ajustá-los ao tamanho real dos 11 vídeos `176×48` (`16.896 B` e `16` setores) reduziu o consumo de `182,8 KB` para `81,5 KB`, restaurando os vídeos preview inferiores com `148 KB` livres na `Heap[1]`.
+- **Hook MIPS (`Hook_GoalListAsync`, `Hook_PsxUpload`, `Hook_CarHitVoice`, `Hook_LevelSelFastMap`, `Entry_SetGapList`, `Entry_CompLoadBmp`, `Entry_GoalPickupSfx`, etc.)**: substituir uma instrução original de 4 bytes por um salto (`jal`/`j`) para uma rotina nossa em RAM, que executa o recurso novo e devolve o controle perfeitamente ao jogo original.
 - **Patch `.xdelta`**: arquivo de diferença binária que transforma legalmente a cópia original do usuário no mod completo sem distribuir arquivos comerciais protegidos.
-- **`THPS1.WAD` & `Hook_CdWadFallback`**: 50º arquivo da ISO (`1,82 MB` / `934` set., **42 ativos prioritários** incluindo os 6 `sk*_o.psx` com objetos 3D esculpidos e as 3 telas de competição `t1comp0/1/2.bmp`) consultado antes do `CD.HED` original para sobrepor os `.TRG` convertidos do THPS1 (com 333 remapes SFX/Shatter), coletáveis 3D e o bonde `c_cabl1.psx` sobre as sobras antigas da Neversoft, deduplicando os `.PSX` já idênticos no disco do THPS2.
+- **`THPS1.WAD` Ultraleve (`0,39 MB` / `202` setores) & `Hook_CdWadFallback`**: 50º arquivo da ISO contendo apenas os **5 arquivos exclusivos** sem correspondente em `CD.WAD` (`skvans_t.psx`, `t1comp0/1/2.bmp`, `c_cabl1.psx`), enquanto os outros **37 ativos do THPS1** moram *in-place* dentro de `CD.WAD` (`[573]`, `[578]` e `[1127..1185]`) para carregamento sem seeks ao Minuto 71.
 - **`g_Thps1GapList` (`0x800E7E60`) & `Entry_SetGapList` (`0x80083848`)**: tabela residente de **24 Gaps reais do THPS1** (4 por fase regular) selecionada automaticamente ao iniciar fases `11..19`, habilitando as metas nativas `G6` (Trick+Gap) e `G7` (Multi-Gap) enquanto `Entry_GapChecklistGuard @ 0x80024CD4` protege o checklist de 11 fases do THPS2.
 - **`primBufDelta` (`g_LevelTable + 0x50`)**: campo nativo assinado da engine Neversoft (`0x80050118`) que ajusta o tamanho do buffer duplo de pacotes GPU por fase (`2 × delta` bytes em `Heap[1]`), mantendo o pico de `PrimBuf` saudável (`62,7%..84,2%`) em todas as fases do THPS1 sem clipping de polígonos ou OOM.
 

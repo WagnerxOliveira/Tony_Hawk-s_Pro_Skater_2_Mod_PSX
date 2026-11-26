@@ -9,8 +9,10 @@
  * Exits with code 0 ONLY when ZERO errors are detected across all 12 stages.
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
 const rootDir = path.resolve(__dirname, '..');
 const redumpBin = path.join(rootDir, 'bin_cue_originais_do_jogo', "Tony Hawk's Pro Skater 2.bin");
@@ -123,15 +125,16 @@ try {
     BIO_SLOT_OFFSETS,
     buildPatchedS2BioFnt,
   } = require('./mod_skater_bios');
-  // Compute exact deterministic THPS1-in-THPS2 engine diffs on clean copies of SLUS_010.66 & CD.WAD
+  // Compute exact deterministic THPS1-in-THPS2 engine diffs on clean copies of SLUS_010.66, CD.WAD & CD.HED
   const origWadForRef = fs.readFileSync(path.join(rootDir, 'originals_backup', 'CD.WAD'));
   const origHedForRef = fs.readFileSync(path.join(rootDir, 'originals_backup', 'CD.HED'));
   const slusThps1Ref = Buffer.from(slusOrig);
   const wadThps1Ref = Buffer.from(origWadForRef);
+  const hedThps1Ref = Buffer.from(origHedForRef);
   {
     const savedLog = console.log;
     console.log = () => {};
-    try { applyThps1EnginePatches(slusThps1Ref, wadThps1Ref, origHedForRef); }
+    try { applyThps1EnginePatches(slusThps1Ref, wadThps1Ref, hedThps1Ref); }
     finally { console.log = savedLog; }
   }
   const thps1SlusWords = [];
@@ -141,8 +144,10 @@ try {
     if (wO !== wR) thps1SlusWords.push([(0x80010000 + (off - 0x800)) >>> 0, wR]);
   }
   const expectedSlusHooks = new Map([
-    ...thps1SlusWords,                                 // All 70 g_LevelTable relocs + THPS1-in-THPS2 engine hooks (deterministic!)
+    ...thps1SlusWords,                                 // All 70 g_LevelTable relocs + THPS1-in-THPS2 + Turbo CDWAD engine hooks (deterministic!)
+    [0x800230D4, jalWord(ADDR.Entry_GoalListTick)],    // Hook GoalList_Loop Pad_Update -> 60 Hz non-blocking DMA poll (tricks.bin + Lulao/Bolso)
     [0x80030DA0, jalWord(ADDR.Entry_EndRunPause)],     // Hook Pause -> End Run (Lulao random funny voice)
+    [0x80034890, jalWord(ADDR.Entry_GoalListAsync)],   // Hook GoalList_Loop entry -> async DMA preload (tricks.bin + Lulao/Bolso)
     [0x80035D68, jalWord(ADDR.Entry_SpawnLetter)],     // Hook 3D S-K-A-T-E -> T-A-X-A-S dynamic spawn (Lulao only!)
     [0x80036858, jalWord(ADDR.Entry_GoalPickupSfx)],   // Hook School Miami Triplex box smash (SFX 83) + skater bump (0x80049D34)
     [0x8003C2E8, jalWord(ADDR.Entry_EndRunPause)],     // Hook Time-Up Natural End Run (Lulao random funny voice)
@@ -295,16 +300,18 @@ try {
   console.log('\n[STAGE 3] CD.HED & CD.WAD — Integridade de Todas as 1.531 Entradas');
   const { SILVIO_MIC_DELTA, SILVIO_MIC_VERTS, SILVIO_MIC_FACES } = require('./mod_skater_silvio');
   const { HASH_X_LETTER, buildItemsPsxWithX, buildSkvenOPsxWithPitu } = require('./mod_lulao_world_assets');
+  const thps1Man = JSON.parse(fs.readFileSync(path.join(rootDir, 'build', 'thps1_manifest.json'), 'utf8'));
   const hedRed = readSectorsUser(fdRed, 446, 9);
   const hedMod = readSectorsUser(fdMod, 446, 9);
   const hedDisk = fs.readFileSync(hedCurPath);
   if (!hedMod.subarray(0, hedDisk.length).equals(hedDisk)) {
     fail('WAD', 'CD.HED na ISO difere do arquivo CD.HED no workspace!');
   } else {
-    // Allow ONLY size-field updates strictly within SAME CD sector allocations (ZERO offset shifts!)
+    // Allow ONLY size-field updates strictly within SAME CD sector allocations (ZERO offset shifts on all 1,472 THPS2 entries!)
     const allowedHedSizeDelta = new Map([
       [8,    1688],             // items.psx:   39096 -> 40784 B (<= 40960 B, same 20 sectors, +3D 'X' M[13] + 3D Garrafa 51 & Aura M[8])
       [14,   -316],             // skhan_o.psx: 122236 -> 121920 B (<= 122880 B, same 60 sectors, Barril 51+Lulao + 3D Haddad M[8])
+      [47,   536],              // levelsel.pre: 281224 -> 281760 B (<= 282624 B, same 138 sectors, +s2arrow8.bmp & +s2arrow9.bmp)
       [387,  SILVIO_MIC_DELTA], // burnq2.psx:  60244 -> 61404 B (<= 61440 B, same 30 sectors, +3D Mic)
       [1010, SILVIO_MIC_DELTA], // burnq_l.psx: 51932 -> 53092 B (<= 53248 B, same 26 sectors, +3D Mic)
       [1094, 528],              // sksl2_l.psx: 341176 -> 341704 B (<= 342016 B, same 167 sectors, Dilma 40x64 + Vento Estocado 48x64)
@@ -314,31 +321,57 @@ try {
       [1103, 1116],             // skven_o.psx:  9076 -> 10192 B (<= 10240 B, same 5 sectors, 3D Garrafa Pitu M[4])
       [1109, -316],             // skhan_o2.psx:123480 -> 123164 B (<= 124928 B, same 61 sectors, Barril 51+Lulao + 3D Haddad M[8] 2P)
     ]);
-    let hedErr = 0;
+    const zoneLo = 1127, zoneHi = 1185;
+    const zoneStartOff = hedRed.readUInt32LE(zoneLo * 12 + 4);
+    const zoneEndOff   = hedRed.readUInt32LE((zoneHi + 1) * 12 + 4);
+    const zoneSpans = [];
+    let hedErr = 0, zoneSecSum = 0;
     for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
       const hR = hedRed.readUInt32LE(idx * 12), hM = hedMod.readUInt32LE(idx * 12);
       if (hR === 0xFFFFFFFF && hM === 0xFFFFFFFF) break;
       const oR = hedRed.readUInt32LE(idx * 12 + 4), oM = hedMod.readUInt32LE(idx * 12 + 4);
       const sR = hedRed.readUInt32LE(idx * 12 + 8), sM = hedMod.readUInt32LE(idx * 12 + 8);
-      const expS = sR + (allowedHedSizeDelta.get(idx) || 0);
       const secR = Math.max(1, Math.ceil(sR / 2048));
       const secM = Math.max(1, Math.ceil(sM / 2048));
+      if (idx >= zoneLo && idx <= zoneHi) {
+        // Closed-zone THPS1 repack [1127..1185]: preserve exact hash, stay strictly inside [zoneStartOff..zoneEndOff), 2048-aligned!
+        if (hR !== hM || (oM % 2048) !== 0 || oM < zoneStartOff || (oM + secM * 2048) > zoneEndOff) {
+          fail('WAD', `CD.HED[${idx}] zona THPS1 invalida: hash 0x${hR.toString(16)}->0x${hM.toString(16)}, off 0x${oM.toString(16)}, sec=${secM}`);
+          hedErr++;
+        } else {
+          zoneSpans.push([oM, oM + secM * 2048, idx]);
+          zoneSecSum += secM;
+        }
+        continue;
+      }
+      const expS = sR + (allowedHedSizeDelta.get(idx) || 0);
       if (hR !== hM || oR !== oM || sM !== expS || secR !== secM) {
         fail('WAD', `CD.HED[${idx}] invalido: hash 0x${hR.toString(16)}->0x${hM.toString(16)}, off 0x${oR.toString(16)}->0x${oM.toString(16)}, sz ${sR}->${sM} (exp ${expS}), sec ${secR}->${secM}`);
         hedErr++;
       }
     }
+    zoneSpans.sort((a, b) => a[0] - b[0]);
+    for (let k = 1; k < zoneSpans.length; k++) {
+      if (zoneSpans[k][0] < zoneSpans[k - 1][1]) {
+        fail('WAD', `Overlap na zona fechada CD.WAD[1127..1185]: idx ${zoneSpans[k - 1][2]} e ${zoneSpans[k][2]}`);
+        hedErr++;
+      }
+    }
+    if (zoneSecSum !== (zoneEndOff - zoneStartOff) / 2048) {
+      fail('WAD', `Zona fechada CD.WAD[1127..1185] soma setores ${zoneSecSum} != ${(zoneEndOff - zoneStartOff) / 2048}`);
+      hedErr++;
+    }
     if (!hedRed.subarray(hedDisk.length).equals(hedMod.subarray(hedDisk.length))) {
       fail('WAD', 'Bytes apos tabela CD.HED diferem do Redump!');
       hedErr++;
     }
-    if (hedErr === 0) pass('CD.HED 100% integro: 1.521/1.531 entradas bit-a-bit Redump + 10 modelos/texturas nos mesmos setores (0 deslocamento de offsets)');
+    if (hedErr === 0) pass(`CD.HED 100% integro: 1.472/1.472 entradas THPS2 com 0 deslocamento (11 no mesmo setor incl. levelsel.pre +s2arrow8/9) + zona fechada THPS1 [1127..1185] exata (${zoneSecSum}/${zoneSecSum} setores, 0 overlap)`);
   }
 
   const allowedWadIdxs = new Set([
     3, 4, 520, 521, 522, 523,                       // skate2, skate2g, skate2p .VAB + .SFX (9 rotating bail screams, exact Redump size)
     8, 14, 1094, 1095, 1096, 1100, 1102, 1103, 1109,// Lulao world assets: items (3D X + 51 Bottle/Aura), skhan_o/o2 (Barril 51+Lulao + Haddad), sksl2_o/l/l2 (Dilma + Vento Estocado), c_kart (Bolsonaro), skven_o/l (Pitu)
-    33, 37, 45, 47, 60, 61, 458,                    // levelsel.bin, options.bin, options.pre, levelsel.pre, player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
+    33, 37, 45, 47, 60, 61, 458,                    // levelsel.bin, options.bin, options.pre, levelsel.pre (+s2arrow8/9), player.pre (s2bio.fnt), playsel.bin, s2bio.fnt
     369, 370, 371, 372, 377, 378, 379,              // 7 custom portraits: s2face1,2,3,4,9,10,11 (s2face7=375 Bucky Lasek RESTORED!)
     387, 1010, 431, 1012,                           // Silvio Santos (4 .PSX, incl. 3D Chest Mic on 387 & 1010)
     389, 986, 433, 988,                             // Lulao (4 .PSX)
@@ -347,7 +380,9 @@ try {
     399, 998, 443, 1000,                            // Francis Paulo (4 .PSX)
     403, 1002, 447, 1004,                           // Natan Oliver (4 .PSX)
     405, 1018, 449, 1020,                           // Valter Pacheco (4 .PSX)
+    573, 578,                                       // Dead PRE-shadowed slots: s2bgd3.bmp (9 t1rend BMPs @ LBA 7955) & s2bgd5.bmp (9 t1levl BMPs @ LBA 8049)
   ]);
+  for (let zi = 1127; zi <= 1185; zi++) allowedWadIdxs.add(zi); // Closed-zone THPS1 in-place repack (0 shift outside [1127..1185]!)
   let wadChecked = 0, wadUnexpected = 0;
   for (let idx = 0; idx * 12 + 12 <= hedDisk.length; idx++) {
     const h = hedDisk.readUInt32LE(idx * 12);
@@ -843,18 +878,23 @@ try {
         fail('VOICES', `Violacao Anti-Chiado SPU Reverb: vLOUT/vROUT mute ausente (start=${startMutesL}/${startMutesR}, tick=${tickMutesL}/${tickMutesR})!`);
         mipsInvErr++;
       }
-      const cacheLoadPc = lulaoLabels.get('LulaoCache_Load');
+      const heapWalkPc  = lulaoLabels.get('Heap1_LargestFree');
+      const cacheLoadPc = lulaoLabels.get('LulaoCache_StartAsync');
       const cacheFreePc = lulaoLabels.get('LulaoCache_Free');
-      let seenFreeListWalk = false, allocBeforeWalk = false, seenLevel14980 = false;
+      const jalHeapWalk = jalWord(heapWalkPc);
+      let seenFreeListWalk = false, seenWalkCall = false, allocBeforeWalk = false, seenLevel14980 = false;
       const jalMemAlloc = jalWord(SYM.Mem_Alloc);
+      for (let pc = heapWalkPc; pc < cacheLoadPc; pc += 4) {
+        if (voicesBuf.readUInt32LE(4096 + (pc - ADDR.LulaoCodeBase)) === 0x8F884AA8) seenFreeListWalk = true; // lw t0, 19112(gp)
+      }
       for (let pc = cacheLoadPc; pc < cacheFreePc; pc += 4) {
         const w = voicesBuf.readUInt32LE(4096 + (pc - ADDR.LulaoCodeBase));
-        if (w === 0x8F884AA8) seenFreeListWalk = true; // lw t0, 19112(gp)
+        if (w === jalHeapWalk) seenWalkCall = true;
         if (w === 0x8F883A84) seenLevel14980 = true;   // lw t0, 14980(gp) (g_CurrentLevel)
-        if (w === jalMemAlloc && !seenFreeListWalk) allocBeforeWalk = true;
+        if (w === jalMemAlloc && !seenWalkCall) allocBeforeWalk = true;
       }
-      if (!seenFreeListWalk || allocBeforeWalk || !seenLevel14980) {
-        fail('VOICES', `Violacao OOM/Level Guard: LulaoCache_Load (walk=${seenFreeListWalk}, before=${allocBeforeWalk}, lv14980=${seenLevel14980})!`);
+      if (!seenFreeListWalk || !seenWalkCall || allocBeforeWalk || !seenLevel14980) {
+        fail('VOICES', `Violacao OOM/Level Guard: LulaoCache_StartAsync (walk=${seenFreeListWalk}, call=${seenWalkCall}, before=${allocBeforeWalk}, lv14980=${seenLevel14980})!`);
         mipsInvErr++;
       }
 
@@ -910,22 +950,22 @@ try {
         gpErr++;
       }
       if (mipsInvErr === 0 && gpErr === 0) {
-        pass(`LULAO_GPBANK + BOLSO_GPBANK + CASHART Boot-Residente: Lulao 14x2 (@+${gpMeta.startSector}) + Bolsonaro 14x2 (@+${bolsoMeta.startSector}) + CashArt (@+17 -> 0x800EB000, 0 seeks por fase!), 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
+        pass(`LULAO_GPBANK + BOLSO_GPBANK + CASHART Boot-Residente + Async DMA Preload: Lulao 14x2 (@+${gpMeta.startSector}) + Bolsonaro 14x2 (@+${bolsoMeta.startSector}) + CashArt (@+17 -> 0x800EB000, 0 seeks!), 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
       }
-    }
-    const { buf: expLulaoStrData, mappings: lulaoMappings } = buildLulaoStrData();
-    if (!voicesBuf.subarray(10240, 14336).equals(expLulaoStrData)) fail('VOICES', 'Setores 5..6 (LULAO_STRDATA) em VOICES.DAT diferem dos dados esperados!');
-    // Pillar 1 & 2 invariants on LULAO_STRDATA:
-    //  - NEVER overwrite ANY Trick+Gap G6.paramStr (levels 0,1,3,4,6 -> matcher 0x800662AC)!
-    //  - MUST include T-A-X-A-S toast pointers (0x800C08E8..0x800C08F8) & HUD words (0x800D7704..0x800D7714)!
-    const forbiddenG6Shorts = new Set([0, 1, 3, 4, 6].map(lv => (SYM.g_LevelTable + lv * 0x174 + 0x88 + 6 * 24) >>> 0));
-    const mapByAddr = new Map(lulaoMappings);
-    for (const badPtr of forbiddenG6Shorts) {
-      if (mapByAddr.has(badPtr)) fail('VOICES', `Violacao Pilar 1: LULAO_STRDATA sobrescreve G6.paramStr em 0x${badPtr.toString(16)}!`);
-    }
-    const expHudTaxas = [[0x800D7704, 0x54], [0x800D7708, 0x41], [0x800D770C, 0x58], [0x800D7710, 0x41], [0x800D7714, 0x53]];
-    for (const [ptr, ch] of expHudTaxas) {
-      if (mapByAddr.get(ptr) !== ch) fail('VOICES', `Violacao Pilar 2: HUD T-A-X-A-S em 0x${ptr.toString(16)} esperado 0x${ch.toString(16)}, encontrado ${mapByAddr.get(ptr)}`);
+      const { buf: expLulaoStrData, mappings: lulaoMappings } = buildLulaoStrData(fullGpMeta);
+      if (!voicesBuf.subarray(10240, 14336).equals(expLulaoStrData)) fail('VOICES', 'Setores 5..6 (LULAO_STRDATA + ringTables @ +0xE00) em VOICES.DAT diferem dos dados esperados!');
+      // Pillar 1 & 2 invariants on LULAO_STRDATA:
+      //  - NEVER overwrite ANY Trick+Gap G6.paramStr (levels 0,1,3,4,6 -> matcher 0x800662AC)!
+      //  - MUST include T-A-X-A-S toast pointers (0x800C08E8..0x800C08F8) & HUD words (0x800D7704..0x800D7714)!
+      const forbiddenG6Shorts = new Set([0, 1, 3, 4, 6].map(lv => (SYM.g_LevelTable + lv * 0x174 + 0x88 + 6 * 24) >>> 0));
+      const mapByAddr = new Map(lulaoMappings);
+      for (const badPtr of forbiddenG6Shorts) {
+        if (mapByAddr.has(badPtr)) fail('VOICES', `Violacao Pilar 1: LULAO_STRDATA sobrescreve G6.paramStr em 0x${badPtr.toString(16)}!`);
+      }
+      const expHudTaxas = [[0x800D7704, 0x54], [0x800D7708, 0x41], [0x800D770C, 0x58], [0x800D7710, 0x41], [0x800D7714, 0x53]];
+      for (const [ptr, ch] of expHudTaxas) {
+        if (mapByAddr.get(ptr) !== ch) fail('VOICES', `Violacao Pilar 2: HUD T-A-X-A-S em 0x${ptr.toString(16)} esperado 0x${ch.toString(16)}, encontrado ${mapByAddr.get(ptr)}`);
+      }
     }
     const magic = voicesBuf.readUInt32LE(2048);
     const lCnt = voicesBuf.readUInt32LE(2052);
@@ -989,7 +1029,6 @@ try {
     const thps1Iso = readSectorsUser(fdMod, thps1File.lba, thps1Sectors);
     const thps1Disk = fs.readFileSync(path.join(rootDir, 'THPS1.WAD'));
     if (!thps1Iso.equals(thps1Disk)) fail('THPS1', 'THPS1.WAD na ISO difere do arquivo no workspace!');
-    const thps1Man = JSON.parse(fs.readFileSync(path.join(rootDir, 'build', 'thps1_manifest.json'), 'utf8'));
     let t1Err = 0;
     if (thps1Man.totalSectors !== thps1Sectors || thps1Man.totalBytes !== thps1Disk.length) {
       fail('THPS1', `THPS1.WAD divergente do manifesto: ${thps1Disk.length} B (${thps1Sectors} set.)`); t1Err++;
@@ -1000,7 +1039,29 @@ try {
       if (en.name.endsWith('.trg') && slice.subarray(0, 4).toString('ascii') !== '_TRG') { fail('THPS1', `${en.name} nao e _TRG valido!`); t1Err++; }
       if (en.name.endsWith('.psx') && slice.readUInt32LE(0) !== 0x00020004) { fail('THPS1', `${en.name} nao e PSX 0x00020004 valido!`); t1Err++; }
     }
-    // Verify all 6 sculpted 3D satirical THPS1 objects (0x5111A101..0x5118A106) + 30 injected Type 5 subtype 33 nodes + 60 goals + 24 gaps!
+    // Verify ALL 37 in-place CD.WAD THPS1 files (18 LevelSel BMPs @ [573]/[578] + 19 level files @ [1127..1185]) cryptographically via SHA-256!
+    const inPlace = thps1Man.cdWadInPlace;
+    const inPlaceZoneMap = new Map();
+    if (!inPlace || !Array.isArray(inPlace.bmps) || inPlace.bmps.length !== 18 || !Array.isArray(inPlace.levelFiles) || inPlace.levelFiles.length !== 19) {
+      fail('THPS1', 'Manifesto build/thps1_manifest.json sem bloco cdWadInPlace valido (18 BMPs + 19 arquivos de fase)!');
+      t1Err++;
+    } else {
+      for (const b of inPlace.bmps) {
+        const raw = readSectorsUser(fdMod, b.lba, b.sectors).subarray(0, b.size);
+        if (raw.subarray(0, 2).toString('ascii') !== 'BM' || sha256(raw) !== b.sha256) {
+          fail('THPS1', `BMP in-place ${b.name} @ LBA ${b.lba} corrompido ou SHA-256 divergente!`);
+          t1Err++;
+        }
+      }
+      for (const zf of inPlace.levelFiles) {
+        const raw = readSectorsUser(fdMod, zf.lba, zf.sectors).subarray(0, zf.size);
+        inPlaceZoneMap.set(zf.name, raw);
+        if (sha256(raw) !== zf.sha256) { fail('THPS1', `Arquivo in-place ${zf.name} @ LBA ${zf.lba} SHA-256 divergente!`); t1Err++; }
+        if (zf.name.endsWith('.trg') && raw.subarray(0, 4).toString('ascii') !== '_TRG') { fail('THPS1', `${zf.name} nao e _TRG valido!`); t1Err++; }
+        if (zf.name.endsWith('.psx') && raw.readUInt32LE(0) !== 0x00020004) { fail('THPS1', `${zf.name} nao e PSX 0x00020004 valido!`); t1Err++; }
+      }
+    }
+    // Verify all 6 sculpted 3D satirical THPS1 objects (0x5111A101..0x5118A106) inside CD.WAD[1127..1185] (zero-seek in-place!)
     const customObjChecks = [
       ['skware_o.psx', 0x5111A101, 'Mandioca da Dilma'],
       ['skschl_o.psx', 0x5112A102, 'Triplex do Guaruja'],
@@ -1010,9 +1071,8 @@ try {
       ['sksf_o.psx',   0x5118A106, 'Picanha da Promessa'],
     ];
     for (const [oName, expHash, label] of customObjChecks) {
-      const en = thps1Man.entries.find(e => e.name === oName);
-      if (!en) { fail('THPS1', `Objeto 3D esculpido ${oName} (${label}) ausente em THPS1.WAD!`); t1Err++; continue; }
-      const b = thps1Iso.subarray(en.relOffset, en.relOffset + en.size);
+      const b = inPlaceZoneMap.get(oName);
+      if (!b) { fail('THPS1', `Objeto 3D esculpido ${oName} (${label}) ausente em CD.WAD[1127..1185]!`); t1Err++; continue; }
       const ptrMeta = b.readUInt32LE(4);
       const nObj = b.readUInt32LE(8);
       const meshListOff = 12 + nObj * 36;
@@ -1047,12 +1107,13 @@ try {
     const { THPS1_DEFS, THPS1_GAPS } = require('./thps1_engine_mod');
     const totalThps1Goals = THPS1_DEFS.reduce((s, d) => s + (d.goals ? d.goals.length : 0), 0);
     const totalInjectedCol = thps1Man.levels.reduce((s, l) => s + ((l.trgStats && l.trgStats.g5Injected) || 0), 0);
-    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 42) {
-      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/42 arquivos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, files=${thps1Man.totalFiles}`);
+    const totalThps1Assets = thps1Man.totalFiles + (inPlace ? inPlace.bmps.length + inPlace.levelFiles.length : 0);
+    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 5 || totalThps1Assets !== 42) {
+      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/42 ativos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, wad=${thps1Man.totalFiles}, total=${totalThps1Assets}`);
       t1Err++;
     }
     if (t1Err === 0) {
-      pass(`THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): ${thps1Man.totalFiles} arquivos (18 BMPs LevelSel + 3 BMPs Comp Chicago/Burnside/Roswell + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 6 PSXs base) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
+      pass(`THPS1 Zero-Seek CD.WAD + THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): 37 ativos in-place em CD.WAD (18 BMPs LevelSel + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 4 PSXs) + ${thps1Man.totalFiles} em THPS1.WAD (3 BMPs Comp + skvans_t + c_cabl1) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
     }
   }
 

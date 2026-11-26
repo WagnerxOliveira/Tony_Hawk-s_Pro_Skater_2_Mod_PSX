@@ -708,15 +708,18 @@ function main() {
   console.log(`  [+] c_cabl1.psx (${cableBuf.length} B, 11-texture THPS1 SF Cable Car)`);
 
   // 5. Deduplicate against originals_backup/CD.WAD (Neversoft left 43 byte-identical THPS1 .PSX files inside THPS2!)
-  //    Keep ONLY new or modified files (all 18 BMPs, all 9 converted .TRGs, c_cabl1.psx, skvans_t.psx, and any differing .PSX)
-  //    so THPS1.WAD stays ultra-compact (~1.4 MB, keeping ISO < 71 min!) while overriding all unconverted leftovers via THPS1.HED priority!
   const origCdWad = fs.readFileSync(path.join(ROOT, 'originals_backup', 'CD.WAD'));
   const origCdHed = fs.readFileSync(path.join(ROOT, 'originals_backup', 'CD.HED'));
+  const curCdWad  = fs.readFileSync(path.join(ROOT, 'CD.WAD'));
+  const curCdHed  = fs.readFileSync(path.join(ROOT, 'CD.HED'));
+  const crypto    = require('crypto');
+  const sha256    = b => crypto.createHash('sha256').update(b).digest('hex');
+
   const cdMap = new Map();
   for (let i = 0; i * 12 + 12 <= origCdHed.length; i++) {
     const h = origCdHed.readUInt32LE(i * 12);
     if (h === 0xFFFFFFFF) break;
-    cdMap.set(h, { off: origCdHed.readUInt32LE(i * 12 + 4), sz: origCdHed.readUInt32LE(i * 12 + 8) });
+    cdMap.set(h, { idx: i, off: origCdHed.readUInt32LE(i * 12 + 4), sz: origCdHed.readUInt32LE(i * 12 + 8) });
   }
   let dedupedCount = 0, dedupedBytes = 0;
   const neededEntries = [];
@@ -730,19 +733,136 @@ function main() {
     }
   }
   console.log(`\n  [DEDUP] ${dedupedCount} .PSX byte-identicos ja presentes em CD.WAD economizados (${(dedupedBytes / 1048576).toFixed(2)} MB)!`);
-  console.log(`  [PACK]  ${neededEntries.length} arquivos novos/convertidos empacotados com prioridade em THPS1.WAD.`);
 
-  //    Place all 18 Level Select BMPs contiguously at the very front of THPS1.WAD (t1rend00..08 then t1levl00..08)
-  //    so CLevelRend & CLevelMap stream all 18 THPS1 previews in ONE contiguous ~0.3s read with ZERO laser seeks!
-  const rendBmps = neededEntries.filter(e => e.name.startsWith('t1rend'));
-  const levlBmps = neededEntries.filter(e => e.name.startsWith('t1levl'));
-  const otherFiles = neededEntries.filter(e => !e.name.startsWith('t1rend') && !e.name.startsWith('t1levl'));
-  const orderedEntries = [...rendBmps, ...levlBmps, ...otherFiles];
+  // 6. ZERO-MINUTE-71-SEEK CD.WAD IN-PLACE PLACEMENT:
+  //    A) Place t1rend00..08 (45s) into dead PRE-shadowed CD.WAD[573] (s2bgd3.bmp, 61s @ LBA 7955, 100% inside levelsel.pre!)
+  //       and t1levl00..08 (54s) into dead PRE-shadowed CD.WAD[578] (s2bgd5.bmp, 61s @ LBA 8049, 100% inside equipsel.pre!).
+  //       -> ZERO CD.HED offset shift! Eliminates the 64-frame (-1.07s) Minute-71 seek on EVERY Level Select entry!
+  //    B) Repack closed THPS1 zone CD.WAD[1127..1185] (LBA 18686..23262, EXACTLY 4,577 -> 4,577 sectors, Delta = 0!)
+  //       with ALL 19 modified THPS1 files (9 TRGs + 4 divergent PSXs + 6 sculpted 3D sk*_o.psx) in optimal ascending
+  //       level-load order (_t.trg -> _l.psx -> _o.psx -> .psx), keeping ALL 1,472 THPS2 entries at 0 offset shift!
+  //       -> Eliminates ALL 3 full-disc Minute-71 seeks (-2.5..-4.5s) on THPS1 level loads!
+  const rendBmps = neededEntries.filter(e => e.name.startsWith('t1rend')).sort((a, b) => a.name.localeCompare(b.name));
+  const levlBmps = neededEntries.filter(e => e.name.startsWith('t1levl')).sort((a, b) => a.name.localeCompare(b.name));
+  if (rendBmps.length !== 9 || levlBmps.length !== 9) {
+    throw new Error(`Esperados 9 t1rend + 9 t1levl BMPs, encontrados ${rendBmps.length}+${levlBmps.length}`);
+  }
+
+  const REND_SLOT_IDX = 573; // s2bgd3.bmp (61s @ LBA 7955, 100% shadowed by levelsel.pre)
+  const LEVL_SLOT_IDX = 578; // s2bgd5.bmp (61s @ LBA 8049, 100% shadowed by equipsel.pre)
+  const rendSlotOff = origCdHed.readUInt32LE(REND_SLOT_IDX * 12 + 4);
+  const rendSlotEnd = origCdHed.readUInt32LE((REND_SLOT_IDX + 1) * 12 + 4);
+  const levlSlotOff = origCdHed.readUInt32LE(LEVL_SLOT_IDX * 12 + 4);
+  const levlSlotEnd = origCdHed.readUInt32LE((LEVL_SLOT_IDX + 1) * 12 + 4);
+  if (rendSlotEnd - rendSlotOff !== 61 * SECTOR_SIZE || levlSlotEnd - levlSlotOff !== 61 * SECTOR_SIZE) {
+    throw new Error('Slots CD.WAD[573]/[578] nao possuem 61 setores originais!');
+  }
+
+  const rendBlock = Buffer.alloc(61 * SECTOR_SIZE, 0);
+  const cdWadBmpsMeta = [];
+  for (let k = 0; k < 9; k++) {
+    const e = rendBmps[k];
+    if (e.buf.length > 5 * SECTOR_SIZE) throw new Error(`${e.name} > 5 setores`);
+    e.buf.copy(rendBlock, k * 5 * SECTOR_SIZE);
+    cdWadBmpsMeta.push({
+      name: e.name, hash: e.hash, hashHex: '0x' + e.hash.toString(16).padStart(8, '0'),
+      cdHedIdx: REND_SLOT_IDX, cdWadOff: rendSlotOff + k * 5 * SECTOR_SIZE,
+      lba: 455 + ((rendSlotOff >> 11) + k * 5), size: e.buf.length, sectors: 5, sha256: sha256(e.buf),
+    });
+  }
+  rendBlock.copy(curCdWad, rendSlotOff);
+
+  const levlBlock = Buffer.alloc(61 * SECTOR_SIZE, 0);
+  for (let k = 0; k < 9; k++) {
+    const e = levlBmps[k];
+    if (e.buf.length > 6 * SECTOR_SIZE) throw new Error(`${e.name} > 6 setores`);
+    e.buf.copy(levlBlock, k * 6 * SECTOR_SIZE);
+    cdWadBmpsMeta.push({
+      name: e.name, hash: e.hash, hashHex: '0x' + e.hash.toString(16).padStart(8, '0'),
+      cdHedIdx: LEVL_SLOT_IDX, cdWadOff: levlSlotOff + k * 6 * SECTOR_SIZE,
+      lba: 455 + ((levlSlotOff >> 11) + k * 6), size: e.buf.length, sectors: 6, sha256: sha256(e.buf),
+    });
+  }
+  levlBlock.copy(curCdWad, levlSlotOff);
+
+  // Closed-zone repack of CD.WAD[1127..1185] (exact 4,577 -> 4,577 sectors, 0 shift outside [1127..1185]!)
+  const ZONE_START_IDX = 1127;
+  const ZONE_END_IDX   = 1185;
+  const zoneStartOff   = origCdHed.readUInt32LE(ZONE_START_IDX * 12 + 4);
+  const zoneEndOff     = origCdHed.readUInt32LE((ZONE_END_IDX + 1) * 12 + 4);
+  const zoneTotalSec   = (zoneEndOff - zoneStartOff) / SECTOR_SIZE;
+
+  const modByHash = new Map();
+  const remainingForThps1Wad = [];
+  for (const e of neededEntries) {
+    if (e.name.startsWith('t1rend') || e.name.startsWith('t1levl')) continue;
+    const cd = cdMap.get(e.hash);
+    if (cd && cd.idx >= ZONE_START_IDX && cd.idx <= ZONE_END_IDX) {
+      modByHash.set(e.hash, e);
+    } else {
+      remainingForThps1Wad.push(e);
+    }
+  }
+
+  // Group entries by original index, and within each level cluster sort into exact engine load order:
+  //   _t.trg (rank 0) -> _o.psx (rank 1) -> _l.psx (rank 2) -> base .psx (rank 3) -> other (rank 4)
+  const LEVEL_GROUPS = [
+    [1127, 1131, 'skware'], [1132, 1137, 'skschl'], [1138, 1142, 'skburn'],
+    [1143, 1149, 'skmall'], [1150, 1156, 'skjam'],  [1157, 1164, 'skdown'],
+    [1165, 1169, 'skvans'], [1170, 1176, 'skros'],  [1177, 1185, 'sksf'],
+  ];
+  const zoneItems = [];
+  for (const [lo, hi, pfx] of LEVEL_GROUPS) {
+    const rankMap = new Map([
+      [nsHash(`${pfx}_t.trg`), 0],
+      [nsHash(`${pfx}_o.psx`), 1],
+      [nsHash(`${pfx}_l.psx`), 2],
+      [nsHash(`${pfx}.psx`),   3],
+    ]);
+    const grp = [];
+    for (let idx = lo; idx <= hi; idx++) {
+      const h = origCdHed.readUInt32LE(idx * 12);
+      const oOff = origCdHed.readUInt32LE(idx * 12 + 4);
+      const oSz  = origCdHed.readUInt32LE(idx * 12 + 8);
+      const mod  = modByHash.get(h);
+      const data = mod ? mod.buf : origCdWad.subarray(oOff, oOff + oSz);
+      const sec  = Math.max(1, Math.ceil(data.length / SECTOR_SIZE));
+      grp.push({ idx, hash: h, name: mod ? mod.name : null, isMod: !!mod, data, size: data.length, sectors: sec, rank: rankMap.has(h) ? rankMap.get(h) : 4 });
+    }
+    grp.sort((a, b) => (a.rank - b.rank) || (a.idx - b.idx));
+    zoneItems.push(...grp);
+  }
+  const packedSec = zoneItems.reduce((s, it) => s + it.sectors, 0);
+  if (packedSec > zoneTotalSec) {
+    throw new Error(`Zona CD.WAD[1127..1185] estourou: ${packedSec} > ${zoneTotalSec} setores!`);
+  }
+  curCdWad.fill(0, zoneStartOff, zoneEndOff);
+  let writeOff = zoneStartOff;
+  const cdWadZoneMeta = [];
+  for (const it of zoneItems) {
+    it.data.copy(curCdWad, writeOff);
+    curCdHed.writeUInt32LE(writeOff >>> 0, it.idx * 12 + 4);
+    curCdHed.writeUInt32LE(it.size >>> 0,  it.idx * 12 + 8);
+    if (it.isMod) {
+      cdWadZoneMeta.push({
+        name: it.name, hash: it.hash, hashHex: '0x' + it.hash.toString(16).padStart(8, '0'),
+        cdHedIdx: it.idx, cdWadOff: writeOff, lba: 455 + (writeOff >> 11),
+        size: it.size, sectors: it.sectors, sha256: sha256(it.data),
+      });
+    }
+    writeOff += it.sectors * SECTOR_SIZE;
+  }
+
+  fs.writeFileSync(path.join(ROOT, 'CD.WAD'), curCdWad);
+  fs.writeFileSync(path.join(ROOT, 'CD.HED'), curCdHed);
+  console.log(`  [FAST-CDWAD] 18 BMPs LevelSel gravados in-place em CD.WAD[573] (LBA 7955) & CD.WAD[578] (LBA 8049) (0 shift!).`);
+  console.log(`  [FAST-CDWAD] ${cdWadZoneMeta.length} arquivos THPS1 (9 TRGs + 4 PSXs + 6 sk*_o.psx esculpidos) gravados na zona fechada CD.WAD[1127..1185] (${packedSec}/${zoneTotalSec} setores, delta=${packedSec - zoneTotalSec}, 0 shift em todos 1.472 itens THPS2!).`);
+  console.log(`  [PACK]       ${remainingForThps1Wad.length} arquivos exclusivos empacotados em THPS1.WAD (ultraleve!).`);
 
   const wadChunks = [];
   let relOffset = 0;
   const manifestEntries = [];
-  for (const e of orderedEntries) {
+  for (const e of remainingForThps1Wad) {
     const sectors = Math.max(1, Math.ceil(e.buf.length / SECTOR_SIZE));
     const paddedSize = sectors * SECTOR_SIZE;
     const padded = Buffer.alloc(paddedSize, 0);
@@ -768,6 +888,20 @@ function main() {
     totalFiles: manifestEntries.length,
     totalBytes: wadBuf.length,
     totalSectors: wadBuf.length / SECTOR_SIZE,
+    cdWadInPlace: {
+      rendSlotIdx: REND_SLOT_IDX,
+      rendBaseSec: rendSlotOff >> 11,
+      levlSlotIdx: LEVL_SLOT_IDX,
+      levlBaseSec: levlSlotOff >> 11,
+      zoneStartIdx: ZONE_START_IDX,
+      zoneEndIdx: ZONE_END_IDX,
+      zoneStartOff,
+      zoneEndOff,
+      zoneTotalSectors: zoneTotalSec,
+      zoneUsedSectors: packedSec,
+      bmps: cdWadBmpsMeta,
+      levelFiles: cdWadZoneMeta,
+    },
     summary: {
       levels: THPS1_LEVELS.length,
       totalPsxFiles: totalPsx + 1,
@@ -783,7 +917,7 @@ function main() {
 
   console.log(`\n=== CONCLUIDO ===`);
   console.log(`  THPS1.WAD : ${OUT_WAD}`);
-  console.log(`  Arquivos  : ${manifestEntries.length} (${totalPsx + 1} PSX + 9 TRG + 18 BMP)`);
+  console.log(`  Arquivos  : ${manifestEntries.length} em THPS1.WAD + ${cdWadBmpsMeta.length + cdWadZoneMeta.length} in-place em CD.WAD`);
   console.log(`  Tamanho   : ${(wadBuf.length / 1048576).toFixed(2)} MB (${wadBuf.length / SECTOR_SIZE} setores)`);
   console.log(`  Trilhos   : ${totalRails} convertidos (100% verificados)`);
   console.log(`  Moedas    : ${totalCoins} -> $100 Cash ($${totalCoins * 100} total para comprar Stats!)`);
