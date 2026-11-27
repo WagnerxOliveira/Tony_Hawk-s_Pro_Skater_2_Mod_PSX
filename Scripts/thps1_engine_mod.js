@@ -186,7 +186,7 @@ const THPS1_DEFS = [
   },
   {
     id: 12, name: 'School', loc: 'Miami', vab: 'school2', isComp: 0, trg: 'SkSchl_T',
-    rend: 't1rend01.bmp', levl: 't1levl01.bmp', globeLon: 3160, globeLat: -16, lightFrom: 1, primBufDelta: -20000,
+    rend: 't1rend01.bmp', levl: 't1levl01.bmp', globeLon: 3160, globeLat: -16, lightFrom: 1, primBufDelta: -42000,
     gapMin: 2000, gapMax: 2099,
     scores: [7500, 25000, 55000], par: [20000, 7000, 3000],
     goals: [
@@ -229,7 +229,7 @@ const THPS1_DEFS = [
   },
   {
     id: 15, name: 'Downtown', loc: 'Minneapolis', vab: 'ny', isComp: 0, trg: 'SkDown_T',
-    rend: 't1rend04.bmp', levl: 't1levl04.bmp', globeLon: 2960, globeLat: -27, lightFrom: 3, primBufDelta: -18000,
+    rend: 't1rend04.bmp', levl: 't1levl04.bmp', globeLon: 2960, globeLat: -27, lightFrom: 3, primBufDelta: -42000,
     gapMin: 1100, gapMax: 1299,
     scores: [15000, 40000, 85000], par: [20000, 7000, 3000],
     goals: [
@@ -247,7 +247,7 @@ const THPS1_DEFS = [
   },
   {
     id: 16, name: 'Downhill Jam', loc: 'Phoenix', vab: 'venice', isComp: 0, trg: 'SkJam_T',
-    rend: 't1rend05.bmp', levl: 't1levl05.bmp', globeLon: 2740, globeLat: -10, lightFrom: 4, primBufDelta: -24000,
+    rend: 't1rend05.bmp', levl: 't1levl05.bmp', globeLon: 2740, globeLat: -10, lightFrom: 4, primBufDelta: -30000,
     gapMin: 2600, gapMax: 2699,
     scores: [20000, 45000, 95000], par: [20000, 7000, 3000],
     goals: [
@@ -272,7 +272,7 @@ const THPS1_DEFS = [
   },
   {
     id: 18, name: 'Streets', loc: 'San Francisco', vab: 'philly', isComp: 0, trg: 'SkSF_T',
-    rend: 't1rend07.bmp', levl: 't1levl07.bmp', globeLon: 2580, globeLat: -14, lightFrom: 6, primBufDelta: -28000,
+    rend: 't1rend07.bmp', levl: 't1levl07.bmp', globeLon: 2580, globeLat: -14, lightFrom: 6, primBufDelta: -50000,
     gapMin: 3000, gapMax: 3399,
     scores: [25000, 55000, 110000], par: [20000, 7000, 3000],
     goals: [

@@ -12,6 +12,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const psxLib = require('./psx_skater_lib');
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 
 const rootDir = path.resolve(__dirname, '..');
@@ -1189,14 +1190,84 @@ try {
       }
       if (/^s2dCR0\dc\.bmp$/.test(cName) && en.size !== 17464) { fail('CRASH20', `Deck ${cName} tamanho ${en.size} != 17464`); crErr++; }
       if (/^s2gCR0\dc\.bmp$/.test(cName) && en.size !== 3128) { fail('CRASH20', `Board-bottom ${cName} tamanho ${en.size} != 3128`); crErr++; }
-      if (cName === 'crash_it.psx' && (raw.readUInt32LE(0) !== 0x00020004 || raw.readUInt32LE(8) !== 14)) {
-        fail('CRASH20', `crash_it.psx invalido: objs=${raw.readUInt32LE(8)} (esperado 14)`); crErr++;
+      if (cName === 'crash_it.psx') {
+        if (en.size > 40784 || raw.readUInt32LE(0) !== 0x00020004 || raw.readUInt32LE(8) !== 14) {
+          fail('CRASH20', `crash_it.psx invalido ou > 40.784 B: sz=${en.size}, objs=${raw.readUInt32LE(8)}`); crErr++;
+        } else {
+          // Verify ZERO illegal 0x18C3 (bit 0x0800 RGBs) on M[8] aura & ZERO opaque 0x0000 CLUT holes in crash_it.psx!
+          const ciInfo = psxLib.parsePsxStructure(raw);
+          let hasIllegal18c3 = false, has10c3Aura = false;
+          for (let mi = 0; mi < ciInfo.numMeshes; mi++) {
+            const mo = ciInfo.meshOffs[mi], mEnd = (mi + 1 < ciInfo.numMeshes) ? ciInfo.meshOffs[mi + 1] : ciInfo.ptrMeta;
+            const nV = raw.readUInt16LE(mo + 2), nN = raw.readUInt16LE(mo + 4), nF = raw.readUInt16LE(mo + 6);
+            let fp = mo + 28 + nV * 8 + nN * 8;
+            for (let fi = 0; fi < nF && fp + 4 <= mEnd; fi++) {
+              const fl = raw.readUInt16LE(fp), fLen = raw.readUInt16LE(fp + 2);
+              if (fl === 0x18c3) hasIllegal18c3 = true;
+              if (mi === 8 && fl === 0x10c3) has10c3Aura = true;
+              fp += fLen;
+            }
+          }
+          if (hasIllegal18c3 || !has10c3Aura) {
+            fail('CRASH20', `crash_it.psx aura/flags invalidas (illegal18c3=${hasIllegal18c3}, aura10c3=${has10c3Aura})`); crErr++;
+          }
+          for (const t of ciInfo.textures) {
+            if (!t.palInfo) continue;
+            for (let c = 0; c < t.palSize; c++) {
+              if (raw.readUInt16LE(t.palInfo.offset + c * 2) === 0x0000) {
+                fail('CRASH20', `crash_it.psx textura ${t.texIdx} contem pixel 0x0000 opaco no slot ${c}`); crErr++; break;
+              }
+            }
+          }
+        }
       }
       if (/^cr_.*\.psx$/.test(cName)) {
         const pm = raw.readUInt32LE(4), nObj = raw.readUInt32LE(8);
         const rgb0 = nObj > 0 ? raw.readUInt32LE(12 + 32) : 0;
         if (raw.readUInt32LE(0) !== 0x00020004 || rgb0 !== pm + 8) {
           fail('CRASH20', `${cName} RGBs pointer nao relocado: rgb0=0x${rgb0.toString(16)} != ptrMeta+8=0x${(pm + 8).toString(16)}`); crErr++;
+        } else {
+          const cInfo = psxLib.parsePsxStructure(raw);
+          // Verify all Crash-appended palettes (palId >= 0xC3000000) have ZERO opaque 0x0000 holes!
+          for (const t of cInfo.textures) {
+            if (!t.palInfo || (t.palId >>> 24) !== 0xC3) continue;
+            for (let c = 0; c < t.palSize; c++) {
+              if (raw.readUInt16LE(t.palInfo.offset + c * 2) === 0x0000) {
+                fail('CRASH20', `${cName} paleta Crash 0x${t.palId.toString(16)} contem 0x0000 opaco no slot ${c}`); crErr++; break;
+              }
+            }
+          }
+          // Verify Hangar TNT Crate (0x4eb2c689) is strictly floor-grounded (Y=[-62..+63], maxXZ<=42, subdivided nF>=20)
+          if (cName === 'cr_han_o.psx') {
+            const miTnt = cInfo.meshHashes.indexOf(0x4eb2c689);
+            if (miTnt < 0) { fail('CRASH20', 'cr_han_o.psx sem mesh TNT 0x4eb2c689'); crErr++; }
+            else {
+              const mo = cInfo.meshOffs[miTnt];
+              const nF = raw.readUInt16LE(mo + 6);
+              const x1 = raw.readInt16LE(mo + 12), x0 = raw.readInt16LE(mo + 14);
+              const y1 = raw.readInt16LE(mo + 16), y0 = raw.readInt16LE(mo + 18);
+              const z1 = raw.readInt16LE(mo + 20), z0 = raw.readInt16LE(mo + 22);
+              if (y1 !== 63 || y0 !== -62 || x1 > 44 || x0 < -44 || z1 > 44 || z0 < -44 || nF < 20) {
+                fail('CRASH20', `cr_han_o.psx TNT fora dos limites de solo/pilha: X=[${x0},${x1}] Y=[${y0},${y1}] Z=[${z0},${z1}] nF=${nF}`); crErr++;
+              }
+            }
+          }
+          // Verify Streets SF Crystal aura uses fl=0x10C3 (NEVER illegal 0x18C3!)
+          if (cName === 'cr_sf.psx') {
+            const miCry = cInfo.meshHashes.indexOf(0x5118a106);
+            if (miCry >= 0) {
+              const mo = cInfo.meshOffs[miCry], mEnd = (miCry + 1 < cInfo.numMeshes) ? cInfo.meshOffs[miCry + 1] : cInfo.ptrMeta;
+              const nV = raw.readUInt16LE(mo + 2), nN = raw.readUInt16LE(mo + 4), nF = raw.readUInt16LE(mo + 6);
+              let fp = mo + 28 + nV * 8 + nN * 8, bad18 = false, ok10 = false;
+              for (let fi = 0; fi < nF && fp + 4 <= mEnd; fi++) {
+                const fl = raw.readUInt16LE(fp), fLen = raw.readUInt16LE(fp + 2);
+                if (fl === 0x18c3) bad18 = true;
+                if (fl === 0x10c3) ok10 = true;
+                fp += fLen;
+              }
+              if (bad18 || !ok10) { fail('CRASH20', `cr_sf.psx aura invalida (bad18=${bad18}, ok10=${ok10})`); crErr++; }
+            }
+          }
         }
       }
     }
@@ -1224,7 +1295,7 @@ try {
       fail('CRASH20', `tricks.bin Slot 20 divergente: tbl=0x${trTbl.toString(16)} crOff=0x${crOff.toString(16)} bobSpec=${okSpecBob} rodSpec=${okSpecRod} bobReg=${okRegBob} term=${okTerm}`); crErr++;
     }
     if (crErr === 0) {
-      pass(`Crash B. (Novo Slot 20 — 0 skatistas excluidos!): 33/33 ativos em THPS1.WAD (4 .PSX <= 67.5 KB c/ Gouraud nativo fl0=8/nN=nV+nF + 4 .PSH CRASH*PART_, 8 shapes s2dCR/s2gCR, crash_it.psx 14 objs + 7 cr_*.psx RGBs ok) + tricks.bin (Bob + Casper to 360 Flip [73]) 100% validos`);
+      pass(`Crash B. (Novo Slot 20 — 0 skatistas excluidos!): 33/33 ativos em THPS1.WAD (4 .PSX <= 67.5 KB c/ Gouraud nativo fl0=8/nN=nV+nF + 4 .PSH CRASH*PART_, 8 shapes s2dCR/s2gCR, crash_it.psx <= 40.784 B + 7 cr_*.psx RGBs/TNT Y=[-62,+63]/aura 0x10C3/0 CLUT 0x0000 ok) + tricks.bin (Bob + Casper to 360 Flip [73]) 100% validos`);
     }
     if (t1Err === 0) {
       pass(`THPS1 Zero-Seek CD.WAD + THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): 37 ativos in-place em CD.WAD (18 BMPs LevelSel + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 4 PSXs) + ${thps1Man.totalFiles} em THPS1.WAD (5 THPS1 + 33 Crash B.) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);

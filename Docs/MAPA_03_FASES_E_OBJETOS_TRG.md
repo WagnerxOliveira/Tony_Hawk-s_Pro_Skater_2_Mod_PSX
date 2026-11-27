@@ -26,7 +26,7 @@ Este documento mapeia **todas as 11 fases** dentro de `SLUS_010.66` (`g_LevelTab
 
 - **[0] s2dCr09u.bmp** (`0x800B8444` | GapList `+0x170` = `0x00000005`): `+0x20`: "s2dCr10u.bmp" • `+0x24`: "Zero Team" • `+0x40`: "s2dCr11u.bmp" • `+0x44`: "A-Team Team Deck" • `+0x60`: "s2dCr12u.bmp" • `+0x64`: "Birdhouse Team Seal" • `+0x80`: "s2dCr13u.bmp" • `+0x84`: "Team Silhouette" • `+0xa0`: "s2dCr14u.bmp" • `+0xa4`: "17th/21st Lancers" • `+0xc0`: "s2dCr15u.bmp" • `+0xc4`: "Flip New Wave" • `+0xe0`: "s2dCr16u.bmp" • `+0xe4`: "Race"
 - **[1] ?** (`0x800B85B8` | GapList `+0x170` = `0x00000000`): 
-- **[2] ?** (`0x800B872C` | GapList `+0x170` = `0x00116000`): 
+- **[2] ?** (`0x800B872C` | GapList `+0x170` = `0x0011D000`): 
 - **[3] ?** (`0x800B88A0` | GapList `+0x170` = `0x3C03800C`): 
 - **[4] ?** (`0x800B8A14` | GapList `+0x170` = `0x1719FFFD`): 
 - **[5] ?** (`0x800B8B88` | GapList `+0x170` = `0x2E633230`): 
