@@ -852,7 +852,7 @@ try {
     const bolsoMeta = voicesManifest && voicesManifest.bolsoGameplayBank;
     const cashMeta = voicesManifest && voicesManifest.cashArt;
     const crashSfxMeta = voicesManifest && voicesManifest.crashSfxBank;
-    if (!gpMeta || gpMeta.clipCount !== 14 || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28 || gpMeta.spuPitch !== 0x0280 || !bolsoMeta || bolsoMeta.clipCount !== 14 || bolsoMeta.ringEntries.length !== 28 || !cashMeta || !cashMeta.startSector || !crashSfxMeta || crashSfxMeta.clipCount !== 12 || crashSfxMeta.spuPitch !== 0x0400) {
+    if (!gpMeta || gpMeta.clipCount !== 14 || !Array.isArray(gpMeta.ringEntries) || gpMeta.ringEntries.length !== 28 || gpMeta.spuPitch !== 0x0280 || !bolsoMeta || bolsoMeta.clipCount !== 14 || bolsoMeta.ringEntries.length !== 28 || !cashMeta || !cashMeta.startSector || !crashSfxMeta || crashSfxMeta.clipCount !== 12 || !crashSfxMeta.perClipPitch || !Array.isArray(crashSfxMeta.pitches) || crashSfxMeta.pitches.length !== 12) {
       fail('VOICES', 'Manifesto build/voices_manifest.json sem gameplayBank/bolsoGameplayBank/cashArt/crashSfxBank validos!');
     } else {
       const fullGpMeta = { ...gpMeta, bolso: bolsoMeta, cashArt: cashMeta, crash: crashSfxMeta };
@@ -964,8 +964,9 @@ try {
         fail('VOICES', `LULAO_CASHART boot-residente invalido em VOICES.DAT @ setor +${cashMeta.startSector} (esperado setor 17)!`);
         gpErr++;
       }
-      // Validate CRASH_SFXBANK ("CRSF" magic, 12 clips @ 11,025 Hz / 0x0400, 16B-aligned offsets & sizes)
+      // Validate CRASH_SFXBANK ("CRSF" magic, 12 native Crash 3 .VAG clips + exact per-clip Naughty Dog SPU pitches @ +104..+127)
       const crBaseOff = crashSfxMeta.startSector * 2048;
+      const EXP_CRASH_PITCHES = [0x03A0, 0x0343, 0x045A, 0x03A0, 0x0340, 0x0400, 0x03A0, 0x03A0, 0x03FF, 0x02E0, 0x0299, 0x039B];
       if (crBaseOff + crashSfxMeta.totalBytes > voicesBuf.length || voicesBuf.readUInt32LE(crBaseOff) !== 0x43525346 || voicesBuf.readUInt32LE(crBaseOff + 4) !== 12) {
         fail('VOICES', `CRASH_SFXBANK invalido em VOICES.DAT @ setor +${crashSfxMeta.startSector}!`);
         gpErr++;
@@ -973,14 +974,23 @@ try {
         for (let i = 0; i < 12; i++) {
           const eOff = voicesBuf.readUInt32LE(crBaseOff + 8 + i * 8);
           const eSz  = voicesBuf.readUInt32LE(crBaseOff + 12 + i * 8);
+          const ePitch = voicesBuf.readUInt16LE(crBaseOff + 104 + i * 2);
           if (eSz === 0 || (eSz % 16) !== 0 || (eOff % 16) !== 0 || (eOff + eSz) > crashSfxMeta.totalBytes) {
             fail('VOICES', `CRASH_SFXBANK slot #${i} invalido: off=${eOff} sz=${eSz}`);
+            gpErr++;
+          }
+          if (ePitch !== EXP_CRASH_PITCHES[i]) {
+            fail('VOICES', `CRASH_SFXBANK slot #${i} pitch SPU divergente: 0x${ePitch.toString(16)} != esperado 0x${EXP_CRASH_PITCHES[i].toString(16)}!`);
+            gpErr++;
+          }
+          if (i < 8 && (eOff + eSz) > 16 * 2048) {
+            fail('VOICES', `CRASH_SFXBANK core slot #${i} ultrapassa limite de fallback 16 setores (32 KB): ${eOff + eSz} B!`);
             gpErr++;
           }
         }
       }
       if (mipsInvErr === 0 && gpErr === 0) {
-        pass(`LULAO_GPBANK + BOLSO_GPBANK + CRASH_SFXBANK (12 SFX Crash 3 @ 11025 Hz) + CASHART Boot-Residente: 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
+        pass(`LULAO_GPBANK + BOLSO_GPBANK + CRASH_SFXBANK (12 .VAG Crash 3 pitch SPU individual 0x0299..0x045A) + CASHART Boot-Residente: 0 CdRead/XA_Pause/Mem_Alloc em gameplay`);
       }
       const { buf: expLulaoStrData, mappings: lulaoMappings } = buildLulaoStrData(fullGpMeta);
       const expCrashSfxCode = assembleCrashSfxCode(fullGpMeta, lulaoLabels);

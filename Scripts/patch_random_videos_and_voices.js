@@ -3406,24 +3406,33 @@ function assembleCrashSfxCode(gpMeta, L) {
   a.jr(R.ra);                            // Suppress vanilla THPS2 cash/goal chime (v0=0 safe for SFX_SetPitch!)
   a.move(R.v0, R.zero);
 
-  // ---- 2. CrashStartAsync: allocates persistent ~32 KB g_CacheBuf & queues CRASH_SFXBANK DMA ----
+  // ---- 2. CrashStartAsync: allocates persistent CRASH_SFXBANK (48 KB full / 32 KB core fallback) ----
   //    Jumped to from LulaoCache_StartAsync (80 B stack frame already live; exits via lcl_kick_cd or lcl_ret!)
   a.label('CrashStartAsync');
   a.lui(R.t7, 0x800E);
-  a.lw(R.s5, ADDR.g_CrashSfxSectors & 0xffff, R.t7); // s5 = crashSfxSectors (~16 sectors)
+  a.lw(R.s5, ADDR.g_CrashSfxSectors & 0xffff, R.t7); // s5 = crashSfxSectors (24 sectors = 48 KB full 12 clips)
   a.nop();
   a.beq(R.s5, R.zero, 'csa_fail');
   a.nop();
 
   a.jal(req('Heap1_LargestFree'));
   a.nop();
-  a.sll(R.s0, R.s5, 11);                 // s0 = crashSfxBytes
-  a.li(R.t1, 25600);                     // 1 KB stage + 24 KB safety margin
+  a.sll(R.s0, R.s5, 11);                 // s0 = fullBytes (49,152 B)
+  a.ori(R.t1, R.zero, 25600);            // 1 KB stage + 24 KB safety margin
   a.addu(R.t1, R.s0, R.t1);
   a.sltu(R.t0, R.v0, R.t1);
-  a.bne(R.t0, R.zero, 'csa_fail');
-  a.nop();
+  a.beq(R.t0, R.zero, 'csa_do_alloc');
+  a.addiu(R.s3, R.zero, 12);             // delay slot: full 12 clips (4 pickups + 8 random Crash bails)!
 
+  // Tight-level adaptive fallback: 16 sectors (32 KB = Core Slots 0..7: ALL 4 pickups + 4 Crash bails!)
+  a.addiu(R.s5, R.zero, 16);
+  a.sll(R.s0, R.s5, 11);                 // s0 = 32,768 B
+  a.ori(R.t1, R.zero, 58368);            // 32,768 + 25,600 B safety margin
+  a.sltu(R.t0, R.v0, R.t1);
+  a.bne(R.t0, R.zero, 'csa_fail');
+  a.addiu(R.s3, R.zero, 8);              // delay slot: core 8 clips!
+
+  a.label('csa_do_alloc');
   a.addiu(R.a0, R.s0, 1024);             // 1024 B g_StageBuf + CRASH_SFXBANK payload
   a.swSym(R.a0, R.t2, req('g_CacheAllocBytes'));
   a.move(R.a1, R.zero);                  // Heap[0] persistent across Retry
@@ -3441,8 +3450,7 @@ function assembleCrashSfxCode(gpMeta, L) {
   a.swSym(R.zero, R.t0, req('g_CacheStartClip'));
   a.swSym(R.zero, R.t0, req('g_CacheBaseOff'));
   a.swSym(R.zero, R.t0, req('g_PendBolsoSec'));
-  a.addiu(R.t1, R.zero, 12);             // 12 Crash SFX clips -> PollAsync commits g_CacheClipCount = 12!
-  a.swSym(R.t1, R.t0, req('g_PendLulaoClips'));
+  a.swSym(R.s3, R.t0, req('g_PendLulaoClips')); // 12 (full) or 8 (core) -> PollAsync commits g_CacheClipCount!
   a.swSym(R.s5, R.t0, req('g_PendLulaoSec'));
   a.lui(R.t7, 0x800E);
   a.lw(R.t3, ADDR.g_CrashSfxStartSec & 0xffff, R.t7);
@@ -3462,7 +3470,7 @@ function assembleCrashSfxCode(gpMeta, L) {
   a.nop();
 
   // ---- 3. CrashResolveClip: resolves slot 0..11 in "CRSF" bank @ g_CacheBuf+1024 ----
-  //    Jumped to from LulaoStream_StartFromCache with s0=g_CacheBuf, s4=mode (4..8), SPU already muted!
+  //    Jumped to from LulaoStream_StartFromCache with s0=g_CacheBuf, s1=g_CacheClipCount (12 or 8), s4=mode (4..8)!
   a.label('CrashResolveClip');
   a.addiu(R.t4, R.s0, 1024);             // t4 = bankBase = g_CacheBuf + 1024
   a.lw(R.t0, 0, R.t4);
@@ -3476,21 +3484,22 @@ function assembleCrashSfxCode(gpMeta, L) {
   a.j('crc_slot_ready');
   a.nop();
 
-  // Mode 8: Random strictly non-repeating Crash 3 fall/hurt sound (slots 4..11 = 8 unique Crash voices!)
+  // Mode 8: Random strictly non-repeating Crash 3 fall/hurt sound (s1=12 -> mask 7 [slots 4..11]; s1=8 -> mask 3 [slots 4..7]!)
   a.label('crc_rand_bail');
   a.jal(req('Lulao_NextRand'));          // hardware timers + VSync + XorShift32 entropy!
   a.nop();
-  a.andi(R.s2, R.v0, 7);                 // s2 = 0..7
+  a.addiu(R.t2, R.s1, -5);               // mask: 12-5=7 (8 bails) or 8-5=3 (4 core bails)!
+  a.and(R.s2, R.v0, R.t2);               // s2 = 0..7 or 0..3
   a.lui(R.t7, 0x800E);
   a.lw(R.t1, ADDR.g_CrashLastBail & 0xffff, R.t7);
   a.nop();
   a.bne(R.s2, R.t1, 'crc_bail_ok');
   a.nop();
   a.addiu(R.s2, R.s2, 1);                // Never repeat the same fall sound twice in a row!
-  a.andi(R.s2, R.s2, 7);
+  a.and(R.s2, R.s2, R.t2);
   a.label('crc_bail_ok');
   a.sw(R.s2, ADDR.g_CrashLastBail & 0xffff, R.t7);
-  a.addiu(R.s2, R.s2, 4);                // slots 4..11!
+  a.addiu(R.s2, R.s2, 4);                // slots 4..11 (or 4..7)!
 
   a.label('crc_slot_ready');
   // Record telemetry & look up { byteOffsetInBank, byteSize } @ bankBase + 8 + s2 * 8
@@ -3510,11 +3519,17 @@ function assembleCrashSfxCode(gpMeta, L) {
   a.swSym(R.t2, R.t0, req('g_StreamSrc'));
   a.swSym(R.s3, R.t0, req('g_StreamTotalBytes'));
 
-  // Program crisp 11,025 Hz Crash 3 SPU pitch (0x0400) & rate (18411 centi-samples/VBlank)!
-  a.addiu(R.t1, R.zero, 0x0400);
+  // Program EXACT per-clip Naughty Dog Crash 3 hardware SPU pitch @ bankBase + 104 + slot*2
+  // & crystal-locked VBlank ring rate = (spuPitch * 18411) >> 10 (< 0.007% error across 7.16..12.0 kHz!)
+  a.sll(R.t1, R.s2, 1);                  // slot * 2
+  a.addu(R.t1, R.t4, R.t1);
+  a.lhu(R.t1, 104, R.t1);                // exact Crash 3 GOOL spuPitch (0x0299..0x045A)
+  a.addiu(R.t2, R.zero, 18411);          // load delay slot: (44100/4) / 59.882 * 100
   a.sw(R.t1, ADDR.g_StreamPitch & 0xffff, R.t7);
-  a.addiu(R.t1, R.zero, 18411);
-  a.sw(R.t1, ADDR.g_StreamRateCenti & 0xffff, R.t7);
+  a.multu(R.t1, R.t2);
+  a.mflo(R.t2);
+  a.srl(R.t2, R.t2, 10);
+  a.sw(R.t2, ADDR.g_StreamRateCenti & 0xffff, R.t7);
 
   // Jump directly to lsf_duck_ok (skips XA music ducking so soundtrack stays vibrant!)
   a.j(req('lsf_duck_ok'));

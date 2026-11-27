@@ -65,36 +65,34 @@ const GP_MAX_ACTIVE_SEC = 2.85;
 const GP_LULAO_ORDER = [11, 0, 8, 4, 6, 1, 13, 2, 9, 3, 7, 10, 5, 12];
 const cashArtPath = path.join(rootDir, 'build', 'lulao_cash_art.bin');
 
-// Authentic Crash Bandicoot 3: Warped PS1 SFX Bank (CRASH_SFXBANK @ 11,025 Hz, pitch 0x0400)
-//   Slot 0:    Wumpa Fruit ("Manga") $50 pickup          — frt0A (99 ms)
-//   Slot 1:    Power Crystal ("Cristal") $100 pickup     — Pb10A (486 ms)
-//   Slot 2:    Diamond / Gem ("Diamante") $250 pickup    — GSh2A (750 ms)
-//   Slot 3:    Aku Aku ("BOODABAGA!") Hangar G5 pickup   — WD10A (724 ms)
-//   Slots 4..11 (8 distinct authentic Crash 3 fall/hurt/woah sounds for random bail rotation!):
-//     4: fal0A (364 ms — iconic "WOAAAAH!")
-//     5: arg0A (231 ms — iconic "AARGH!")
-//     6: yip0A ( 81 ms — "YIP / WHOOP!")
-//     7: sht0A (104 ms — "OOOF!")
-//     8: de20A (154 ms — "UGH!")
-//     9: CD1dA (1049 ms — "WHOA-OOOOH! CRASH")
-//    10: CD3dA (367 ms — "AIEEE!")
-//    11: Cd2cA (264 ms — "OOH-AH!")
+// Authentic Crash Bandicoot 3: Warped (SCUS_942.44) PS1 SPU-ADPCM SFX Bank (CRASH_SFXBANK)
+// CRITICAL FORENSIC FINDING:
+//   Crash 3's raw ADIO .vag files were authored by Naughty Dog at PER-CLIP SPU hardware pitches
+//   (0x0299..0x045A = 7,160..11,994 Hz) set directly via GOOL op 0x41/0x42 (AudioVoiceCreate / AudioVoiceControl,
+//   g_GlobalPitchBase @ 0x800690B4 = 0x1000). The legacy extractor hardcoded 22,050 Hz into the .wav headers,
+//   causing 1.84x-3.08x chipmunk/shrill pitch distortion (+10.5 to +19.5 semitones) when resampled to 11,025 Hz!
+//   FIX: Pack Naughty Dog's BIT-EXACT raw .vag SPU-ADPCM blocks (ZERO decode/re-encode loss!) and store each
+//   slot's exact verified Crash 3 hardware uint16 spuPitch in the "CRSF" header (+104..+127 = 12 x uint16).
+//   Core Slots 0..7 fit strictly inside 16 sectors (32 KB) for adaptive tight-level fallback; full Slots 0..11
+//   fit inside 24 sectors (48 KB)!
 const CRASH_SFX_DIR = path.join(rootDir, 'crash_3_psx', 'crash3_thps2_master', '02_extracted_crash3_complete', '06_audio_sfx_music_speech', 'sfx_adio');
 const CRASH_SFX_LIST = [
-  { slot: 0,  role: 'wumpa_50',   file: 'frt0A_1edba049.wav' },
-  { slot: 1,  role: 'crystal_100',file: 'Pb10A_66582049.wav' },
-  { slot: 2,  role: 'diamond_250',file: 'GSh2A_55b22149.wav' },
-  { slot: 3,  role: 'aku_aku_g5', file: 'WD10A_75382049.wav' },
-  { slot: 4,  role: 'bail_woah',  file: 'fal0A_1e52a049.wav' },
-  { slot: 5,  role: 'bail_arg',   file: 'arg0A_14da0049.wav' },
-  { slot: 6,  role: 'bail_yip',   file: 'yip0A_44932049.wav' },
-  { slot: 7,  role: 'bail_oof',   file: 'sht0A_388ba049.wav' },
-  { slot: 8,  role: 'bail_ugh',   file: 'de20A_1a704049.wav' },
-  { slot: 9,  role: 'bail_crash', file: 'CD1dA_4d3826c9.wav' },
-  { slot: 10, role: 'bail_yelp',  file: 'CD3dA_4d3866c9.wav' },
-  { slot: 11, role: 'bail_ooh',   file: 'Cd2cA_4c684649.wav' },
+  { slot: 0,  role: 'wumpa_50',    file: 'frt0A_1edba049.vag', spuPitch: 0x03A0, goolSrc: 'FruiC@0x15ec' }, //  9,991 Hz — Wumpa Fruit bloop/pop
+  { slot: 1,  role: 'crystal_100', file: 'Pb10A_66582049.vag', spuPitch: 0x0343, goolSrc: 'PartC@0x1684' }, //  8,990 Hz — Power Crystal chime
+  { slot: 2,  role: 'diamond_250', file: 'GSh2A_55b22149.vag', spuPitch: 0x045A, goolSrc: 'Wil2C@0x0a80' }, // 11,994 Hz — Diamond / Gem sparkle
+  { slot: 3,  role: 'aku_aku_g5',  file: 'WD10A_75382049.vag', spuPitch: 0x03A0, goolSrc: 'DoctC/WinOC'  }, //  9,991 Hz — Aku Aku "HOODABAGA!"
+  { slot: 4,  role: 'bail_whoa',   file: 'arg0A_14da0049.vag', spuPitch: 0x0340, goolSrc: 'WillC@0x4ed8' }, //  8,958 Hz — Crash iconic "WHOA!"
+  { slot: 5,  role: 'bail_yip',    file: 'yip0A_44932049.vag', spuPitch: 0x0400, goolSrc: 'WillC@0x388c' }, // 11,025 Hz — Crash "YIP / OOF!"
+  { slot: 6,  role: 'bail_splat',  file: 'sht0A_388ba049.vag', spuPitch: 0x03A0, goolSrc: 'WillC/DoctC'  }, //  9,991 Hz — Crash impact splat
+  { slot: 7,  role: 'bail_smash',  file: 'de20A_1a704049.vag', spuPitch: 0x03A0, goolSrc: 'WilfC@0x0598' }, //  9,991 Hz — Crash cartoon smash
+  { slot: 8,  role: 'bail_aaargh', file: 'De3cA_4e706649.vag', spuPitch: 0x03FF, goolSrc: 'WilcC@0x07ac' }, // 11,014 Hz — Crash "AAAARGH!"
+  { slot: 9,  role: 'bail_fall',   file: 'fal0A_1e52a049.vag', spuPitch: 0x02E0, goolSrc: 'WillC@0x4838' }, //  7,924 Hz — Cartoon falling whistle
+  { slot: 10, role: 'bail_laugh',  file: 'CD3dA_4d3866c9.vag', spuPitch: 0x0299, goolSrc: 'CrAsC@0x05ec' }, //  7,160 Hz — Uka Uka / Cortex laugh
+  { slot: 11, role: 'bail_crash',  file: 'Cd2cA_4c684649.vag', spuPitch: 0x039B, goolSrc: 'WilcC@0x0424' }, //  9,938 Hz — Crash tumble splat
 ];
-const CRASH_SFX_HEADER_BYTES = 128; // +0:"CRSF", +4:clipCount(12), +8..+103:12x{off,sz}, +104..+127:pad
+const CRASH_SFX_HEADER_BYTES = 128; // +0:"CRSF", +4:clipCount(12), +8..+103:12x{off,sz}, +104..+127:12x uint16 spuPitch!
+const CRASH_SFX_CORE_CLIPS = 8;     // Slots 0..7 (4 pickups + 4 Crash bails) guaranteed <= 16 sectors (32 KB)
+const CRASH_SFX_CORE_SECTORS = 16;
 
 function encodeClipToSpu(mp3Path, cacheKey, force = false) {
   fs.mkdirSync(cacheDir, { recursive: true });
@@ -413,88 +411,104 @@ function encodeBolsoGameplayBank(bolsoFiles, force = false) {
   return encodeCompactGameplayBank('BOLSO_GPBANK', bolsoDir, bolsoFiles, 'gp3_bolso', null, force);
 }
 
-function encodeCrashSfxClipToSpu(wavSrcPath, cacheKey, force = false) {
-  fs.mkdirSync(cacheDir, { recursive: true });
-  const wavPath = path.join(cacheDir, `${cacheKey}.wav`);
-  const rawSpuPath = path.join(cacheDir, `${cacheKey}.raw.spu`);
-  const spuPath = path.join(cacheDir, `${cacheKey}.spu`);
+// Pure PS1 SPU-ADPCM block peak detector (exact hardware K0/K1 filter table)
+// Used strictly to trim trailing dead silence (< -46 dBFS) from raw Crash 3 .vag files without re-encoding!
+const PSX_ADPCM_K0 = [0, 60, 115, 98, 122];
+const PSX_ADPCM_K1 = [0, 0, -52, -55, -60];
 
-  const srcStat = fs.statSync(wavSrcPath);
-  if (!force && fs.existsSync(spuPath)) {
-    const dstStat = fs.statSync(spuPath);
-    if (dstStat.size >= 32 && dstStat.mtimeMs >= srcStat.mtimeMs) {
-      return fs.readFileSync(spuPath);
+function packCrashSfxVag(vagSrcPath) {
+  const raw = fs.readFileSync(vagSrcPath);
+  if (raw.length < 32 || (raw.length % 16) !== 0) {
+    throw new Error(`VAG Crash 3 invalido (${raw.length} B): ${vagSrcPath}`);
+  }
+  let nBlks = raw.length / 16;
+  // Exclude Naughty Dog's Sony VAG trailing dummy loop-end silent block (flag == 0x07)
+  while (nBlks > 2 && raw[(nBlks - 1) * 16 + 1] === 0x07) {
+    nBlks--;
+  }
+
+  // Decode block-by-block to detect trailing dead silence (< 160 / 32768 = -46.2 dBFS)
+  let prev1 = 0, prev2 = 0, lastLoudBlk = 1;
+  for (let b = 0; b < nBlks; b++) {
+    const off = b * 16;
+    const shiftFilter = raw[off];
+    let shift = shiftFilter & 0x0F;
+    if (shift > 12) shift = 9;
+    const filter = Math.min((shiftFilter >>> 4) & 0x07, 4);
+    const k0 = PSX_ADPCM_K0[filter];
+    const k1 = PSX_ADPCM_K1[filter];
+    let blkPeak = 0;
+    for (let i = 0; i < 14; i++) {
+      const byte = raw[off + 2 + i];
+      for (let nibIdx = 0; nibIdx < 2; nibIdx++) {
+        let nib = nibIdx === 0 ? (byte & 0x0F) : ((byte >>> 4) & 0x0F);
+        if (nib >= 8) nib -= 16;
+        let sample = ((nib << 12) >> shift) + Math.round((prev1 * k0 + prev2 * k1) / 64);
+        if (sample > 32767) sample = 32767;
+        else if (sample < -32768) sample = -32768;
+        prev2 = prev1;
+        prev1 = sample;
+        const a = Math.abs(sample);
+        if (a > blkPeak) blkPeak = a;
+      }
     }
+    if (blkPeak > 160) lastLoudBlk = b;
   }
 
-  // Clean anti-aliased downsample 22,050 Hz -> 11,025 Hz mono 16-bit PCM (DC block + 4.9 kHz LPF + -1.2 dB headroom)
-  // NOTE: Never apply EBU R128 loudnorm to 80-750 ms game SFX — Crash 3 WAVs are already mastered at -0.1..-1.1 dBFS!
-  const ff = spawnSync(ffmpegExe, [
-    '-y', '-v', 'error',
-    '-i', wavSrcPath,
-    '-ac', '1',
-    '-af', 'highpass=f=40,lowpass=f=4900,aresample=11025,volume=0.88',
-    '-c:a', 'pcm_s16le',
-    wavPath,
-  ], { encoding: 'utf8' });
-  if (ff.status !== 0) {
-    throw new Error(`ffmpeg (CRASH_SFX) falhou em ${path.basename(wavSrcPath)}: ${ff.stderr || ff.stdout}`);
-  }
+  // Keep clean decay margin (+3 blocks = 84 samples) after last audible block, never exceeding nBlks
+  const keepBlks = Math.min(nBlks, lastLoudBlk + 3);
+  const hasLeadZero = raw.subarray(0, 16).every(x => x === 0);
+  const audioBuf = Buffer.from(raw.subarray(0, keepBlks * 16));
+  // Clear internal ADPCM flags cleanly (2 KB SPU ping-pong staging loader controls 0x04 / 0x03 / 0x01!)
+  for (let off = 0; off < audioBuf.length; off += 16) audioBuf[off + 1] = 0x00;
 
-  const enc = spawnSync(psxavencExe, [
-    '-q',
-    '-t', 'spu',
-    '-f', String(SPU_SAMPLE_RATE),
-    '-a', '16',
-    '-L',
-    wavPath,
-    rawSpuPath,
-  ], { encoding: 'utf8' });
-  if (enc.status !== 0) {
-    throw new Error(`psxavenc (CRASH_SFX) falhou em ${path.basename(wavSrcPath)}: ${enc.stderr || enc.stdout}`);
-  }
-
-  let spu = fs.readFileSync(rawSpuPath);
-  // Clear internal flags cleanly (2 KB SPU ping-pong staging loader sets 0x04 / 0x03 / 0x01!)
-  for (let off = 0; off + 16 <= spu.length; off += 16) spu[off + 1] = 0x00;
-  const rem = spu.length % 16;
-  if (rem !== 0) spu = Buffer.concat([spu, Buffer.alloc(16 - rem, 0)]);
+  // Preserve leading 16-byte silent decoder reset block + append explicit 16-byte silent stop block (0x01)
   const stopBlk = Buffer.alloc(16, 0);
   stopBlk[1] = 0x01;
-  spu = Buffer.concat([spu, stopBlk]);
-
-  fs.writeFileSync(spuPath, spu);
-  try { fs.unlinkSync(wavPath); } catch (_) {}
-  try { fs.unlinkSync(rawSpuPath); } catch (_) {}
-  return spu;
+  return hasLeadZero
+    ? Buffer.concat([audioBuf, stopBlk])
+    : Buffer.concat([Buffer.alloc(16, 0), audioBuf, stopBlk]);
 }
 
-function encodeCrashSfxBank(force = false) {
-  console.log(`\n=== Codificando Sub-Banco CRASH_SFXBANK (12 SFX autenticos Crash 3 @ ${SPU_SAMPLE_RATE} Hz, pitch 0x0400) ===`);
+function encodeCrashSfxBank() {
+  console.log(`\n=== Empacotando Sub-Banco CRASH_SFXBANK (12 .VAG nativos Crash 3 SCUS-94244, pitch SPU individual!) ===`);
   const entries = [];
   const chunks = [];
   let offset = CRASH_SFX_HEADER_BYTES;
+  let coreEndBytes = 0;
 
   for (const spec of CRASH_SFX_LIST) {
     const fullPath = path.join(CRASH_SFX_DIR, spec.file);
     if (!fs.existsSync(fullPath)) throw new Error(`SFX Crash 3 ausente: ${fullPath}`);
-    const key = `crsfx_${SPU_SAMPLE_RATE}_${String(spec.slot).padStart(2, '0')}_${spec.file.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const spu = encodeCrashSfxClipToSpu(fullPath, key, force);
-    const durMs = Math.round(((spu.length / 16) * 28 / SPU_SAMPLE_RATE) * 1000);
+    const spu = packCrashSfxVag(fullPath);
+    const exactHz = (spec.spuPitch * 44100) / 4096;
+    const durMs = Math.round(((spu.length / 16) * 28 / exactHz) * 1000);
+    const rateCenti = (spec.spuPitch * 18411) >>> 10;
     entries.push({
       slot: spec.slot,
       role: spec.role,
       file: spec.file,
+      goolSrc: spec.goolSrc,
+      spuPitch: spec.spuPitch,
+      spuPitchHex: '0x' + spec.spuPitch.toString(16).padStart(4, '0'),
+      sampleRateHz: Number(exactHz.toFixed(2)),
+      rateCenti,
       byteOffsetInBank: offset,
       byteSize: spu.length,
       durationMs: durMs,
     });
     chunks.push(spu);
     offset += spu.length;
+    if (spec.slot === CRASH_SFX_CORE_CLIPS - 1) coreEndBytes = offset;
     console.log(
-      `  [CRASH_SFX #${String(spec.slot).padStart(2, '0')} ${spec.role.padEnd(11)}] ${spec.file.padEnd(22)} ` +
-      `${String(durMs).padStart(4)} ms | ${String(spu.length).padStart(5)} B @ +0x${entries[entries.length - 1].byteOffsetInBank.toString(16).padStart(4, '0')}`
+      `  [CRASH_SFX #${String(spec.slot).padStart(2, '0')} ${spec.role.padEnd(11)}] ${spec.file.padEnd(20)} ` +
+      `pitch=0x${spec.spuPitch.toString(16).padStart(4, '0')} (${exactHz.toFixed(0).padStart(5)} Hz) | ` +
+      `${String(durMs).padStart(4)} ms | ${String(spu.length).padStart(5)} B @ +0x${entries[entries.length - 1].byteOffsetInBank.toString(16).padStart(4, '0')} [${spec.goolSrc}]`
     );
+  }
+
+  if (coreEndBytes > CRASH_SFX_CORE_SECTORS * 2048) {
+    throw new Error(`CRASH_SFXBANK core Slots 0..${CRASH_SFX_CORE_CLIPS - 1} excede ${CRASH_SFX_CORE_SECTORS} setores (${coreEndBytes} > ${CRASH_SFX_CORE_SECTORS * 2048} B)!`);
   }
 
   const hdr = Buffer.alloc(CRASH_SFX_HEADER_BYTES, 0);
@@ -504,6 +518,8 @@ function encodeCrashSfxBank(force = false) {
     const pos = 8 + e.slot * 8;
     hdr.writeUInt32LE(e.byteOffsetInBank >>> 0, pos);
     hdr.writeUInt32LE(e.byteSize >>> 0, pos + 4);
+    // Exact per-clip Naughty Dog Crash 3 hardware SPU pitch @ +104 + slot*2 (24 B table!)
+    hdr.writeUInt16LE(e.spuPitch & 0xFFFF, 104 + e.slot * 2);
   }
 
   const rawBank = Buffer.concat([hdr, ...chunks]);
@@ -511,15 +527,23 @@ function encodeCrashSfxBank(force = false) {
   const bankBuf = Buffer.alloc(totalSectors * 2048, 0);
   rawBank.copy(bankBuf, 0);
 
-  console.log(`  [CRASH_SFXBANK] ${rawBank.length} B -> ${bankBuf.length} B (${totalSectors} setores = ${(bankBuf.length / 1024).toFixed(1)} KB, 100% RAM-resident p/ Crash B.!)`);
+  console.log(
+    `  [CRASH_SFXBANK] ${rawBank.length} B -> ${bankBuf.length} B (${totalSectors} setores = ${(bankBuf.length / 1024).toFixed(1)} KB; ` +
+    `core Slots 0..7 = ${coreEndBytes} B <= ${CRASH_SFX_CORE_SECTORS} setores = 32.0 KB, 100% bit-exact Crash 3 .VAG!)`
+  );
   return {
     clipCount: entries.length,
+    coreClipCount: CRASH_SFX_CORE_CLIPS,
+    coreSectors: CRASH_SFX_CORE_SECTORS,
+    coreEndBytes,
     rawBytes: rawBank.length,
     totalBytes: bankBuf.length,
     totalSectors,
-    sampleRateHz: SPU_SAMPLE_RATE,
-    spuPitch: SPU_PITCH,
-    spuPitchHex: '0x0400',
+    perClipPitch: true,
+    pitches: entries.map(e => e.spuPitch),
+    sampleRateHz: Math.round(entries.reduce((s, e) => s + e.sampleRateHz, 0) / entries.length),
+    spuPitch: entries[0].spuPitch,
+    spuPitchHex: entries[0].spuPitchHex,
     entries,
     bankBuf,
   };
@@ -668,9 +692,14 @@ function buildVoicesBank(modCodeSector = null, force = false, sec1ExtraCode = nu
     crash: {
       startSector: crashSfxStartSec,
       clipCount: crashSfxBank.clipCount,
+      coreClipCount: crashSfxBank.coreClipCount,
+      coreSectors: crashSfxBank.coreSectors,
+      coreEndBytes: crashSfxBank.coreEndBytes,
       rawBytes: crashSfxBank.rawBytes,
       totalBytes: crashSfxBank.totalBytes,
       totalSectors: crashSfxBank.totalSectors,
+      perClipPitch: true,
+      pitches: crashSfxBank.pitches,
       sampleRateHz: crashSfxBank.sampleRateHz,
       spuPitch: crashSfxBank.spuPitch,
       spuPitchHex: crashSfxBank.spuPitchHex,

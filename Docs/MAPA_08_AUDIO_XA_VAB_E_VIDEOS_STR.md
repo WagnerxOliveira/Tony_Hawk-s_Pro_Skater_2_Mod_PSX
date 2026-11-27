@@ -118,7 +118,7 @@ Referenciada por `0x80038AEC` e `0x80038CBC`. Ao substituir músicas em `COMPILE
 ## 4. Banco de Vozes SPU-ADPCM (`VOICES.DAT`) & Vídeos Aleatórios de Boot
 
 - **49º Arquivo da ISO (`\VOICES.DAT;1`):** posicionado após `INTRO.STR` e antes do postgap de 150 setores, preservando **48/48 LBAs originais Redump**.
-- **Layout de `VOICES.DAT` (2.435.072 B / 1189 setores):**
+- **Layout de `VOICES.DAT` (2.453.504 B / 1198 setores):**
   - **Setor 0 (`0x0000..0x07FF`):** `MODCODE` MIPS R3000A carregado em `0x800E2800` no boot via `Mod_BootInit` + `FlushCache()`.
   - **Setor 1 (`0x0800..0x0FFF`):** `VOICETBL` carregado em `0x800E3000` (`magic = 0x564F4943`, 14 clips Lulao + 14 clips Bolsonaro + 13 clips Silvio Santos) + `Hook_BailSfx @ 0x800E3400` + `VoiceSelect_Lookup @ 0x800E3600`.
   - **Setores `2..3` (`0x1000..0x1FFF`):** `LULAO_CODE` (`0x800E3800..0x800E47FF`): swapper dinâmico de 88 strings do Modo Carreira + motor de pré-cache adaptativo em Main RAM (zero-stall, OOM guard em `freeList[1] @ 0x800D7294`, staging buffer 2 KB, streamer SPU 2 KB Ping-Pong).
