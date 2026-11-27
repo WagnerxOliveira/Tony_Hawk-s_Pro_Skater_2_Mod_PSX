@@ -1081,11 +1081,11 @@ try {
       if (en.name.endsWith('.trg') && slice.subarray(0, 4).toString('ascii') !== '_TRG') { fail('THPS1', `${en.name} nao e _TRG valido!`); t1Err++; }
       if (en.name.endsWith('.psx') && slice.readUInt32LE(0) !== 0x00020004) { fail('THPS1', `${en.name} nao e PSX 0x00020004 valido!`); t1Err++; }
     }
-    // Verify ALL 37 in-place CD.WAD THPS1 files (18 LevelSel BMPs @ [573]/[578] + 19 level files @ [1127..1185]) cryptographically via SHA-256!
+    // Verify ALL 39 in-place CD.WAD THPS1/Egypt files (20 LevelSel BMPs @ [573]/[578] + 19 level files @ [1127..1185]) cryptographically via SHA-256!
     const inPlace = thps1Man.cdWadInPlace;
     const inPlaceZoneMap = new Map();
-    if (!inPlace || !Array.isArray(inPlace.bmps) || inPlace.bmps.length !== 18 || !Array.isArray(inPlace.levelFiles) || inPlace.levelFiles.length !== 19) {
-      fail('THPS1', 'Manifesto build/thps1_manifest.json sem bloco cdWadInPlace valido (18 BMPs + 19 arquivos de fase)!');
+    if (!inPlace || !Array.isArray(inPlace.bmps) || inPlace.bmps.length !== 20 || !Array.isArray(inPlace.levelFiles) || inPlace.levelFiles.length !== 19) {
+      fail('THPS1', 'Manifesto build/thps1_manifest.json sem bloco cdWadInPlace valido (20 BMPs + 19 arquivos de fase)!');
       t1Err++;
     } else {
       for (const b of inPlace.bmps) {
@@ -1150,9 +1150,58 @@ try {
     const totalThps1Goals = THPS1_DEFS.reduce((s, d) => s + (d.goals ? d.goals.length : 0), 0);
     const totalInjectedCol = thps1Man.levels.reduce((s, l) => s + ((l.trgStats && l.trgStats.g5Injected) || 0), 0);
     const totalThps1Assets = thps1Man.totalFiles + (inPlace ? inPlace.bmps.length + inPlace.levelFiles.length : 0);
-    if (totalThps1Goals !== 60 || THPS1_GAPS.length !== 24 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 38 || totalThps1Assets !== 75) {
-      fail('THPS1', `Invariante 60 metas/30 objetos/24 gaps/38 THPS1.WAD/75 ativos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, wad=${thps1Man.totalFiles}, total=${totalThps1Assets}`);
+    if (totalThps1Goals !== 70 || THPS1_GAPS.length !== 28 || totalInjectedCol !== 30 || thps1Man.totalFiles !== 43 || totalThps1Assets !== 82) {
+      fail('THPS1', `Invariante 70 metas/30+5 objetos/28 gaps/43 THPS1.WAD/82 ativos violado: goals=${totalThps1Goals}, gaps=${THPS1_GAPS.length}, col=${totalInjectedCol}, wad=${thps1Man.totalFiles}, total=${totalThps1Assets}`);
       t1Err++;
+    }
+    // Brand-New Crash 3 Egypt Level ("Tomb Time", Level ID 20, Slot 19 right before Create-A-Park!) Forensic Validation:
+    {
+      let egErr = 0;
+      const reqEgypt = ['skegyp.psx', 'skegyp_2.psx', 'skegyp_l.psx', 'skegyp_o.psx', 'skegyp_t.trg'];
+      for (const ef of reqEgypt) {
+        const en = thps1Man.entries.find(e => e.name.toLowerCase() === ef);
+        if (!en) { fail('EGYPT20', `Arquivo da fase Egito ausente em THPS1.WAD: ${ef}`); egErr++; continue; }
+        const raw = thps1Iso.subarray(en.relOffset, en.relOffset + en.size);
+        if (ef === 'skegyp.psx') {
+          const pm = raw.readUInt32LE(4), nObj = raw.readUInt32LE(8);
+          let p = pm, okRgbs = false, okGrid = false;
+          while (p + 4 <= raw.length) {
+            const tag = raw.readUInt32LE(p); p += 4;
+            if (tag === 0xFFFFFFFF) break;
+            const len = raw.readUInt32LE(p); p += 4;
+            if (tag === 0x73424752 && len === 1024) okRgbs = true;
+            if (tag === 0x0000000A && raw.readInt16LE(p + 16) === 20 && raw.readInt16LE(p + 18) === 20) okGrid = true;
+            p += len;
+          }
+          if (!okRgbs || !okGrid || nObj < 50) {
+            fail('EGYPT20', `skegyp.psx estruturalmente invalido (objs=${nObj}, rgbs=${okRgbs}, grid20x20=${okGrid})`); egErr++;
+          }
+        }
+        if (ef === 'skegyp_l.psx') {
+          const lInfo = psxLib.parsePsxStructure(raw);
+          if (lInfo.textures.length < 25) { fail('EGYPT20', `skegyp_l.psx poucas texturas (${lInfo.textures.length})`); egErr++; }
+          for (const t of lInfo.textures) {
+            if (!t.palInfo) continue;
+            for (let c = 0; c < t.palSize; c++) {
+              if (raw.readUInt16LE(t.palInfo.offset + c * 2) === 0x0000) {
+                fail('EGYPT20', `skegyp_l.psx tex[${t.texIdx}] contem 0x0000 opaco no slot ${c}`); egErr++; break;
+              }
+            }
+          }
+        }
+        if (ef === 'skegyp_o.psx') {
+          const oInfo = psxLib.parsePsxStructure(raw);
+          if (oInfo.numMeshes !== 2 || oInfo.meshHashes[0] !== 0x5120A107 || oInfo.textures.length !== 2) {
+            fail('EGYPT20', `skegyp_o.psx invalido (meshes=${oInfo.numMeshes}, hash0=0x${(oInfo.meshHashes[0]||0).toString(16)})`); egErr++;
+          }
+        }
+        if (ef === 'skegyp_t.trg' && (raw.subarray(0, 4).toString('ascii') !== '_TRG' || raw.readUInt32LE(8) < 50)) {
+          fail('EGYPT20', `skegyp_t.trg invalido`); egErr++;
+        }
+      }
+      if (egErr === 0) {
+        pass(`Fase Inedita Tomb Time (Egito - Crash 3, ID 20, Slot 19 antes do Create-A-Park): 5/5 arquivos em THPS1.WAD (skegyp.psx c/ TAG 0x0A 20x20 + RGBs, skegyp_l.psx 0 CLUT 0x0000, skegyp_o.psx Scarab 0x5120A107 + Vase Va1iG, SkEgyp_T.trg) + t1rend09/t1levl09 in-place 100% validos!`);
+      }
     }
     // Crash Bandicoot ("Crash B.", Brand-New Slot 20) Forensic Validation:
     //  1) All 33 Crash binary assets present & valid in THPS1.WAD (skater .PSX <= 67,584 B CSkaterCache limit, 8 Skate Shop decks, 8 3D board-bottom BMPs, portrait, crash_it.psx numObjs=14, 7 cr_*.psx with exact RGBs pointer relocation!)
@@ -1308,7 +1357,7 @@ try {
       pass(`Crash B. (Novo Slot 20 — 0 skatistas excluidos!): 33/33 ativos em THPS1.WAD (4 .PSX <= 67.5 KB c/ Gouraud nativo fl0=8/nN=nV+nF + 4 .PSH CRASH*PART_, 8 shapes s2dCR/s2gCR, crash_it.psx <= 40.784 B + 7 cr_*.psx RGBs/TNT Y=[-62,+63]/aura 0x10C3/0 CLUT 0x0000 ok) + tricks.bin (Bob + Casper to 360 Flip [73]) 100% validos`);
     }
     if (t1Err === 0) {
-      pass(`THPS1 Zero-Seek CD.WAD + THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): 37 ativos in-place em CD.WAD (18 BMPs LevelSel + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx esculpidos + 4 PSXs) + ${thps1Man.totalFiles} em THPS1.WAD (5 THPS1 + 33 Crash B.) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
+      pass(`THPS1 + Egito Zero-Seek CD.WAD + THPS1.WAD @ LBA ${thps1File.lba} (${thps1Sectors} set., ${(thps1Disk.length/1048576).toFixed(2)} MB): 39 ativos in-place em CD.WAD (20 BMPs LevelSel + 9 TRGs c/ ${totalInjectedCol} coletaveis 3D + 6 sk*_o.psx + 4 PSXs) + ${thps1Man.totalFiles} em THPS1.WAD (5 THPS1 + 33 Crash B. + 5 Egito) + ${totalThps1Goals} metas + ${THPS1_GAPS.length} Gaps ao vivo 100% validos`);
     }
   }
 

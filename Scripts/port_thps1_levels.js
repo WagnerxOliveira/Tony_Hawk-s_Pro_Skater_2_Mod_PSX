@@ -31,6 +31,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { buildAllThps1CustomObjects } = require('./mod_thps1_custom_objects');
+const { buildEgyptLevel } = require('./mod_egypt_level');
 
 const ROOT = path.resolve(__dirname, '..');
 const THPS1_DIR = path.join(ROOT, 'EXTRAIDOS_ARQUIVOS_THPS1');
@@ -707,6 +708,18 @@ function main() {
   addFile('c_cabl1.psx', cableBuf);
   console.log(`  [+] c_cabl1.psx (${cableBuf.length} B, 11-texture THPS1 SF Cable Car)`);
 
+  // 4B. Build & include Brand-New Crash 3 Egypt Level ("Tomb Time", Level ID 20, Slot 19 right before Create-A-Park!)
+  console.log('');
+  const egyptRes = buildEgyptLevel();
+  addFile('t1rend09.bmp', egyptRes.rendBmp);
+  addFile('t1levl09.bmp', egyptRes.levlBmp);
+  addFile('skegyp.psx',   egyptRes.levelBuf);
+  addFile('skegyp_2.psx', egyptRes.levelBuf);
+  addFile('skegyp_l.psx', egyptRes.texBuf);
+  addFile('skegyp_o.psx', egyptRes.objBuf);
+  addFile('SkEgyp_T.trg', egyptRes.trgBuf);
+  console.log(`  [EGYPT-20]   +7 ativos ineditos de Tomb Time (Egito - Crash 3) integrados (2 BMPs in-place + 5 em THPS1.WAD)!`);
+
   // 5. Deduplicate against originals_backup/CD.WAD (Neversoft left 43 byte-identical THPS1 .PSX files inside THPS2!)
   const origCdWad = fs.readFileSync(path.join(ROOT, 'originals_backup', 'CD.WAD'));
   const origCdHed = fs.readFileSync(path.join(ROOT, 'originals_backup', 'CD.HED'));
@@ -744,12 +757,12 @@ function main() {
   //       -> Eliminates ALL 3 full-disc Minute-71 seeks (-2.5..-4.5s) on THPS1 level loads!
   const rendBmps = neededEntries.filter(e => e.name.startsWith('t1rend')).sort((a, b) => a.name.localeCompare(b.name));
   const levlBmps = neededEntries.filter(e => e.name.startsWith('t1levl')).sort((a, b) => a.name.localeCompare(b.name));
-  if (rendBmps.length !== 9 || levlBmps.length !== 9) {
-    throw new Error(`Esperados 9 t1rend + 9 t1levl BMPs, encontrados ${rendBmps.length}+${levlBmps.length}`);
+  if (rendBmps.length !== 10 || levlBmps.length !== 10) {
+    throw new Error(`Esperados 10 t1rend + 10 t1levl BMPs, encontrados ${rendBmps.length}+${levlBmps.length}`);
   }
 
-  const REND_SLOT_IDX = 573; // s2bgd3.bmp (61s @ LBA 7955, 100% shadowed by levelsel.pre)
-  const LEVL_SLOT_IDX = 578; // s2bgd5.bmp (61s @ LBA 8049, 100% shadowed by equipsel.pre)
+  const REND_SLOT_IDX = 573; // s2bgd3.bmp (61s @ LBA 7955, 100% shadowed by levelsel.pre -> holds 10x5=50s!)
+  const LEVL_SLOT_IDX = 578; // s2bgd5.bmp (61s @ LBA 8049, 100% shadowed by equipsel.pre -> holds 10x6=60s!)
   const rendSlotOff = origCdHed.readUInt32LE(REND_SLOT_IDX * 12 + 4);
   const rendSlotEnd = origCdHed.readUInt32LE((REND_SLOT_IDX + 1) * 12 + 4);
   const levlSlotOff = origCdHed.readUInt32LE(LEVL_SLOT_IDX * 12 + 4);
@@ -760,7 +773,7 @@ function main() {
 
   const rendBlock = Buffer.alloc(61 * SECTOR_SIZE, 0);
   const cdWadBmpsMeta = [];
-  for (let k = 0; k < 9; k++) {
+  for (let k = 0; k < 10; k++) {
     const e = rendBmps[k];
     if (e.buf.length > 5 * SECTOR_SIZE) throw new Error(`${e.name} > 5 setores`);
     e.buf.copy(rendBlock, k * 5 * SECTOR_SIZE);
@@ -773,7 +786,7 @@ function main() {
   rendBlock.copy(curCdWad, rendSlotOff);
 
   const levlBlock = Buffer.alloc(61 * SECTOR_SIZE, 0);
-  for (let k = 0; k < 9; k++) {
+  for (let k = 0; k < 10; k++) {
     const e = levlBmps[k];
     if (e.buf.length > 6 * SECTOR_SIZE) throw new Error(`${e.name} > 6 setores`);
     e.buf.copy(levlBlock, k * 6 * SECTOR_SIZE);
@@ -855,7 +868,7 @@ function main() {
 
   fs.writeFileSync(path.join(ROOT, 'CD.WAD'), curCdWad);
   fs.writeFileSync(path.join(ROOT, 'CD.HED'), curCdHed);
-  console.log(`  [FAST-CDWAD] 18 BMPs LevelSel gravados in-place em CD.WAD[573] (LBA 7955) & CD.WAD[578] (LBA 8049) (0 shift!).`);
+  console.log(`  [FAST-CDWAD] 20 BMPs LevelSel (9 THPS1 + 1 Egito Crash 3) gravados in-place em CD.WAD[573] (50/61s) & CD.WAD[578] (60/61s) (0 shift!).`);
   console.log(`  [FAST-CDWAD] ${cdWadZoneMeta.length} arquivos THPS1 (9 TRGs + 4 PSXs + 6 sk*_o.psx esculpidos) gravados na zona fechada CD.WAD[1127..1185] (${packedSec}/${zoneTotalSec} setores, delta=${packedSec - zoneTotalSec}, 0 shift em todos 1.472 itens THPS2!).`);
 
   // Append all binary Crash Bandicoot (Slot 20) assets from build/crash_assets/ into THPS1.WAD (0 CD.WAD shift!)

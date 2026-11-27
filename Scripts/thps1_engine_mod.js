@@ -57,24 +57,26 @@ const THPS1_ADDR = {
   TotalBytes:        10 * 2048, // 20,480 B (0x800E6000..0x800EAFFF)
   NewHeapStart:      0x800EC800, // Heap begins right after boot-resident CASHART (0x800EB000..0x800EC7FF)
 
-  ExtLevelTable:     0x800E6000, // 20 * 0x174 = 7,440 B -> 0x800E7D10
-  DisplayOrderWords: 0x800E7D20, // 20 * 4 = 80 B -> 0x800E7D70 (interleaved carousel order)
-  SlotOfLevel:       0x800E7D70, // 20 B -> 0x800E7D84
-  LoadOrderWords:    0x800E7D90, // 20 * 4 = 80 B -> 0x800E7DE0 (legacy load order)
-  S2RendDiscOrder:   0x800E7DE0, // 11 B (padded 16 B): exact CD.WAD sector order for s2rend01..11 (sec 9553..9607)
-  S2LevlDiscOrder:   0x800E7DF0, // 11 B (padded 16 B): exact CD.WAD sector order for s2levl00..10 (sec 9476..9541)
-  T1DiscOrder:       0x800E7E00, //  9 B (padded 16 B): exact THPS1.WAD sector order [11..19]
-  FastBurstRendDesc: 0x800E7E10, //  reused as start of 5-descriptor FastBurstMapDesc (80 B -> 0x800E7E60)!
-  FastBurstMapDesc:  0x800E7E10, //  5 * 16 B = 80 B -> 0x800E7E60 (all 5 strictly ascending CD.WAD bursts, max 55s = 112 KB!)
-  Thps1GapList:      0x800E7E60, // 24+1 * 12 B = 300 B -> 0x800E7F8C (live THPS1 G6/G7 gap table)
-  g_TurboState:      0x800E7F90, // 32 B -> 0x800E7FB0: LastBarFrame(+0), LastPadFrame(+4), BurstBuf(+8), StartSec(+12), EndSec(+16), XaSaved(+20)
+  ExtLevelTable:     0x800E6000, // 21 * 0x174 = 7,812 B -> 0x800E7E84 (0..10 THPS2, 11..19 THPS1, 20 Tomb Time Egypt!)
+  DisplayOrderWords: 0x800E7E84, // 21 * 4 = 84 B -> 0x800E7ED8 (interleaved carousel + Egypt right before Custom Park!)
+  SlotOfLevel:       0x800E7ED8, // 21 B (padded 24 B) -> 0x800E7EF0
+  S2RendDiscOrder:   0x800E7EF0, // 11 B (padded 16 B): exact CD.WAD sector order for s2rend01..11 (sec 9553..9607)
+  S2LevlDiscOrder:   0x800E7F00, // 11 B (padded 16 B): exact CD.WAD sector order for s2levl00..10 (sec 9476..9541)
+  T1DiscOrder:       0x800E7F10, // 10 B (padded 16 B): exact CD.WAD[573]/[578] order [11..20] (9 THPS1 + Egypt!)
+  FastBurstRendDesc: 0x800E7F20, // alias to start of 5-descriptor FastBurstMapDesc (80 B -> 0x800E7F70)
+  FastBurstMapDesc:  0x800E7F20, //  5 * 16 B = 80 B -> 0x800E7F70 (all 5 strictly ascending CD.WAD bursts, max 60s = 120 KB!)
+  g_TurboState:      0x800E7F70, // 32 B -> 0x800E7F90: LastBarFrame(+0), LastPadFrame(+4), BurstBuf(+8), StartSec(+12), EndSec(+16), XaSaved(+20)
+  Thps1StringsSpill2:0x800E7F90, // 112 B secondary overflow string pool -> 0x800E8000!
 
-  ExtLightTable:     0x800E8000, // 20 * 52 = 1,040 B -> 0x800E8410
-  ExtShadowTable:    0x800E8410, // 20 * 16 = 320 B   -> 0x800E8550
-  ExtSkyTable:       0x800E8550, // 20 * 64 = 1,280 B -> 0x800E8A50
-  Thps1Hed:          0x800B873C, // Relocated into freed SLUS g_LevelTable RAM (52 * 12 + 4 = 628 B -> 0x800B89B0!)
-  TurboBurstBase:    0x800E8AB0, // 672 B -> 0x800E8D50: Entry_BurstCdOpen (contiguous CD-ROM streaming cache!)
-  Thps1StringsSpill: 0x800E8D50, // 688 B overflow string pool -> 0x800E9000 (ZERO NewHeapStart shift!)
+  ExtLightTable:     0x800E8000, // 21 * 52 = 1,092 B -> 0x800E8444
+  ExtShadowTable:    0x800E8444, // 21 * 16 = 336 B   -> 0x800E8594
+  ExtSkyTable:       0x800E8594, // 10 * 64 = 640 B   -> 0x800E8814 (HighScore for levels 11..20)
+  Thps1GapList:      0x800E8814, // 28+1 * 12 B = 348 B -> 0x800E8970 (live THPS1 + Egypt G6/G7 gap table!)
+  EgyptCareer:       0x800E8970, // 21 skaters * 12 B = 252 B -> 0x800E8A6C (+0 u16 flags, +2 u8 secret, +4 u32[2] cashBits!)
+  CareerResetAux:    0x800E8A6C, // 68 B -> 0x800E8AB0: Entry_CareerResetAux (zeroes ExtCareer 2000B + EgyptCareer 252B!)
+  Thps1Hed:          0x800B873C, // Relocated into freed SLUS g_LevelTable RAM (46 * 12 + 4 = 556 B, 43 used!)
+  TurboBurstBase:    0x800E8AB0, // 576 B -> 0x800E8CF0: Entry_BurstCdOpen (572 B used, contiguous CD-ROM streaming cache!)
+  Thps1StringsSpill: 0x800E8CF0, // 784 B overflow string pool -> 0x800E9000 (ZERO NewHeapStart shift!)
 
   Thps1Strings:      0x800E9000, // 1,760 B primary string pool -> 0x800E96E0
   g_Thps1BaseLba:    0x800E96E0,
@@ -86,11 +88,12 @@ const THPS1_ADDR = {
   g_FastBurstXaSaved:0x800E96F8, // XA paused state across FastMap!
 
   ExtCareer:         0x800E9700, // 20 skaters * 100 B = 2,000 B -> 0x800E9ED0
-  TurboAuxBase:      0x800E9ED0, // 304 B -> 0x800EA000: Entry_LoadingBarThrottle, Entry_CdPollPadThrottle, Entry_BurstFree
+  TurboAuxBase:      0x800E9ED0, // 304 B -> 0x800EA000: LoadingBarThrottle, CdPollPadThrottle, BurstFree, EgyptCareerPtr!
   Entry_BurstCdOpen:        0x800E8AB0,
   Entry_LoadingBarThrottle: 0x800E9ED0,
   Entry_CdPollPadThrottle:  0x800E9F10,
   Entry_BurstFree:          0x800E9F48,
+  Entry_EgyptCareerPtr:     0x800E9F98,
 
   CodeBase:          0x800EA000, // 4,096 B -> 0x800EAFFF
   Entry_CdWadFallback:        0x800EA000,
@@ -132,12 +135,12 @@ const THPS1_ADDR = {
   Entry_GapChecklistGuard:    0x800EA120,
 };
 
-// Display/Progression Order: THPS2 <-> THPS1 strictly interleaved (0..18) + Custom Park (10) at slot 19
-const DISPLAY_ORDER = [0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 10];
-const SLOT_OF_LEVEL = new Array(20).fill(0);
+// Display/Progression Order: THPS2 <-> THPS1 strictly interleaved (0..18) + Crash 3 Egypt Tomb Time (20) at slot 19 + Custom Park (10) at slot 20!
+const DISPLAY_ORDER = [0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 20, 10];
+const SLOT_OF_LEVEL = new Array(21).fill(0);
 for (let s = 0; s < DISPLAY_ORDER.length; s++) SLOT_OF_LEVEL[DISPLAY_ORDER[s]] = s;
 
-// Interleaved unlock requirements (cashRequired @ +0x44, medalsRequired @ +0x48) keyed by internal levelId (0..19)
+// Interleaved unlock requirements (cashRequired @ +0x44, medalsRequired @ +0x48) keyed by internal levelId (0..20)
 const UNLOCK_REQS = {
   0:  { cash: 0,     medals: 0 }, // Slot  0: THPS2 Hangar (UNLOCKED AT START!)
   11: { cash: 1000,  medals: 0 }, // Slot  1: THPS1 Warehouse
@@ -158,7 +161,8 @@ const UNLOCK_REQS = {
   8:  { cash: 55000, medals: 0 }, // Slot 16: THPS2 Chopper Drop
   19: { cash: 60000, medals: 0 }, // Slot 17: THPS1 Roswell (Comp)
   9:  { cash: 0,     medals: 6 }, // Slot 18: THPS2 Skate Heaven
-  10: { cash: 0,     medals: 0 }, // Slot 19: Custom Park (Free Skate)
+  20: { cash: 0,     medals: 0 }, // Slot 19: Tomb Time - Egito (Crash 3) -> UNLOCKED IMMEDIATELY right before Create-A-Park!
+  10: { cash: 0,     medals: 0 }, // Slot 20: Custom Park (Free Skate / Create-A-Park)
 };
 
 // All 9 THPS1 Level Definitions:
@@ -295,9 +299,28 @@ const THPS1_DEFS = [
     scores: [75000, 55000, 35000], par: [5000, 3500, 2000],
     goals: [],
   },
+  {
+    // Brand-New Original Crash Bandicoot 3 Egypt Level (Slot 19, right before Create-A-Park!)
+    id: 20, name: 'Tomb Time', loc: 'Egito - Crash 3', vab: 'mar', isComp: 0, trg: 'SkEgyp_T',
+    rend: 't1rend09.bmp', levl: 't1levl09.bmp', globeLon: 340, globeLat: -14, lightFrom: 4, primBufDelta: 0,
+    gapMin: 4300, gapMax: 4399,
+    scores: [15000, 45000, 95000], par: [20000, 7000, 3000],
+    goals: [
+      { type: 0, p1: 15000,      p2: 0,              text: 'Tumba - 15,000',        cash: 500 },
+      { type: 0, p1: 45000,      p2: 0,              text: 'Farao Pro - 45,000',    cash: 800 },
+      { type: 0, p1: 95000,      p2: 0,              text: 'Insano - 95,000',       cash: 1200 },
+      { type: 1, p1: 0,          p2: 0,              text: 'Formar C-R-A-S-H',      cash: 600 },
+      { type: 4, p1: 5,          p2: 'VASOS FARAO',  text: 'Quebrar 5 Vasos Farao', cash: 700 },
+      { type: 3, p1: 0x5120A107, p2: 'ESCARAVELHOS', text: '5 Escaravelhos Reais',  cash: 800 },
+      { type: 5, p1: 0,          p2: 'Kickflip',     text: 'Kickflip Piscina',      cash: 800 },
+      { type: 2, p1: 0,          p2: 'GAPS EGITO',   text: '3 Gaps da Piramide',    cash: 900 },
+      { type: 6, p1: 0,          p2: 0,              text: 'Cristal Secreto',       cash: 900 },
+      { type: 7, p1: 0,          p2: 0,              text: '100% Rei do Egito!',    cash: 1500 },
+    ],
+  },
 ];
 
-// 24 Live Verified THPS1 Gaps (4 per regular THPS1 level: 1x gt=2 for G6 Trick+Gap + 3x gt=1 for G7 Multi-Gap!)
+// 28 Live Verified Extended Gaps (24 THPS1 + 4 Crash 3 Egypt Tomb Time: 1x gt=2 for G6 + 3x gt=1 for G7!)
 // Every gapId matches an exact live 0x00C9 EndGap trigger inside its level's .TRG and falls inside [gapMin, gapMax]!
 const THPS1_GAPS = [
   // [11] Warehouse (gapMin=1000, gapMax=1099)
@@ -330,6 +353,11 @@ const THPS1_GAPS = [
   { f0: 19, gt: 1, gapId:  3311, pts: 300, name: '[CANTEIRO DA FUGA]'  },
   { f0: 19, gt: 1, gapId:  3314, pts: 500, name: '[RAMPA DO HABEAS]'   },
   { f0: 19, gt: 1, gapId:  3320, pts: 500, name: '[KICKER DO INDULTO]' },
+  // [20] Tomb Time - Egito (Crash 3) (gapMin=4300, gapMax=4399)
+  { f0: 19, gt: 2, gapId:  4300, pts: 500, name: '[PISCINA DO FARAO]'  },
+  { f0: 19, gt: 1, gapId:  4301, pts: 400, name: '[TRANSFER HALF]'     },
+  { f0: 25, gt: 1, gapId:  4302, pts: 450, name: '[GRIND OBELISCO]'    },
+  { f0: 19, gt: 1, gapId:  4303, pts: 500, name: '[SALTO DA ESFINGE]'  },
 ];
 
 // ============================================================================
@@ -483,9 +511,10 @@ function buildThps1ResidentBlock() {
   const block = Buffer.alloc(THPS1_ADDR.TotalBytes, 0);
   const putAt = (ram, buf) => buf.copy(block, ram - THPS1_ADDR.Base);
 
-  // --- A. Build THPS1 String Pool (Primary @ 0x800E9000..0x800E96E0 + Spill @ 0x800E8C80..0x800E9000) ---
+  // --- A. Build THPS1 String Pool (Primary @ 0x800E9000 + Spill1 @ 0x800E8D50 + Spill2 @ 0x800E7F90) ---
   let strCursor = THPS1_ADDR.Thps1Strings;
   let strSpillCursor = THPS1_ADDR.Thps1StringsSpill;
+  let strSpill2Cursor = THPS1_ADDR.Thps1StringsSpill2;
   const strMap = new Map();
   function internStr(s) {
     if (strMap.has(s)) return strMap.get(s);
@@ -498,8 +527,11 @@ function buildThps1ResidentBlock() {
     } else if (strSpillCursor + len <= THPS1_ADDR.Thps1Strings) {
       addr = strSpillCursor;
       strSpillCursor += len;
+    } else if (strSpill2Cursor + len <= THPS1_ADDR.ExtLightTable) {
+      addr = strSpill2Cursor;
+      strSpill2Cursor += len;
     } else {
-      throw new Error(`Thps1Strings overflow (primary=0x${strCursor.toString(16)}, spill=0x${strSpillCursor.toString(16)}, str="${s}")`);
+      throw new Error(`Thps1Strings overflow (primary=0x${strCursor.toString(16)}, spill1=0x${strSpillCursor.toString(16)}, spill2=0x${strSpill2Cursor.toString(16)}, str="${s}")`);
     }
     putAt(addr, raw);
     strMap.set(s, addr);
@@ -598,27 +630,26 @@ function buildThps1ResidentBlock() {
     }
   }
 
-  // --- C. Display Order, Inverse Lookup, Legacy Load Order & Contiguous Fast-Burst Level Select Tables ---
-  for (let i = 0; i < 20; i++) {
+  // --- C. Display Order, Inverse Lookup & Contiguous Fast-Burst Level Select Tables (21 levels!) ---
+  for (let i = 0; i < 21; i++) {
     block.writeUInt32LE(DISPLAY_ORDER[i] >>> 0, (THPS1_ADDR.DisplayOrderWords - THPS1_ADDR.Base) + i * 4);
     block.writeUInt8(SLOT_OF_LEVEL[i] & 0xFF, (THPS1_ADDR.SlotOfLevel - THPS1_ADDR.Base) + i);
-    block.writeUInt32LE(i >>> 0, (THPS1_ADDR.LoadOrderWords - THPS1_ADDR.Base) + i * 4);
   }
-  // Exact contiguous disc-LBA order of all 40 Level Select BMPs — 100% INSIDE CD.WAD (ZERO Minute-71 seeks!):
-  //   - t1rend: CD.WAD[573] sec 7500..7544 (45 sec, stride 5 sec = 10,240 B, LBA 7955)
-  //   - t1levl: CD.WAD[578] sec 7594..7647 (54 sec, stride 6 sec = 12,288 B, LBA 8049)
+  // Exact contiguous disc-LBA order of all 42 Level Select BMPs — 100% INSIDE CD.WAD (ZERO Minute-71 seeks!):
+  //   - t1rend: CD.WAD[573] sec 7500..7549 (50 sec <= 61s, stride 5 sec = 10,240 B, LBA 7955) [11..20]
+  //   - t1levl: CD.WAD[578] sec 7594..7653 (60 sec <= 61s, stride 6 sec = 12,288 B, LBA 8049) [11..20]
   //   - s2levl: CD.WAD      sec 9476..9541 (66 sec, stride 6 sec = 12,288 B, LBA 9931)
   //   - s2rend: CD.WAD      sec 9553..9607 (55 sec, stride 5 sec = 10,240 B, LBA 10008)
   const S2_REND_DISC_ORDER = [2, 5, 3, 1, 6, 0, 4, 7, 8, 9, 10];
   const S2_LEVL_DISC_ORDER = [9, 2, 5, 3, 1, 6, 4, 0, 7, 8, 10];
-  const T1_DISC_ORDER      = [11, 12, 13, 14, 15, 16, 17, 18, 19];
+  const T1_DISC_ORDER      = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
   const inPlace = manifest.cdWadInPlace;
-  if (!inPlace || !Array.isArray(inPlace.bmps) || inPlace.bmps.length !== 18) {
-    throw new Error('thps1_manifest.json sem cdWadInPlace.bmps (rode tools/port_thps1_levels.js primeiro!)');
+  if (!inPlace || !Array.isArray(inPlace.bmps) || inPlace.bmps.length !== 20) {
+    throw new Error('thps1_manifest.json sem 20 cdWadInPlace.bmps (rode tools/port_thps1_levels.js primeiro!)');
   }
   const T1_REND_CD_SEC = inPlace.rendBaseSec; // 7500 (LBA 7955)
   const T1_LEVL_CD_SEC = inPlace.levlBaseSec; // 7594 (LBA 8049)
-  for (let k = 0; k < 9; k++) {
+  for (let k = 0; k < 10; k++) {
     const rName = `t1rend0${k}.bmp`, lName = `t1levl0${k}.bmp`;
     const rEnt = inPlace.bmps.find(e => e.name === rName);
     const lEnt = inPlace.bmps.find(e => e.name === lName);
@@ -640,16 +671,16 @@ function buildThps1ResidentBlock() {
     block.writeUInt16LE(strideSec & 0xFFFF, off + 10);
     block.writeUInt32LE(orderPtr >>> 0, off + 12);
   }
-  // Single-Pass Strictly Ascending CD.WAD-ONLY FastBurst (ZERO Minute-71 seeks, ZERO backward seeks, max 55s = 112 KB!):
+  // Single-Pass Strictly Ascending CD.WAD-ONLY FastBurst (ZERO Minute-71 seeks, ZERO backward seeks, max 60s = 120 KB!):
   //   - FastRend saves CLevelRend->spritesBase and returns immediately in 0 frames!
-  //   - FastMap frees g_BurstBuf and reads all 40 BMPs monotonically forward from LBA 7955 -> LBA 10062!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc +  0, 2, T1_REND_CD_SEC, 9, 5, THPS1_ADDR.T1DiscOrder);         // CD.WAD[573] LBA 7955  (45s) -> CLevelRend!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 16, 0, T1_LEVL_CD_SEC, 9, 6, THPS1_ADDR.T1DiscOrder);         // CD.WAD[578] LBA 8049  (54s) -> CLevelMap!
+  //   - FastMap frees g_BurstBuf and reads all 42 BMPs monotonically forward from LBA 7955 -> LBA 10062!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc +  0, 2, T1_REND_CD_SEC, 10, 5, THPS1_ADDR.T1DiscOrder);        // CD.WAD[573] LBA 7955  (50s) -> CLevelRend!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 16, 0, T1_LEVL_CD_SEC, 10, 6, THPS1_ADDR.T1DiscOrder);        // CD.WAD[578] LBA 8049  (60s) -> CLevelMap!
   writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 32, 0, 9476,           6, 6, THPS1_ADDR.S2LevlDiscOrder + 0); // CD.WAD      LBA 9931  (36s) -> CLevelMap!
   writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 48, 0, 9512,           5, 6, THPS1_ADDR.S2LevlDiscOrder + 6); // CD.WAD      LBA 9967  (30s) -> CLevelMap!
   writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 64, 2, 9553,          11, 5, THPS1_ADDR.S2RendDiscOrder);     // CD.WAD      LBA 10008 (55s) -> CLevelRend!
 
-  // --- C2. Build Live THPS1 Gap Table @ 0x800E7E60 (24 gaps + sentinel = 300 B <= 416 B!) ---
+  // --- C2. Build Live THPS1 + Egypt Gap Table @ 0x800E8814 (28 gaps + sentinel = 348 B!) ---
   let gapOff = THPS1_ADDR.Thps1GapList - THPS1_ADDR.Base;
   for (const g of THPS1_GAPS) {
     block.writeUInt16LE(g.f0 & 0xFFFF, gapOff + 0);
@@ -666,8 +697,8 @@ function buildThps1ResidentBlock() {
   block.writeUInt16LE(0, gapOff + 6);
   block.writeUInt32LE(0, gapOff + 8);
   gapOff += 12;
-  if (THPS1_ADDR.Base + gapOff > THPS1_ADDR.ExtLightTable) {
-    throw new Error(`Thps1GapList overflow: 0x${(THPS1_ADDR.Base + gapOff).toString(16)} > 0x${THPS1_ADDR.ExtLightTable.toString(16)}`);
+  if (THPS1_ADDR.Base + gapOff > THPS1_ADDR.EgyptCareer) {
+    throw new Error(`Thps1GapList overflow: 0x${(THPS1_ADDR.Base + gapOff).toString(16)} > 0x${THPS1_ADDR.EgyptCareer.toString(16)}`);
   }
 
   // --- D. Extended Light (stride 52), Shadow (stride 16), and THPS1 HighScore Table (stride 64 @ 0x800E8550) ---
@@ -694,7 +725,8 @@ function buildThps1ResidentBlock() {
   // --- E. THPS1.HED Lookup Table is now relocated inside SLUS_010.66 @ 0x800B873C (written by mod_crash_engine.js!) ---
   const maxHedEntries = 52;
 
-  // --- E2. Assemble Turbo CD-ROM Burst Cache @ 0x800E8AB0 (464 B) & Throttle/Free Helpers @ 0x800E9ED0 (304 B) ---
+  // --- E2. Assemble CareerResetAux @ 0x800E8A6C (68 B), TurboBurst @ 0x800E8AB0 (576 B) & TurboAux @ 0x800E9ED0 (304 B) ---
+  putAt(THPS1_ADDR.CareerResetAux, assembleCareerResetAuxCode());
   putAt(THPS1_ADDR.TurboBurstBase, assembleTurboBurstCode());
   putAt(THPS1_ADDR.TurboAuxBase,   assembleTurboAuxCode());
 
@@ -704,9 +736,10 @@ function buildThps1ResidentBlock() {
 
   const primaryUsed = strCursor - THPS1_ADDR.Thps1Strings;
   const spillUsed = strSpillCursor - THPS1_ADDR.Thps1StringsSpill;
-  console.log(`  [THPS1] StringPool: primary=${primaryUsed}B/1760B + spill=${spillUsed}B/896B (total ${primaryUsed + spillUsed} B)`);
-  console.log(`  [THPS1] GapTable  : ${THPS1_GAPS.length} gaps + sentinel @ 0x${THPS1_ADDR.Thps1GapList.toString(16)} (${(THPS1_GAPS.length + 1) * 12} B / 416 B)`);
-  console.log(`  [THPS1] THPS1.HED : ${manifest.entries.length} arquivos indexados em 0x${THPS1_ADDR.Thps1Hed.toString(16)} (max ${maxHedEntries})`);
+  const spill2Used = strSpill2Cursor - THPS1_ADDR.Thps1StringsSpill2;
+  console.log(`  [THPS1] StringPool: primary=${primaryUsed}/1760B + spill1=${spillUsed}/784B + spill2=${spill2Used}/112B (total ${primaryUsed + spillUsed + spill2Used} B)`);
+  console.log(`  [THPS1] GapTable  : ${THPS1_GAPS.length} gaps + sentinel @ 0x${THPS1_ADDR.Thps1GapList.toString(16)} (${(THPS1_GAPS.length + 1) * 12} B)`);
+  console.log(`  [THPS1] THPS1.HED : ${manifest.entries.length} arquivos indexados em 0x${THPS1_ADDR.Thps1Hed.toString(16)} (max 46)`);
   return { block, manifest };
 }
 
@@ -747,13 +780,13 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
     [THPS1_ADDR.Entry_LevelSelPct,          'Hook_LevelSelPct'],
     [THPS1_ADDR.Entry_LevelSelShowPct,      'Hook_LevelSelShowPct'],
     [THPS1_ADDR.Entry_SecretFlagSet,        'Hook_SecretFlagSet'],
-    [THPS1_ADDR.Entry_SecretFlagGet,        'Hook_SecretFlagGet'],
-    [THPS1_ADDR.Entry_TrigHasGoal,          'Hook_TrigHasGoal'],
+    [THPS1_ADDR.Entry_SecretFlagGet,        'Hook_SecretFlagSet'],
+    [THPS1_ADDR.Entry_TrigHasGoal,          'Helper_GetLevelFlags'],
     [THPS1_ADDR.Entry_CompInitPodium,       'Hook_CompInitPodium'],
     [THPS1_ADDR.Entry_CompPrizeAB,          'Hook_CompPrizeAB'],
     [THPS1_ADDR.Entry_CompPrizeC,           'Hook_CompPrizeC'],
     [THPS1_ADDR.Entry_CareerCountGolds,     'Hook_CareerCountGolds'],
-    [THPS1_ADDR.Entry_CareerResetExt,       'Hook_CareerResetExt'],
+    [THPS1_ADDR.Entry_CareerResetExt,       THPS1_ADDR.CareerResetAux],
     [THPS1_ADDR.Entry_HiScore_s7_s2,        'Hook_HiScore_s7_s2'],
     [THPS1_ADDR.Entry_HiScore_v1_s2,        'Hook_HiScore_v1_s2'],
     [THPS1_ADDR.Entry_HiScore_t3_v0,        'Hook_HiScore_t3_v0'],
@@ -808,8 +841,9 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
 
   // --------------------------------------------------------------------------
   // Helper_GetLevelFlagsPtr(SCareerSkater* $a0, int levelId in $a1) -> $v0 = uint16*
-  //   For levelId < 10: returns $a0 + 12 + levelId*2
-  //   For levelId >= 11: returns &g_ExtCareer[skaterIdx].levelFlags[levelId - 11]
+  //   For levelId < 11: returns $a0 + 12 + levelId*2
+  //   For levelId == 20 (Tomb Time Egypt): jumps to Entry_EgyptCareerPtr @ 0x800E9F98 (+0)
+  //   For levelId 11..19: returns &g_ExtCareer[skaterIdx].levelFlags[levelId - 11]
   //   Preserves $a0, $a1, $a2, $a3, $t0..$t7, $s0..$s7!
   // --------------------------------------------------------------------------
   a.label('Helper_GetLevelFlagsPtr');
@@ -821,6 +855,12 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.jr(R.ra);
   a.addiu(R.v0, R.v0, 12);
   a.label('glfp_ext');
+  a.addiu(R.t8, R.zero, 20);
+  a.bne(R.a1, R.t8, 'glfp_t1');
+  a.nop();
+  a.j(THPS1_ADDR.Entry_EgyptCareerPtr);
+  a.nop();
+  a.label('glfp_t1');
   a.addiu(R.sp, R.sp, -8);
   a.sw(R.ra, 0, R.sp);
   a.jal('Helper_ExtCareerPtr');
@@ -849,8 +889,9 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
 
   // --------------------------------------------------------------------------
   // Helper_GetCashBitsPtr(SCareerSkater* $a0, int levelId in $a1) -> $v0 = uint32[2]*
-  //   For levelId < 10: returns $a0 + 60 + levelId*8
-  //   For levelId >= 11: returns &g_ExtCareer[skaterIdx].cashBits[levelId - 11] (+28 + (lvl-11)*8)
+  //   For levelId < 11: returns $a0 + 60 + levelId*8
+  //   For levelId == 20 (Tomb Time Egypt): returns &g_EgyptCareer[skaterIdx].cashBits (+4)
+  //   For levelId 11..19: returns &g_ExtCareer[skaterIdx].cashBits[levelId - 11] (+28 + (lvl-11)*8)
   // --------------------------------------------------------------------------
   a.label('Helper_GetCashBitsPtr');
   a.slti(R.t8, R.a1, 11);
@@ -863,12 +904,21 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.label('gcbp_ext');
   a.addiu(R.sp, R.sp, -8);
   a.sw(R.ra, 0, R.sp);
+  a.addiu(R.t8, R.zero, 20);
+  a.bne(R.a1, R.t8, 'gcbp_t1');
+  a.nop();
+  a.jal(THPS1_ADDR.Entry_EgyptCareerPtr);
+  a.nop();
+  a.j('gcbp_done');
+  a.addiu(R.v0, R.v0, 4);
+  a.label('gcbp_t1');
   a.jal('Helper_ExtCareerPtr');
   a.nop();
   a.addiu(R.t8, R.a1, -11);
   a.sll(R.t8, R.t8, 3);
   a.addu(R.v0, R.v0, R.t8);
   a.addiu(R.v0, R.v0, 28);
+  a.label('gcbp_done');
   a.lw(R.ra, 0, R.sp);
   a.nop();
   a.jr(R.ra);
@@ -979,7 +1029,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
 
   a.label('ccm_next');
   a.addiu(R.s2, R.s2, 1);
-  a.slti(R.v0, R.s2, 20);
+  a.slti(R.v0, R.s2, 21);
   a.bne(R.v0, R.zero, 'ccm_loop');
   a.nop();
 
@@ -1013,11 +1063,13 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.nop();
 
   a.bltz(R.a0, 'clio_open');
-  a.slti(R.v0, R.a0, 20);
+  a.slti(R.v0, R.a0, 21);
   a.beq(R.v0, R.zero, 'clio_closed');
   a.nop();
-  // Custom park (id=10) is always open when queried here
+  // Custom park (id=10) AND Crash 3 Egypt Tomb Time (id=20) are ALWAYS open right away!
   a.addiu(R.v0, R.zero, 10);
+  a.beq(R.a0, R.v0, 'clio_open');
+  a.addiu(R.v0, R.zero, 20);
   a.beq(R.a0, R.v0, 'clio_open');
   a.nop();
 
@@ -1451,9 +1503,9 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   // --------------------------------------------------------------------------
   a.label('Hook_LevelSelMoveCursor');
   a.lui(R.t0, 0x800E);
-  a.lw(R.t1, -32136, R.t0);       // t1 = current g_SelectedLevel (0..19)
+  a.lw(R.t1, -32136, R.t0);       // t1 = current g_SelectedLevel (0..20)
   a.lw(R.t2, -31844, R.t0);       // t2 = gameMode (1=Career)
-  a.sltiu(R.t3, R.t1, 20);
+  a.sltiu(R.t3, R.t1, 21);
   a.bne(R.t3, R.zero, 'lsmc_id_ok');
   a.nop();
   a.move(R.t1, R.zero);
@@ -1461,15 +1513,15 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   // curSlot = SlotOfLevel[curLevel]
   a.la(R.t3, THPS1_ADDR.SlotOfLevel);
   a.addu(R.t3, R.t3, R.t1);
-  a.lbu(R.t4, 0, R.t3);           // t4 = curSlot (0..19)
-  // maxSlots = (gameMode == 1) ? 19 : 20
+  a.lbu(R.t4, 0, R.t3);           // t4 = curSlot (0..20)
+  // maxSlots = (gameMode == 1) ? 20 : 21  (Career: 0..19 incl. Tomb Time; Free/Single/2P: 0..20 w/ Tomb Time right before Custom Park!)
   a.addiu(R.t5, R.zero, 1);
-  a.beq(R.t2, R.t5, 'lsmc_19');
-  a.addiu(R.t5, R.zero, 20);
+  a.beq(R.t2, R.t5, 'lsmc_20');
+  a.addiu(R.t5, R.zero, 21);
   a.j('lsmc_step');
   a.nop();
-  a.label('lsmc_19');
-  a.addiu(R.t5, R.zero, 19);
+  a.label('lsmc_20');
+  a.addiu(R.t5, R.zero, 20);
 
   a.label('lsmc_step');
   a.addu(R.t4, R.t4, R.s2);       // curSlot += delta
@@ -1577,26 +1629,24 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.label('sfs_ext');
   a.addiu(R.sp, R.sp, -8);
   a.sw(R.ra, 0, R.sp);
+  a.addiu(R.t8, R.zero, 20);
+  a.bne(R.a1, R.t8, 'sfs_t1');
+  a.nop();
+  a.jal(THPS1_ADDR.Entry_EgyptCareerPtr);
+  a.nop();
+  a.j('sfs_done');
+  a.addiu(R.v0, R.v0, 2);         // secretFlag @ EgyptCareer + 2
+  a.label('sfs_t1');
   a.jal('Helper_ExtCareerPtr');
   a.nop();
   a.addiu(R.t8, R.a1, -11);
   a.addu(R.v0, R.v0, R.t8);
   a.addiu(R.v0, R.v0, 18);        // secretFlags @ ExtCareer + 18
+  a.label('sfs_done');
   a.lw(R.ra, 0, R.sp);
   a.nop();
   a.jr(R.ra);
   a.addiu(R.sp, R.sp, 8);
-
-  a.label('Hook_SecretFlagGet');
-  a.j('Hook_SecretFlagSet');
-  a.nop();
-
-  // --------------------------------------------------------------------------
-  // 19. Hook_TrigHasGoal(SCareerSkater* $a0 = v0, int levelId $a1 = v1) -> $v0 = uint16 levelFlags
-  // --------------------------------------------------------------------------
-  a.label('Hook_TrigHasGoal');
-  a.j('Helper_GetLevelFlags');
-  a.nop();
 
   // --------------------------------------------------------------------------
   // 20. Hook_CompInitPodium [jal @ 0x8007E58C]
@@ -1679,7 +1729,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.label('ccg_next');
   a.addiu(R.s3, R.s3, 0x174);
   a.addiu(R.s1, R.s1, 1);
-  a.slti(R.t0, R.s1, 20);
+  a.slti(R.t0, R.s1, 21);
   a.bne(R.t0, R.zero, 'ccg_loop');
   a.nop();
   a.move(R.v0, R.s2);
@@ -1692,20 +1742,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.jr(R.ra);
   a.addiu(R.sp, R.sp, 32);
 
-  // --------------------------------------------------------------------------
-  // 24. Hook_CareerResetExt [jal @ 0x80023988 inside Career_InitAll]
-  //     Zeroes g_ExtCareer[2000 B], then tail-jumps to Hook_CrashCareerReset (0x800B89F0 -> 0x8002C4D8)!
-  // --------------------------------------------------------------------------
-  a.label('Hook_CareerResetExt');
-  a.la(R.t8, THPS1_ADDR.ExtCareer);
-  a.addiu(R.t9, R.t8, 2000);
-  a.label('cre_loop');
-  a.sw(R.zero, 0, R.t8);
-  a.addiu(R.t8, R.t8, 4);
-  a.bne(R.t8, R.t9, 'cre_loop');
-  a.nop();
-  a.j(0x800B89B0);                 // Hook_CrashCareerReset -> resets Crash B. Slot 20 & tail-jumps to 0x8002C4D8!
-  a.nop();
+  // 24. Hook_CareerResetExt lives cleanly in CareerResetAux @ 0x800E8A6C (zeroes ExtCareer + EgyptCareer!)
 
   // --------------------------------------------------------------------------
   // 25. High Score Table Safe Offset Helpers (levels 0..10 -> 0x800BB95C, levels 11..19 -> 0x800E8550)
@@ -1815,8 +1852,8 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.jal(THPS1_ADDR.Entry_BurstFree);
   a.nop();
 
-  // Temp burst buffer: 55 * 2048 = 112,640 B top-down in Heap[1] (proven safe inside LevelSel!)
-  a.li(R.a0, 112640);
+  // Temp burst buffer: 60 * 2048 = 122,880 B top-down in Heap[1] (holds 10x6=60s t1levl00..09, freed immediately!)
+  a.li(R.a0, 122880);
   a.addiu(R.a1, R.zero, 1);
   a.addiu(R.a2, R.zero, 1);
   a.jal(0x8005515C);               // Mem_Alloc
@@ -2290,10 +2327,65 @@ function assembleTurboAuxCode() {
   a.jr(R.ra);
   a.nop();
 
+  // Entry_EgyptCareerPtr @ 0x800E9F98 (84 B): Leaf skaterIdx*12 resolver for Tomb Time Egypt (Slots 0..20!)
+  a.padTo(THPS1_ADDR.Entry_EgyptCareerPtr);
+  a.la(R.t8, 0x800B85C4);
+  a.bne(R.a0, R.t8, 'egcp_std');
+  a.nop();
+  a.la(R.v0, THPS1_ADDR.EgyptCareer + 20 * 12);
+  a.jr(R.ra);
+  a.nop();
+  a.label('egcp_std');
+  a.la(R.t8, 0x800BA78C);
+  a.subu(R.v0, R.a0, R.t8);
+  a.addiu(R.t9, R.zero, 228);
+  a.divu(R.v0, R.t9);
+  a.mflo(R.v0);
+  a.sltiu(R.t8, R.v0, 20);
+  a.bne(R.t8, R.zero, 'egcp_ok');
+  a.nop();
+  a.move(R.v0, R.zero);
+  a.label('egcp_ok');
+  a.sll(R.t8, R.v0, 3);
+  a.sll(R.t9, R.v0, 2);
+  a.addu(R.v0, R.t8, R.t9);
+  a.la(R.t8, THPS1_ADDR.EgyptCareer);
+  a.jr(R.ra);
+  a.addu(R.v0, R.v0, R.t8);
+
   const used = a.pc() - THPS1_ADDR.TurboAuxBase;
   if (used > MAX_BYTES) throw new Error(`TURBO_AUX exceeds ${MAX_BYTES} B (${used} B)!`);
   console.log(`  [ASM] TURBO_AUX   : 0x${THPS1_ADDR.TurboAuxBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / ${MAX_BYTES} B, livre: ${MAX_BYTES - used} B)`);
   a.padTo(THPS1_ADDR.TurboAuxBase + MAX_BYTES);
+  return a.emit();
+}
+
+// ============================================================================
+// 2D. Assemble CareerResetAux @ 0x800E8A6C (68 B): zeroes ExtCareer[2000B] + EgyptCareer[252B]
+// ============================================================================
+function assembleCareerResetAuxCode() {
+  const a = new MipsAsm(THPS1_ADDR.CareerResetAux);
+  const MAX_BYTES = THPS1_ADDR.TurboBurstBase - THPS1_ADDR.CareerResetAux; // 68 B
+  a.la(R.t8, THPS1_ADDR.ExtCareer);
+  a.addiu(R.t9, R.t8, 2000);
+  a.label('cre_loop');
+  a.sw(R.zero, 0, R.t8);
+  a.addiu(R.t8, R.t8, 4);
+  a.bne(R.t8, R.t9, 'cre_loop');
+  a.nop();
+  a.la(R.t8, THPS1_ADDR.EgyptCareer);
+  a.addiu(R.t9, R.t8, 252);
+  a.label('cre_eg_loop');
+  a.sw(R.zero, 0, R.t8);
+  a.addiu(R.t8, R.t8, 4);
+  a.bne(R.t8, R.t9, 'cre_eg_loop');
+  a.nop();
+  a.j(0x800B89B0);                 // Hook_CrashCareerReset -> resets Crash B. Slot 20 & tail-jumps to 0x8002C4D8!
+  a.nop();
+  const used = a.pc() - THPS1_ADDR.CareerResetAux;
+  if (used > MAX_BYTES) throw new Error(`CAREER_RESET_AUX exceeds ${MAX_BYTES} B (${used} B)!`);
+  console.log(`  [ASM] RESET_AUX   : 0x${THPS1_ADDR.CareerResetAux.toString(16)}..0x${a.pc().toString(16)} (${used} B / ${MAX_BYTES} B, livre: ${MAX_BYTES - used} B)`);
+  a.padTo(THPS1_ADDR.CareerResetAux + MAX_BYTES);
   return a.emit();
 }
 
@@ -2396,12 +2488,12 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
     patchExact(slusBuf, r2f(0x800484AC), 0x3C04800C, (0x3C040000 | hi) >>> 0, 'ExtLightTable lui @ 0x800484AC');
     patchExact(slusBuf, r2f(0x800484B8), 0x2484961C, (0x24840000 | lo) >>> 0, 'ExtLightTable lo  @ 0x800484B8');
   }
-  // 3. Relocate ExtShadowTable (0x800B9824 -> 0x800E8410) @ 0x8004907C / 0x80049088 / 0x800490E0
+  // 3. Relocate ExtShadowTable (0x800B9824 -> 0x800E8444) @ 0x8004907C / 0x80049088 / 0x800490E0
   {
     const { hi, lo } = splitHiLo(THPS1_ADDR.ExtShadowTable);
-    patchExact(slusBuf, r2f(0x8004907C), 0x3C09800C, (0x3C090000 | hi) >>> 0, 'ExtShadowTable lui @ 0x8004907C');
-    patchExact(slusBuf, r2f(0x80049088), 0x25239824, (0x25230000 | lo) >>> 0, 'ExtShadowTable lo1 @ 0x80049088');
-    patchExact(slusBuf, r2f(0x800490E0), 0x25249824, (0x25240000 | lo) >>> 0, 'ExtShadowTable lo2 @ 0x800490E0');
+    patchExact(slusBuf, r2f(0x8004907C), 0x3C09800C, (0x3C090000 | hi) >>> 0, 'ExtShadowTable lui @ 0x8004907C', [0x3C09800F]);
+    patchExact(slusBuf, r2f(0x80049088), 0x25239824, (0x25230000 | lo) >>> 0, 'ExtShadowTable lo1 @ 0x80049088', [0x25238410]);
+    patchExact(slusBuf, r2f(0x800490E0), 0x25249824, (0x25240000 | lo) >>> 0, 'ExtShadowTable lo2 @ 0x800490E0', [0x25248410]);
   }
   // 4. High Score Table Safe Redirection (6 sites: 0..10 -> 0x800BB95C, 11..19 -> 0x800E8550, ZERO memory corruption & ZERO delay-slot hazards!)
   patchExact(slusBuf, r2f(0x8002E988), 0x0012B980, jalW(THPS1_ADDR.Entry_HiScore_s7_s2), 'HiScoreDisplay1 sll s7,s2,6 @ 0x8002E988');
@@ -2606,37 +2698,37 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   const lsRelocs = relocateLevelTableRefs(lsMod, lsOrig, 0, lsOrig.length, 'levelsel.bin');
   if (lsRelocs !== 13) throw new Error(`Expected 13 g_LevelTable relocs in levelsel.bin, got ${lsRelocs}`);
 
-  // 2. Expand CLevelRend (300 -> 460 B, sprites[20] @ +300) & hook Instant 2-Burst CD-ROM Loader!
-  patchLs(0x0970, 0x2404012C, 0x240401CC, 'CLevelRend new(300 -> 460)');
-  // Skip FileIO_Kick (+0x0ABC) because our 5-burst CdRead loader already uploaded all 40 BMPs synchronously;
+  // 2. Expand CLevelRend (300 -> 468 B, sprites[21] @ +300) & hook Instant 5-Burst CD-ROM Loader!
+  patchLs(0x0970, 0x2404012C, 0x240401D4, 'CLevelRend new(300 -> 468)');
+  // Skip FileIO_Kick (+0x0ABC) because our 5-burst CdRead loader already uploaded all 42 BMPs synchronously;
   // calling FileIO_Kick on an empty queue unconditionally sets active=1 and reads stale playsel ring entries!
   patchLs(0x0ABC, 0x0C0168EE, 0x00000000, 'LevelSel::ctor skip empty FileIO_Kick');
   patchLs(0x287C, 0x263400CC, 0x2634012C, 'CLevelRend sprites +204->+300 (ctor)');
-  patchLs(0x28B0, 0x2A62000B, 0x2A620014, 'CLevelRend ctor loop 11->20');
+  patchLs(0x28B0, 0x2A62000B, 0x2A620015, 'CLevelRend ctor loop 11->21');
   // Tighten initial preview video countdown (32 -> 10 frames = 0.16s) so bottom FMV starts smoothly right away!
   patchLs(0x2AD4, 0x24030020, 0x2403000A, 'CLevelRend init video delay 32->10 frames');
-  // At +0x2AF8: jal Entry_LevelSelFastRend (keeps delay slot +0x2AFC `sw v1, 296(s1)`!) then `b +0x2B7C` (skip 20 FileIO queues!)
+  // At +0x2AF8: jal Entry_LevelSelFastRend (keeps delay slot +0x2AFC `sw v1, 296(s1)`!) then `b +0x2B7C` (skip 21 FileIO queues!)
   patchLs(0x2AF8, 0x0C0167FF, jalW(THPS1_ADDR.Entry_LevelSelFastRend), 'CLevelRend jal FastRend');
   patchLs(0x2B00, 0x263500F8, 0x1000001E, 'CLevelRend b +0x2B7C (+30 words)');
   patchLs(0x2B04, 0x27B30050, 0x00000000, 'CLevelRend delay nop');
   patchLs(0x2BE4, 0x265000CC, 0x2650012C, 'CLevelRend dtor +204->+300');
-  patchLs(0x2C14, 0x2A22000B, 0x2A220014, 'CLevelRend dtor loop 11->20');
+  patchLs(0x2C14, 0x2A22000B, 0x2A220015, 'CLevelRend dtor loop 11->21');
   patchLs(0x2DA0, 0x8C4400CC, 0x8C44012C, 'CLevelRend draw +204->+300');
   // Skip now-unused FileIO async polling loop in CLevelRend::Update State 0 (+0x2EA0 -> b +0x2F18)!
   patchLs(0x2EA0, 0x00009821, 0x1000001D, 'CLevelRend::Update skip async poll -> +0x2F18');
   patchLs(0x2EA4, 0x269200CC, 0x00000000, 'CLevelRend::Update delay nop');
   patchLs(0x3048, 0x269000CC, 0x2690012C, 'CLevelRend swap +204->+300');
 
-  // 3. Expand CLevelMap (624 -> 784 B, sprites[20] @ +624) & hook Instant 3-Burst CD-ROM Loader!
-  patchLs(0x09B8, 0x24040270, 0x24040310, 'CLevelMap new(624 -> 784)');
+  // 3. Expand CLevelMap (624 -> 792 B, sprites[21] @ +624) & hook Instant 5-Burst CD-ROM Loader!
+  patchLs(0x09B8, 0x24040270, 0x24040318, 'CLevelMap new(624 -> 792)');
   patchLs(0x32B0, 0x265401E8, 0x26540270, 'CLevelMap sprites +488->+624 (ctor)');
-  patchLs(0x3314, 0x2A22000B, 0x2A220014, 'CLevelMap ctor loop 11->20');
-  // At +0x343C: jal Entry_LevelSelFastMap (keeps delay slot +0x3440 `sw zero, 620(s2)`!) then `b +0x34BC` (skip 20 FileIO queues!)
+  patchLs(0x3314, 0x2A22000B, 0x2A220015, 'CLevelMap ctor loop 11->21');
+  // At +0x343C: jal Entry_LevelSelFastMap (keeps delay slot +0x3440 `sw zero, 620(s2)`!) then `b +0x34BC` (skip 21 FileIO queues!)
   patchLs(0x343C, 0x0C0167FF, jalW(THPS1_ADDR.Entry_LevelSelFastMap), 'CLevelMap jal FastMap');
   patchLs(0x3444, 0x26550224, 0x1000001D, 'CLevelMap b +0x34BC (+29 words)');
   patchLs(0x3448, 0x27B40050, 0x00000000, 'CLevelMap delay nop');
   patchLs(0x351C, 0x265001E8, 0x26500270, 'CLevelMap dtor +488->+624');
-  patchLs(0x3554, 0x2A22000B, 0x2A220014, 'CLevelMap dtor loop 11->20');
+  patchLs(0x3554, 0x2A22000B, 0x2A220015, 'CLevelMap dtor loop 11->21');
   // Skip now-unused FileIO async polling loop in CLevelMap::Update (+0x3630 -> b +0x36C0)!
   patchLs(0x3630, 0x3C04800D, 0x10000023, 'CLevelMap::Update skip async poll -> +0x36C0');
   patchLs(0x3634, 0x8C8474E4, 0x00000000, 'CLevelMap::Update delay nop');

@@ -3361,13 +3361,16 @@ function assembleCrashSfxCode(gpMeta, L) {
   a.addiu(R.t1, R.zero, 24);             // $250 Cash -> Diamond ("Diamante") -> mode 6
   a.beq(R.t0, R.t1, 'cgp_fire');
   a.addiu(R.v1, R.zero, 6);
-  a.addiu(R.t1, R.zero, 33);             // G5 Collectible -> Hangar (0) & School Miami (12) 5 Aku Aku Masks -> mode 7!
+  a.addiu(R.t1, R.zero, 33);             // G5 Collectible -> Hangar (0), School Miami (12) & Tomb Time Egito (20) -> Aku Aku mode 7!
   a.bne(R.t0, R.t1, 'cgp_not_crash');
   a.lw(R.t0, 14980, R.gp);               // delay slot: g_CurrentLevel
   a.nop();
   a.beq(R.t0, R.zero, 'cgp_fire');       // Level 0 = Hangar (5 Aku Aku!)
   a.addiu(R.v1, R.zero, 7);
   a.addiu(R.t1, R.zero, 12);             // Level 12 = School Miami (5 Aku Aku!)
+  a.beq(R.t0, R.t1, 'cgp_fire');
+  a.addiu(R.v1, R.zero, 7);
+  a.addiu(R.t1, R.zero, 20);             // Level 20 = Tomb Time Egito (5 Golden Scarabs -> Aku Aku!)
   a.beq(R.t0, R.t1, 'cgp_fire');
   a.addiu(R.v1, R.zero, 7);
 
