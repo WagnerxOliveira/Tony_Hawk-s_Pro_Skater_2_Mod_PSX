@@ -89,6 +89,7 @@ const THPS1_ADDR = {
 
   ExtCareer:         0x800E9700, // 20 skaters * 100 B = 2,000 B -> 0x800E9ED0
   TurboAuxBase:      0x800E9ED0, // 304 B -> 0x800EA000: LoadingBarThrottle, CdPollPadThrottle, BurstFree, EgyptCareerPtr!
+  TurboClusterTable: 0x800E3700, // 256 B in VOICES.DAT Sector 1 free tail: { u16 triggerSec, i8 startDelta, u8 nSec }[<=63] + 0xFFFF!
   Entry_BurstCdOpen:        0x800E8AB0,
   Entry_LoadingBarThrottle: 0x800E9ED0,
   Entry_CdPollPadThrottle:  0x800E9F10,
@@ -671,14 +672,14 @@ function buildThps1ResidentBlock() {
     block.writeUInt16LE(strideSec & 0xFFFF, off + 10);
     block.writeUInt32LE(orderPtr >>> 0, off + 12);
   }
-  // Single-Pass Strictly Ascending CD.WAD-ONLY FastBurst (ZERO Minute-71 seeks, ZERO backward seeks, max 60s = 120 KB!):
+  // Single-Pass Strictly Ascending 5-Burst CD.WAD-ONLY FastBurst (ZERO Minute-71 seeks, ZERO backward seeks, max 60s = 120 KB < 125.7 KB Heap[1]!):
   //   - FastRend saves CLevelRend->spritesBase and returns immediately in 0 frames!
-  //   - FastMap frees g_BurstBuf and reads all 42 BMPs monotonically forward from LBA 7955 -> LBA 10062!
+  //   - FastMap frees g_BurstBuf and reads all 42 BMPs monotonically forward in 5 bursts (LBA 7955 -> LBA 10062)!
   writeBurstDesc(THPS1_ADDR.FastBurstMapDesc +  0, 2, T1_REND_CD_SEC, 10, 5, THPS1_ADDR.T1DiscOrder);        // CD.WAD[573] LBA 7955  (50s) -> CLevelRend!
   writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 16, 0, T1_LEVL_CD_SEC, 10, 6, THPS1_ADDR.T1DiscOrder);        // CD.WAD[578] LBA 8049  (60s) -> CLevelMap!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 32, 0, 9476,           6, 6, THPS1_ADDR.S2LevlDiscOrder + 0); // CD.WAD      LBA 9931  (36s) -> CLevelMap!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 48, 0, 9512,           5, 6, THPS1_ADDR.S2LevlDiscOrder + 6); // CD.WAD      LBA 9967  (30s) -> CLevelMap!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 64, 2, 9553,          11, 5, THPS1_ADDR.S2RendDiscOrder);     // CD.WAD      LBA 10008 (55s) -> CLevelRend!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 32, 0, 9476,            6, 6, THPS1_ADDR.S2LevlDiscOrder);    // CD.WAD      LBA 9931  (36s) -> CLevelMap!
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 48, 0, 9512,            5, 6, THPS1_ADDR.S2LevlDiscOrder+6);  // CD.WAD      LBA 9967  (30s) -> CLevelMap! (+0 seek!)
+  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 64, 2, 9553,           11, 5, THPS1_ADDR.S2RendDiscOrder);    // CD.WAD      LBA 10008 (55s) -> CLevelRend!
 
   // --- C2. Build Live THPS1 + Egypt Gap Table @ 0x800E8814 (28 gaps + sentinel = 348 B!) ---
   let gapOff = THPS1_ADDR.Thps1GapList - THPS1_ADDR.Base;
@@ -959,19 +960,31 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.addiu(R.t0, R.t0, 12);
 
   a.label('cw_hit');
-  // effectiveOffset = ((thps1BaseLba - lw 24440($gp)) << 11) + entry.relOffset
-  a.lw(R.t1, 24440, R.gp);        // CD.WAD start LBA
-  a.lw(R.t4, 4, R.t0);            // entry.relOffset
+  // Check bit 31 of entry.relOffset:
+  //   bit31 == 1 -> direct CD.WAD byte offset (26 hot Crash B. files in-place in dead .PRE slots! ZERO Min-71 seek + Burst!)
+  //   bit31 == 0 -> THPS1.WAD relative byte offset (effectiveOffset = ((thps1BaseLba - cdWadLba) << 11) + relOffset)
+  a.lw(R.t4, 4, R.t0);            // entry.relOffset (or 0x80000000 | cdWadOff)
+  a.lw(R.t5, 8, R.t0);            // entry.size
+  a.la(R.s1, THPS1_ADDR.g_Thps1ScratchOff);
+  a.bltz(R.t4, 'cw_cdwad_direct');
+  a.lw(R.t1, 24440, R.gp);        // delay slot: CD.WAD start LBA
+  a.nop();                        // CRITICAL R3000A load-delay slot for $t1 before subu!
   a.subu(R.t2, R.t2, R.t1);       // delta sectors
   a.sll(R.t2, R.t2, 11);          // delta bytes
   a.addu(R.t2, R.t2, R.t4);       // effectiveOffset
-  a.lw(R.t5, 8, R.t0);            // entry.size
-  a.la(R.s1, THPS1_ADDR.g_Thps1ScratchOff);
   a.sw(R.t2, 0, R.s1);
   a.sw(R.t5, 4, R.s1);
   a.jal(THPS1_ADDR.Entry_BurstFree); // auto-evict any active CD.WAD burst cache before THPS1.WAD read!
   a.nop();
   a.j(0x800541F4);
+  a.nop();
+
+  a.label('cw_cdwad_direct');
+  a.sll(R.t4, R.t4, 1);           // clear bit 31 -> exact CD.WAD byte offset!
+  a.srl(R.t4, R.t4, 1);
+  a.sw(R.t4, 0, R.s1);
+  a.sw(R.t5, 4, R.s1);
+  a.j('cw_found_orig');           // route straight into Entry_BurstCdOpen (bursts crash.psh+crash.psx+s2face20 in 1 read!)
   a.nop();
 
   a.label('cw_not_in_thps1');
@@ -1828,7 +1841,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.lw(R.a1, 36, R.s2);            // modeOrNeg1 = CLevelMap->gameMode (>= 0)
   a.la(R.a2, THPS1_ADDR.FastBurstMapDesc);
   a.j('Helper_RunFastBurstGroup');
-  a.addiu(R.a3, R.zero, 5);        // 5 strictly ascending CD.WAD bursts (t1rend + t1levl + s2levl x2 + s2rend)!
+  a.addiu(R.a3, R.zero, 5);        // 5 strictly ascending CD.WAD bursts (t1rend 50s + t1levl 60s + s2levl 36s+30s + s2rend 55s)!
 
   // Helper_RunFastBurstGroup($a0=spritesBase, $a1=modeOrNeg1, $a2=descPtr, $a3=numDescs)
   // Stack frame (64 B): 0..15=argSave, 16..19=CdlLOC, 20=totalSec/rem, 24=activeMode, 28..60=s0..s7,ra
@@ -1848,11 +1861,11 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.move(R.s2, R.a2);              // s2 = descPtr
   a.move(R.s3, R.a3);              // s3 = numDescs
 
-  // Free LevelSel s2win4..s2arrow8 burst buffer BEFORE allocating 55-sector buffer (0 B leaked!)
+  // Free LevelSel s2win4 burst buffer BEFORE allocating 66-sector buffer (0 B leaked!)
   a.jal(THPS1_ADDR.Entry_BurstFree);
   a.nop();
 
-  // Temp burst buffer: 60 * 2048 = 122,880 B top-down in Heap[1] (holds 10x6=60s t1levl00..09, freed immediately!)
+  // Temp burst buffer: 60 * 2048 = 122,880 B top-down in Heap[1] (safely < 128,740 B Heap[1] free in LevelSel, freed immediately!)
   a.li(R.a0, 122880);
   a.addiu(R.a1, R.zero, 1);
   a.addiu(R.a2, R.zero, 1);
@@ -1861,11 +1874,9 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.beq(R.v0, R.zero, 'fbg_epilogue');
   a.move(R.s4, R.v0);              // s4 = buf
 
-  // Wait CDWAD idle & pause XA ONCE if active and not yet paused
+  // Wait CDWAD idle & pause XA ONCE if active and not yet paused (deferred single-resume in Hook_FrameTick!)
   a.jal(0x800544C4);               // CDWAD_WaitIdle
   a.nop();
-  a.la(R.t2, THPS1_ADDR.g_FastBurstXaSaved);
-  a.sw(R.zero, 0, R.t2);
   a.lw(R.t0, 14704, R.gp);         // xaActive
   a.lw(R.t1, 14712, R.gp);         // xaPaused
   a.nop();
@@ -1873,8 +1884,9 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.nop();
   a.bne(R.t1, R.zero, 'fbg_desc_loop');
   a.nop();
+  a.la(R.t2, THPS1_ADDR.g_TurboState);
   a.addiu(R.t3, R.zero, 1);
-  a.sw(R.t3, 0, R.t2);
+  a.sw(R.t3, 20, R.t2);            // g_BurstXaSaved = 1 -> Hook_FrameTick resumes XA ONCE on Frame 1!
   a.jal(0x80038D60);               // XA_Pause(1)
   a.addiu(R.a0, R.zero, 1);
 
@@ -1990,20 +2002,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.bne(R.s3, R.zero, 'fbg_desc_loop');
   a.nop();
 
-  // Resume XA cleanly ONCE at end of FastMap (s1 >= 0) if g_FastBurstXaSaved != 0
-  a.bltz(R.s1, 'fbg_free');
-  a.nop();
-  a.la(R.t0, THPS1_ADDR.g_FastBurstXaSaved);
-  a.lw(R.t1, 0, R.t0);
-  a.nop();
-  a.beq(R.t1, R.zero, 'fbg_free');
-  a.nop();
-  a.sw(R.zero, 0, R.t0);
-  a.jal(0x800387A8);               // XA_SetMode
-  a.nop();
-  a.jal(0x80038D60);               // XA_Pause(0)
-  a.move(R.a0, R.zero);
-
+  // XA background music is resumed cleanly ONCE on Frame 1 by Hook_FrameTick (ZERO mid-load laser ping-pong!)
   a.label('fbg_free');
   a.jal(0x800551A8);               // Mem_Free(buf)
   a.move(R.a0, R.s4);
@@ -2118,32 +2117,33 @@ function assembleTurboBurstCode() {
 
   a.label('bco_try_pre');
   a.lw(R.t0, 18928, R.gp);         // g_CdState: only prefetch when idle!
-  a.nop();
+  a.la(R.t1, THPS1_ADDR.TurboClusterTable); // 0x800E3700 (fills load delay!)
   a.bne(R.t0, R.zero, 'bco_miss0');
+  a.ori(R.t3, R.zero, 0xFFFF);     // delay slot: sentinel 0xFFFF
+
+  // Table-driven universal cluster scan: { u16 triggerSec, i8 startDelta, u8 nSec }[<=63] + 0xFFFF
+  // Covers ALL menus (MainMenu, CarSel, PlaySel, LevelSel, Options, Stats, Tricks, Create-A-Skater),
+  // Crash B. in-place CD.WAD[460] (crash.psh+crash.psx+s2face20), ALL 15 contiguous skaters (.psx+.psh),
+  // AND level-load core clusters (s2bgd6..s2pressx, items+bits)!
+  a.label('bco_tbl_lp');
+  a.lhu(R.t2, 0, R.t1);            // entry.triggerSec
   a.nop();
-
-  a.beq(R.s5, R.zero, 'bco_c0');
-  a.addiu(R.t0, R.zero, 61);
-  a.beq(R.s5, R.t0, 'bco_c61');
-  a.addiu(R.t0, R.zero, 4569);
-  a.beq(R.s5, R.t0, 'bco_c4569');
+  a.beq(R.t2, R.t3, 'bco_miss0');
   a.nop();
-  a.j('bco_miss0');
+  a.beq(R.t2, R.s5, 'bco_tbl_hit');
   a.nop();
+  a.j('bco_tbl_lp');
+  a.addiu(R.t1, R.t1, 4);
 
-  a.label('bco_c0');
-  a.addiu(R.s6, R.zero, 67);       // s2bgd6 + s2_scrib + s2pressx (137 KB, freed BEFORE skate2.vab permanent .VH -> 0 frag!)
-  a.j('bco_alloc');
-  a.lui(R.t5, 0x0004);             // minFree = 262,144 B
-
-  a.label('bco_c61');
-  a.addiu(R.s6, R.zero, 6);        // s2_scrib + s2pressx (12 KB, Competitions, freed BEFORE skate2.vab!)
-  a.j('bco_alloc');
-  a.lui(R.t5, 0x0002);             // minFree = 131,072 B
-
-  a.label('bco_c4569');
-  a.addiu(R.s6, R.zero, 12);       // s2win4 + s2medal1..3 (24 KB, LevelSel, all temp -> freed before s2face2!)
-  a.lui(R.t5, 0x0003);             // minFree = 196,608 B
+  a.label('bco_tbl_hit');
+  a.lb(R.t3, 2, R.t1);             // signed startDelta (0 = forward, <0 = backward-inclusive .psx+.psh!)
+  a.lbu(R.s6, 3, R.t1);            // nSec
+  a.nop();
+  a.addu(R.t4, R.s5, R.t3);        // burstStartSec = fileSec + startDelta
+  a.sw(R.t4, 24, R.sp);            // persist burstStartSec across Mem_Alloc / CdRead!
+  a.sll(R.t5, R.s6, 11);           // allocBytes = nSec * 2048
+  a.lui(R.t2, 0x0001);             // 65,536 B (64 KB) untouched safety margin (100% OOM-proof!)
+  a.addu(R.t5, R.t5, R.t2);        // minFree = allocBytes + 64 KB (allows cab/Lulao & 147s level-core bursts!)
 
   a.label('bco_alloc');
   // Walk Heap[1] freeList @ 19112(gp) -> t6 = largestFree (100% OOM-proof!)
@@ -2172,25 +2172,26 @@ function assembleTurboBurstCode() {
   a.beq(R.v0, R.zero, 'bco_miss0');
   a.move(R.s7, R.v0);              // s7 = buf
 
-  // Stop active FMV & pause XA only if playing
+  // Stop active FMV & pause XA ONCE if playing (NEVER resume mid-load -> Hook_FrameTick resumes ONCE on Frame 1!)
   a.jal(0x8007AFE4);               // Movie_Stop
   a.nop();
   a.lw(R.t0, 14704, R.gp);         // xaActive
   a.lw(R.t1, 14712, R.gp);         // xaPaused
-  a.sw(R.zero, 20, R.s0);          // g_BurstXaSaved = 0
+  a.nop();
   a.beq(R.t0, R.zero, 'bco_cd_go');
   a.nop();
   a.bne(R.t1, R.zero, 'bco_cd_go');
   a.nop();
   a.addiu(R.t2, R.zero, 1);
-  a.sw(R.t2, 20, R.s0);
+  a.sw(R.t2, 20, R.s0);            // g_BurstXaSaved = 1 (never clobbered by subsequent bursts!)
   a.jal(0x80038D60);               // XA_Pause(1)
   a.addiu(R.a0, R.zero, 1);
 
   a.label('bco_cd_go');
   a.lw(R.t0, 24440, R.gp);         // CD.WAD base LBA
+  a.lw(R.t1, 24, R.sp);            // burstStartSec
   a.nop();
-  a.addu(R.a0, R.t0, R.s5);        // absLba
+  a.addu(R.a0, R.t0, R.t1);        // absLba = cdWadBase + burstStartSec
   a.jal(0x800A1698);               // CdIntToPos(absLba, sp+16)
   a.addiu(R.a1, R.sp, 16);
   a.addiu(R.a0, R.zero, 2);        // CdlSetloc
@@ -2206,29 +2207,19 @@ function assembleTurboBurstCode() {
   a.addiu(R.a0, R.zero, 1);
   a.jal(0x800A5CCC);               // CdReadSync(1, 0)
   a.move(R.a1, R.zero);
-  a.blez(R.v0, 'bco_cd_done');
+  a.blez(R.v0, 'bco_commit');
   a.nop();
   a.jal(THPS1_ADDR.Entry_LoadingBarThrottle);
   a.nop();
   a.j('bco_wait');
   a.nop();
 
-  a.label('bco_cd_done');
-  a.lw(R.t0, 20, R.s0);
-  a.nop();
-  a.beq(R.t0, R.zero, 'bco_commit');
-  a.nop();
-  a.sw(R.zero, 20, R.s0);
-  a.jal(0x800387A8);               // XA_SetMode
-  a.nop();
-  a.jal(0x80038D60);               // XA_Pause(0)
-  a.move(R.a0, R.zero);
-
   a.label('bco_commit');
+  a.lw(R.t1, 24, R.sp);            // burstStartSec
   a.sw(R.s7, 8, R.s0);             // g_BurstBuf = buf
-  a.sw(R.s5, 12, R.s0);            // g_BurstStartSec = fileSec
-  a.addu(R.t1, R.s5, R.s6);
-  a.sw(R.t1, 16, R.s0);            // g_BurstEndSec = fileSec + nSec
+  a.sw(R.t1, 12, R.s0);            // g_BurstStartSec = burstStartSec
+  a.addu(R.t2, R.t1, R.s6);
+  a.sw(R.t2, 16, R.s0);            // g_BurstEndSec = burstStartSec + nSec
 
   a.label('bco_hit');
   a.lw(R.t0, 8, R.s0);             // g_BurstBuf
@@ -2559,10 +2550,19 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   patchExact(slusBuf, r2f(0x80044318), 0x24052000, 0x24053000, 'CModel::KnockDown Hit SFX vol 8192->12288 @ 0x80044318');
   patchExact(slusBuf, r2f(0x80044A08), 0x24052000, 0x24052C00, 'CModel::KnockDown Bounce SFX vol 8192->11264 @ 0x80044A08');
 
-  // Snappier Fade_Start tile-wipes between menus & gameplay (respecting Mode-1 >= 96 and Mode-2 >= 32 minimums!)
-  patchExact(slusBuf, r2f(0x80082B48), 0x240400EC, 0x24040070, 'Fade_Start MainMenu->PlaySel 236->112 @ 0x80082B48');
-  patchExact(slusBuf, r2f(0x80083328), 0x240400EC, 0x24040070, 'Fade_Start Gameplay->Menu 236->112 @ 0x80083328');
-  patchExact(slusBuf, r2f(0x8002310C), 0x24040034, 0x24040022, 'Fade_Start GoalList->Game 52->34 @ 0x8002310C');
+  // Ultra-snappy smooth Fade_Update & Fade_Start tile-wipes across ALL menus & gameplay:
+  //   - Mode 1 (RGB alternating): step 8->32 (0x20) & min tail -96->-24 -> full 255->0 smooth black wipe in 28f (0.47s vs 1.87s!)
+  //   - Mode 2 (simultaneous RGB): step 8->16 (0x10) & min tail -32->-16 -> full 255->0 smooth black wipe in 18f (0.30s vs 0.57s!)
+  patchExact(slusBuf, r2f(0x8004E564), 0x24020008, 0x24020020, 'Fade_Update Mode1 B-step 8->32 @ 0x8004E564');
+  patchExact(slusBuf, r2f(0x8004E59C), 0x24020008, 0x24020020, 'Fade_Update Mode1 G/R-step 8->32 @ 0x8004E59C');
+  patchExact(slusBuf, r2f(0x8004E5E0), 0x24A4FFA0, 0x24A4FFE8, 'Fade_Update Mode1 tail -96->-24 @ 0x8004E5E0');
+  patchExact(slusBuf, r2f(0x8004E678), 0x24020008, 0x24020010, 'Fade_Update Mode2 RGB-step 8->16 @ 0x8004E678');
+  patchExact(slusBuf, r2f(0x8004E69C), 0x24A4FFE0, 0x24A4FFF0, 'Fade_Update Mode2 tail -32->-16 @ 0x8004E69C');
+  patchExact(slusBuf, r2f(0x80082B48), 0x240400EC, 0x2404001C, 'Fade_Start MainMenu->PlaySel 236->28 @ 0x80082B48', [0x24040070]);
+  patchExact(slusBuf, r2f(0x80083328), 0x240400EC, 0x2404001C, 'Fade_Start Gameplay->Menu 236->28 @ 0x80083328', [0x24040070]);
+  patchExact(slusBuf, r2f(0x8002310C), 0x24040034, 0x24040012, 'Fade_Start GoalList->Game 52->18 @ 0x8002310C', [0x24040022]);
+  // Deferred single-resume of XA background music at VSync_Wait exit (universal across ALL menus & gameplay!)
+  patchExact(slusBuf, r2f(0x8004E820), 0x03E00008, jW(0x800E3540), 'VSync_Wait tail-jump Entry_BurstXaResume @ 0x8004E820');
 
   // TURBO CDWAD ENGINE (Zero rotational-overshoot polling + 60 Hz GPU/SIO throttling + Pre-less RAM Burst):
   //   - 0x80054274: NOP redundant g_PreMgr!=0 guard in CDWAD_Read (g_IsPreFile @ 18968(gp) is already 0 unless PreMgr or TURBO_BURST hit!)

@@ -13,7 +13,7 @@ Este documento mapeia **todas as 11 fases** dentro de `SLUS_010.66` (`g_LevelTab
 | 0 | `0x800B8444` | `0x0A8C44` | **s2dCr09u.bmp** | Transmissionator 2000 | `` | 1 | `HANGAR.STR` |
 | 1 | `0x800B85B8` | `0x0A8DB8` | **?** |  | `` | 0 | `SCHOOL.STR` |
 | 2 | `0x800B872C` | `0x0A8F2C` | **?** |  | `` | 0 | `MAR.STR` |
-| 3 | `0x800B88A0` | `0x0A90A0` | **?** |  | `` | 17464 | `NY.STR` |
+| 3 | `0x800B88A0` | `0x0A90A0` | **?** |  | `` | 123960 | `NY.STR` |
 | 4 | `0x800B8A14` | `0x0A9214` | **?** |  | `` | 0 | `VENICE.STR` |
 | 5 | `0x800B8B88` | `0x0A9388` | **?** |  | `` | 2936012800 | `SS.STR` |
 | 6 | `0x800B8CFC` | `0x0A94FC` | **?** |  | `` | 1919512659 | `PHILLY.STR` |
@@ -26,7 +26,7 @@ Este documento mapeia **todas as 11 fases** dentro de `SLUS_010.66` (`g_LevelTab
 
 - **[0] s2dCr09u.bmp** (`0x800B8444` | GapList `+0x170` = `0x00000005`): `+0x20`: "s2dCr10u.bmp" • `+0x24`: "Zero Team" • `+0x40`: "s2dCr11u.bmp" • `+0x44`: "A-Team Team Deck" • `+0x60`: "s2dCr12u.bmp" • `+0x64`: "Birdhouse Team Seal" • `+0x80`: "s2dCr13u.bmp" • `+0x84`: "Team Silhouette" • `+0xa0`: "s2dCr14u.bmp" • `+0xa4`: "17th/21st Lancers" • `+0xc0`: "s2dCr15u.bmp" • `+0xc4`: "Flip New Wave" • `+0xe0`: "s2dCr16u.bmp" • `+0xe4`: "Race"
 - **[1] ?** (`0x800B85B8` | GapList `+0x170` = `0x00000000`): 
-- **[2] ?** (`0x800B872C` | GapList `+0x170` = `0x00185800`): 
+- **[2] ?** (`0x800B872C` | GapList `+0x170` = `0x00004000`): 
 - **[3] ?** (`0x800B88A0` | GapList `+0x170` = `0x3C03800C`): 
 - **[4] ?** (`0x800B8A14` | GapList `+0x170` = `0x1719FFFD`): 
 - **[5] ?** (`0x800B8B88` | GapList `+0x170` = `0x2E633230`): 

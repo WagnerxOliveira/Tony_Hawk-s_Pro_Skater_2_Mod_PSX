@@ -494,25 +494,25 @@ class LevelSectorMesh {
     const cl = Math.hypot(cx, cy, cz);
     if (cl < 1e-4) return;
 
-    // Default outward normal = -normalize(cross) so dot(cross, outN) < 0
-    let nx, ny, nz;
+    // Always store the EXACT geometric face normal (-cross/cl, flipped to match outNormal hemisphere)
+    // so M3dColij ray-plane dot product & NCLIP winding ALWAYS satisfy dot(cross, storedN) == -1.000!
+    let nx = -cx / cl, ny = -cy / cl, nz = -cz / cl;
     let q = [v0, v1, v2, v3];
     let quv = uv.slice();
     let qcol;
     if (outNormal) {
       const ol = Math.hypot(outNormal[0], outNormal[1], outNormal[2]) || 1;
-      nx = outNormal[0] / ol; ny = outNormal[1] / ol; nz = outNormal[2] / ol;
-      const dot = cx * nx + cy * ny + cz * nz;
-      if (dot > 0) {
+      const hx = outNormal[0] / ol, hy = outNormal[1] / ol, hz = outNormal[2] / ol;
+      if (cx * hx + cy * hy + cz * hz > 0) {
         // Flip horizontal Z-order to satisfy dot(cross(p1-p0, p2-p0), outNormal) < 0
         q = [v1, v0, v3, v2];
         quv = [uv[2], uv[3], uv[0], uv[1], uv[6], uv[7], uv[4], uv[5]];
         if (colors) qcol = [colors[1], colors[0], colors[3], colors[2]];
+        nx = cx / cl; ny = cy / cl; nz = cz / cl;
       } else {
         if (colors) qcol = colors.slice();
       }
     } else {
-      nx = -cx / cl; ny = -cy / cl; nz = -cz / cl;
       if (colors) qcol = colors.slice();
     }
     if (!qcol) {
@@ -556,22 +556,22 @@ class LevelSectorMesh {
     const cl = Math.hypot(cx, cy, cz);
     if (cl < 1e-4) return;
 
-    let nx, ny, nz;
+    let nx = -cx / cl, ny = -cy / cl, nz = -cz / cl;
     let tv = [v0, v1, v2, 0];
     let tuv = [uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], 0, 0];
     let tcol;
     if (outNormal) {
       const ol = Math.hypot(outNormal[0], outNormal[1], outNormal[2]) || 1;
-      nx = outNormal[0] / ol; ny = outNormal[1] / ol; nz = outNormal[2] / ol;
-      if (cx * nx + cy * ny + cz * nz > 0) {
+      const hx = outNormal[0] / ol, hy = outNormal[1] / ol, hz = outNormal[2] / ol;
+      if (cx * hx + cy * hy + cz * hz > 0) {
         tv = [v1, v0, v2, 0];
         tuv = [uv[2], uv[3], uv[0], uv[1], uv[4], uv[5], 0, 0];
         if (colors) tcol = [colors[1], colors[0], colors[2], 0];
+        nx = cx / cl; ny = cy / cl; nz = cz / cl;
       } else {
         if (colors) tcol = [colors[0], colors[1], colors[2], 0];
       }
     } else {
-      nx = -cx / cl; ny = -cy / cl; nz = -cz / cl;
       if (colors) tcol = [colors[0], colors[1], colors[2], 0];
     }
     if (!tcol) {
@@ -592,9 +592,10 @@ class LevelSectorMesh {
   }
 
   /**
-   * Add an invisible THPS2 Trigger Box quad (fl=0x0080, sz=16 B, sf=0x0002) matching skhan.psx mesh #102!
+   * Add an invisible THPS2 solid/trigger quad (fl=0x0080, sz=16 B, sf=0x0002 trigger or 0x0190/0x0040/0x1A00 solid!).
+   * Verified in SLUS_010.66 M3dAsm (0x80096010 skips fl&0x80) & M3dColij (0x8008B410 collides all non-DECO faces!).
    */
-  addInvisibleTriggerQuad(p0, p1, p2, p3, outNormal) {
+  addInvisibleQuad(p0, p1, p2, p3, outNormal, surfFlags = 0x0002) {
     const v0 = this.addV(p0[0], p0[1], p0[2]);
     const v1 = this.addV(p1[0], p1[1], p1[2]);
     const v2 = this.addV(p2[0], p2[1], p2[2]);
@@ -605,21 +606,29 @@ class LevelSectorMesh {
     const cx = e1[1] * e2[2] - e1[2] * e2[1];
     const cy = e1[2] * e2[0] - e1[0] * e2[2];
     const cz = e1[0] * e2[1] - e1[1] * e2[0];
+    const cl = Math.hypot(cx, cy, cz);
+    if (cl < 1e-4) return;
     let q = [v0, v1, v2, v3];
+    let nx = -cx / cl, ny = -cy / cl, nz = -cz / cl;
     if (cx * outNormal[0] + cy * outNormal[1] + cz * outNormal[2] > 0) {
       q = [v1, v0, v3, v2];
+      nx = cx / cl; ny = cy / cl; nz = cz / cl;
     }
-    const ni = this.addN(outNormal[0], outNormal[1], outNormal[2]);
+    const ni = this.addN(nx, ny, nz);
     this.faces.push({
       fl: 0x0080,
       sz: 16,
       v: q,
       c: [0, 0, 0, 0],
       ni,
-      sf: 0x0002,
+      sf: surfFlags,
       ti: 0,
       uv: null,
     });
+  }
+
+  addInvisibleTriggerQuad(p0, p1, p2, p3, outNormal) {
+    this.addInvisibleQuad(p0, p1, p2, p3, outNormal, 0x0002);
   }
 
   /**
@@ -723,19 +732,64 @@ class LevelSectorMesh {
 //    Sphinx Arch, Ledges, Corner QPs, Real Crash 3 3D Props, Skybox)
 // ============================================================================
 
-const SF_FLOOR   = 0x1A00; // Solid stone/concrete floor & lower transition
-const SF_VERT    = 0x1A20; // Solid stone + VERT launch!
-const SF_TRIG    = 0x1A02; // Solid stone + TRIGGER (Gaps!)
-const SF_VERT_TG = 0x1A22; // Solid stone + VERT + TRIGGER!
-const SF_WALL    = 0x0180; // Solid wallrideable temple wall
-const SF_DECO    = 0x0001; // Visual-only non-collidable (statues, outer pyramids, skybox)
+const SF_FLOOR    = 0x1A00; // Solid stone/concrete floor, lower transition & skatable tops
+const SF_VERT     = 0x1A20; // Solid stone + VERT launch (NEVER combine with 0x0002 trigger!)
+const SF_WALL     = 0x0180; // Solid wallrideable temple walls, ledges & curved end-caps
+const SF_SOLID    = 0x0190; // Solid non-wallrideable architectural/prop collision surfaces
+const SF_BOUNDARY = 0x0040; // Invisible sky/arena boundary barrier (exact Neversoft skmar/skven!)
+const SF_DECO     = 0x0001; // Visual-only non-collidable (3D props whose collision is via tight hull, outer Giza, skybox)
+
+// Exact normalized circular-arc transition profile: reaches (d = R, h = R) at 86 deg with ZERO cliff!
+const TRANS_MAX_RAD    = 86 * Math.PI / 180;
+const TRANS_INV_SIN    = 1 / Math.sin(TRANS_MAX_RAD);
+const TRANS_INV_OMCOS  = 1 / (1 - Math.cos(TRANS_MAX_RAD));
+function transArcDH(R, frac) {
+  const a = frac * TRANS_MAX_RAD;
+  return [R * Math.sin(a) * TRANS_INV_SIN, R * (1 - Math.cos(a)) * TRANS_INV_OMCOS];
+}
+
+/**
+ * Add an invisible solid oriented 3D collision box (fl=0x0080, sz=16, registered in CWorldGrid TAG 0x0A!).
+ * Local bounds [lx0..lx1] x [lz0..lz1] are rotated around (wx, wz) by yawRad; vertical span is [yTop..yBot] (-Y UP).
+ */
+function addOrientedSolidHull(sectors, hullName, wx, wz, yawRad, lx0, lx1, lz0, lz1, yTop, yBot, {
+  sfSide = SF_SOLID,
+  sfTop = SF_FLOOR,
+  includeBottom = false,
+} = {}) {
+  const cy = Math.cos(yawRad), sy = Math.sin(yawRad);
+  const toWorld = (lx, y, lz) => [wx + (lx * cy - lz * sy), y, wz + (lx * sy + lz * cy)];
+  const rotN = (nx, nz) => [nx * cy - nz * sy, 0, nx * sy + nz * cy];
+
+  const tNW = toWorld(lx0, yTop, lz0), tNE = toWorld(lx1, yTop, lz0);
+  const tSW = toWorld(lx0, yTop, lz1), tSE = toWorld(lx1, yTop, lz1);
+  const bNW = toWorld(lx0, yBot, lz0), bNE = toWorld(lx1, yBot, lz0);
+  const bSW = toWorld(lx0, yBot, lz1), bSE = toWorld(lx1, yBot, lz1);
+
+  const m = new LevelSectorMesh(hullName, { collidable: true, isTriggerOnly: true });
+  // Top face (-Y UP)
+  m.addInvisibleQuad(tNW, tNE, tSW, tSE, [0, -1, 0], sfTop);
+  // 4 outward-facing vertical sides
+  m.addInvisibleQuad(tNE, tNW, bNE, bNW, rotN(0, -1), sfSide); // local -Z
+  m.addInvisibleQuad(tSW, tSE, bSW, bSE, rotN(0,  1), sfSide); // local +Z
+  m.addInvisibleQuad(tNW, tSW, bNW, bSW, rotN(-1, 0), sfSide); // local -X
+  m.addInvisibleQuad(tSE, tNE, bSE, bNE, rotN( 1, 0), sfSide); // local +X
+  if (includeBottom) {
+    m.addInvisibleQuad(bSW, bSE, bNW, bNE, [0, 1, 0], sfSide);
+  }
+  const c = m.compile();
+  if (c) sectors.push(c);
+}
 
 /**
  * Place a real extracted Crash 3 3D OBJ model into the level at world (wx, wyGround, wz),
  * scaled to exact targetHeight (in THPS2 units, where skater height ≈ 95..110), rotated by yawRad,
  * resting with its lowest point at wyGround (THPS2 -Y is UP!).
+ * When solidHull=true (default for all arena landmarks), also generates a tight invisible oriented
+ * solid collision hull (fl=0x0080, sz=16, SF_SOLID sides + SF_FLOOR top) registered in CWorldGrid TAG 0x0A
+ * so Crash B. collides cleanly with EVERY landmark and can NEVER skate through any prop!
  */
-function addCrash3PropSector(sectors, sectorName, objData, texIdx, wx, wyGround, wz, targetHeight, yawRad = 0, surfFlags = SF_DECO, family = 'neutral', boost = 0.14) {
+function addCrash3PropSector(sectors, sectorName, objData, texIdx, wx, wyGround, wz, targetHeight, yawRad = 0, surfFlags = SF_DECO, family = 'neutral', boost = 0.14, hullOpts = null) {
   const b = objData.bounds;
   const srcH = Math.max(0.05, b.maxY - b.minY);
   const scale = targetHeight / srcH;
@@ -755,18 +809,12 @@ function addCrash3PropSector(sectors, sectorName, objData, texIdx, wx, wyGround,
   const m = new LevelSectorMesh(sectorName, { collidable: (surfFlags & 1) === 0 });
   const maxU = objData.texW - 1, maxV = objData.texH - 1;
 
-  // Estimate geometric centroid of transformed model for outward normal hint on closed shells
-  const cWorld = [wx, wyGround - targetHeight * 0.5, wz];
-
   for (const [t0, t1, t2] of objData.tris) {
     const p0 = xform(objData.verts[t0.vi]);
     const p1 = xform(objData.verts[t1.vi]);
     const p2 = xform(objData.verts[t2.vi]);
 
     // Original Crash 3 OBJ triangle normal in +Y space -> flip Y when converting to THPS2 (-Y UP)!
-    // Notice negating Y flips handedness once, so cross_thps2(p1-p0, p2-p0) points INWARD relative to +Y CCW,
-    // which means dot(cross_thps2(p1-p0, p2-p0), outNormal) < 0 ALREADY holds for outward faces!
-    // Verify via geometric face normal in OBJ space mapped to THPS2 space!
     const ov0 = objData.verts[t0.vi], ov1 = objData.verts[t1.vi], ov2 = objData.verts[t2.vi];
     const oe1 = [ov1[0] - ov0[0], ov1[1] - ov0[1], ov1[2] - ov0[2]];
     const oe2 = [ov2[0] - ov0[0], ov2[1] - ov0[1], ov2[2] - ov0[2]];
@@ -782,7 +830,7 @@ function addCrash3PropSector(sectors, sectorName, objData, texIdx, wx, wyGround,
       (onx * sy + onz * cy) / ol,
     ];
 
-    // Map OBJ UVs (v=0 bottom -> v=0 top) with 0.06 centroid inset to eliminate 64x64 atlas bleed!
+    // Map OBJ UVs (v=0 bottom -> v=0 top) with 0.07 centroid inset to eliminate 64x64 atlas bleed!
     const rawUv = [t0, t1, t2].map(k => {
       const uv = objData.uvs[k.ti] || [0.5, 0.5];
       return [clamp(uv[0], 0, 1), clamp(1 - uv[1], 0, 1)];
@@ -805,6 +853,39 @@ function addCrash3PropSector(sectors, sectorName, objData, texIdx, wx, wyGround,
   }
   const c = m.compile();
   if (c) sectors.push(c);
+
+  // Build tight invisible oriented solid collision hull matching the actual local model footprint!
+  if (hullOpts !== false) {
+    const opts = hullOpts || {};
+    const insetXZ = opts.insetXZ ?? 0.88;
+    const yBandMax = opts.yBandMax ?? targetHeight;
+    let lx0 = 1e9, lx1 = -1e9, lz0 = 1e9, lz1 = -1e9;
+    for (const v of objData.verts) {
+      const hy = (v[1] - b.minY) * scale;
+      if (hy > yBandMax) continue;
+      const lx = (v[0] - b.cx) * scale;
+      const lz = (v[2] - b.cz) * scale;
+      if (lx < lx0) lx0 = lx; if (lx > lx1) lx1 = lx;
+      if (lz < lz0) lz0 = lz; if (lz > lz1) lz1 = lz;
+    }
+    if (lx0 >= lx1) {
+      lx0 = (b.minX - b.cx) * scale; lx1 = (b.maxX - b.cx) * scale;
+      lz0 = (b.minZ - b.cz) * scale; lz1 = (b.maxZ - b.cz) * scale;
+    }
+    const cxL = (lx0 + lx1) * 0.5, czL = (lz0 + lz1) * 0.5;
+    const hx = Math.max(24, (lx1 - lx0) * 0.5 * insetXZ);
+    const hz = Math.max(24, (lz1 - lz0) * 0.5 * insetXZ);
+    const yTop = wyGround - (opts.hullHeight ?? targetHeight);
+    const yBot = wyGround + (opts.sinkBot ?? 4);
+    addOrientedSolidHull(
+      sectors,
+      `${sectorName}_hull`,
+      wx, wz, yawRad,
+      cxL - hx, cxL + hx, czL - hz, czL + hz,
+      yTop, yBot,
+      { sfSide: opts.sfSide ?? SF_SOLID, sfTop: opts.sfTop ?? SF_FLOOR }
+    );
+  }
 }
 
 /**
@@ -846,18 +927,13 @@ function addTransitionBands(mesh, baseStart, baseEnd, outDir, yBottom, R, segsAl
   copingTopBand = true,
   copingTex = T.COPING,
 } = {}) {
-  const angles = [];
-  for (let b = 0; b <= bands; b++) {
-    // 0 -> 22.5 -> 45 -> 67.5 -> 86 deg (prevents exact 90-deg vertical raycast degeneracy!)
-    angles.push((b / bands) * (86 * Math.PI / 180));
-  }
   for (let b = 0; b < bands; b++) {
-    const a0 = angles[b], a1 = angles[b + 1];
-    const d0 = R * Math.sin(a0), h0 = R * (1 - Math.cos(a0));
-    const d1 = R * Math.sin(a1), h1 = R * (1 - Math.cos(a1));
-    const midA = (a0 + a1) * 0.5;
-    // Outward normal points INWARD toward skater (-outDir * sin(midA) + UP * cos(midA)), where UP = (0, -1, 0)
-    const nOut = [-outDir[0] * Math.sin(midA), -Math.cos(midA), -outDir[2] * Math.sin(midA)];
+    const [d0, h0] = transArcDH(R, b / bands);
+    const [d1, h1] = transArcDH(R, (b + 1) / bands);
+    const dd = d1 - d0, dh = h1 - h0;
+    const hyp = Math.hypot(dd, dh) || 1;
+    // Exact outward normal pointing INWARD toward skater (-outDir * (dh/hyp) + UP * (dd/hyp)), UP = (0, -1, 0)
+    const nOut = [-outDir[0] * (dh / hyp), -(dd / hyp), -outDir[2] * (dh / hyp)];
     const sf = (b >= bands - 2) ? vertSf : baseSf;
     const useTex = (copingTopBand && b === bands - 1) ? copingTex : texIdx;
     const v0 = Math.round((1 - (b + 1) / bands) * 63);
@@ -889,9 +965,67 @@ function addTransitionBands(mesh, baseStart, baseEnd, outDir, yBottom, R, segsAl
 }
 
 /**
+ * Watertight 4-band curved arc end-cap closing the side of any Quarter-Pipe / Half-Pipe flush to its curve!
+ */
+function addCurvedEndCap(mesh, endToe, outDir, yBottom, R, backDist, endOutNormal, texIdx, {
+  bands = 4,
+  sf = SF_WALL,
+  family = 'sand',
+  boost = 0.08,
+} = {}) {
+  for (let b = 0; b < bands; b++) {
+    const [d0, h0] = transArcDH(R, b / bands);
+    const [d1, h1] = transArcDH(R, (b + 1) / bands);
+    const y0 = yBottom - h0, y1 = yBottom - h1;
+    const pTF = [endToe[0] + outDir[0] * d1, y1, endToe[2] + outDir[2] * d1];
+    const pTB = [endToe[0] + outDir[0] * backDist, y1, endToe[2] + outDir[2] * backDist];
+    const pBF = [endToe[0] + outDir[0] * d0, y0, endToe[2] + outDir[2] * d0];
+    const pBB = [endToe[0] + outDir[0] * backDist, y0, endToe[2] + outDir[2] * backDist];
+    const vTop = Math.round((1 - (b + 1) / bands) * 63);
+    const vBot = Math.round((1 - b / bands) * 63);
+    mesh.addQuad(pTF, pTB, pBF, pBB, texIdx, sf, {
+      outNormal: endOutNormal,
+      uv: [0, vTop, 63, vTop, 0, vBot, 63, vBot],
+      family,
+      boost,
+    });
+  }
+}
+
+/**
+ * Separate invisible GAP trigger curtain (fl=0x0080, sz=16, sf=0x0002) hovering offsetIn units in front of
+ * a transition's upper vert bands so GAP triggers NEVER punch pass-through holes in solid ramps!
+ */
+function addTransitionGapCurtain(sectors, name, baseStart, baseEnd, outDir, yBottom, R, segsAlong, {
+  bands = 4,
+  startBand = 2,
+  offsetIn = 16,
+} = {}) {
+  const mt = new LevelSectorMesh(name, { collidable: true, isTriggerOnly: true });
+  for (let b = startBand; b < bands; b++) {
+    const [d0, h0] = transArcDH(R, b / bands);
+    const [d1, h1] = transArcDH(R, (b + 1) / bands);
+    const dd = d1 - d0, dh = h1 - h0;
+    const hyp = Math.hypot(dd, dh) || 1;
+    const nOut = [-outDir[0] * (dh / hyp), -(dd / hyp), -outDir[2] * (dh / hyp)];
+    for (let s = 0; s < segsAlong; s++) {
+      const t0 = s / segsAlong, t1 = (s + 1) / segsAlong;
+      const bx0 = lerp(baseStart[0], baseEnd[0], t0), bz0 = lerp(baseStart[2], baseEnd[2], t0);
+      const bx1 = lerp(baseStart[0], baseEnd[0], t1), bz1 = lerp(baseStart[2], baseEnd[2], t1);
+      const pLow0  = [bx0 + outDir[0] * d0 + nOut[0] * offsetIn, yBottom - h0 + nOut[1] * offsetIn, bz0 + outDir[2] * d0 + nOut[2] * offsetIn];
+      const pLow1  = [bx1 + outDir[0] * d0 + nOut[0] * offsetIn, yBottom - h0 + nOut[1] * offsetIn, bz1 + outDir[2] * d0 + nOut[2] * offsetIn];
+      const pHigh0 = [bx0 + outDir[0] * d1 + nOut[0] * offsetIn, yBottom - h1 + nOut[1] * offsetIn, bz0 + outDir[2] * d1 + nOut[2] * offsetIn];
+      const pHigh1 = [bx1 + outDir[0] * d1 + nOut[0] * offsetIn, yBottom - h1 + nOut[1] * offsetIn, bz1 + outDir[2] * d1 + nOut[2] * offsetIn];
+      mt.addInvisibleTriggerQuad(pHigh0, pHigh1, pLow0, pLow1, nOut);
+    }
+  }
+  const c = mt.compile();
+  if (c) sectors.push(c);
+}
+
+/**
  * Build a smooth 3D concave quarter-bowl corner (4 azimuth slices x 4 elevation bands)
- * for the Empty Pharaoh Swimming Pool!
- * Corner center sits at (cx, yBottom, cz); wall sweeps from azStart to azEnd at radius R.
+ * for the Empty Pharaoh Swimming Pool! Reaches exact (r = R, y = yBottom - R = 0) with ZERO cliff!
  */
 function addPoolCorner(mesh, cx, cz, yBottom, R, azStart, azEnd, {
   azSteps = 4,
@@ -899,14 +1033,11 @@ function addPoolCorner(mesh, cx, cz, yBottom, R, azStart, azEnd, {
   texWall = T.POOL_WALL,
   texCoping = T.COPING,
 } = {}) {
-  const angles = [];
-  for (let b = 0; b <= bands; b++) angles.push((b / bands) * (86 * Math.PI / 180));
-
   for (let b = 0; b < bands; b++) {
-    const a0 = angles[b], a1 = angles[b + 1];
-    const r0 = R * Math.sin(a0), h0 = R * (1 - Math.cos(a0));
-    const r1 = R * Math.sin(a1), h1 = R * (1 - Math.cos(a1));
-    const midA = (a0 + a1) * 0.5;
+    const [r0, h0] = transArcDH(R, b / bands);
+    const [r1, h1] = transArcDH(R, (b + 1) / bands);
+    const dr = r1 - r0, dh = h1 - h0;
+    const hyp = Math.hypot(dr, dh) || 1;
     const sf = (b >= bands - 2) ? SF_VERT : SF_FLOOR;
     const useTex = (b === bands - 1) ? texCoping : texWall;
 
@@ -914,7 +1045,7 @@ function addPoolCorner(mesh, cx, cz, yBottom, R, azStart, azEnd, {
       const th0 = lerp(azStart, azEnd, s / azSteps);
       const th1 = lerp(azStart, azEnd, (s + 1) / azSteps);
       const midTh = (th0 + th1) * 0.5;
-      const nOut = [-Math.cos(midTh) * Math.sin(midA), -Math.cos(midA), -Math.sin(midTh) * Math.sin(midA)];
+      const nOut = [-Math.cos(midTh) * (dh / hyp), -(dr / hyp), -Math.sin(midTh) * (dh / hyp)];
 
       const pLow0  = [cx + Math.cos(th0) * r0, yBottom - h0, cz + Math.sin(th0) * r0];
       const pLow1  = [cx + Math.cos(th1) * r0, yBottom - h0, cz + Math.sin(th1) * r0];
@@ -1002,13 +1133,28 @@ function buildEgyptWorld(textures, props) {
   addTiledPlaza('eg_plaza_s', -5000,  5000,  1250,  5000);
   // Mid-West & Central Strip (Z in [-1250..+1250], X in [-5000..+1100])
   addTiledPlaza('eg_plaza_m', -5000,  1100, -1250,  1250);
-  // Gap 4300 Launch/Land strips right beside Empty Pharaoh Pool (SF_TRIG = 0x1A02!)
-  addFloorGrid(sectors, 'eg_gap_pool_w', 1100, 1700, -1250, 1250, 0, T.TRIM, SF_TRIG, 500, 'sand', 0.14);
-  addFloorGrid(sectors, 'eg_gap_pool_e', 4200, 5000, -1250, 1250, 0, T.TRIM, SF_TRIG, 500, 'sand', 0.14);
+  // Solid Pool West & East Decks (pure SF_FLOOR 0x1A00 — NEVER put bit 0x0002 on solid floors!)
+  addFloorGrid(sectors, 'eg_deck_pool_w', 1100, 1700, -1250, 1250, 0, T.TRIM, SF_FLOOR, 500, 'sand', 0.14);
+  addFloorGrid(sectors, 'eg_deck_pool_e', 4200, 5000, -1250, 1250, 0, T.TRIM, SF_FLOOR, 500, 'sand', 0.14);
+  // Separate invisible Gap 4300 launch/land trigger panels hovering 14u above the solid pool decks!
+  {
+    const mGw = new LevelSectorMesh('eg_gap_pool_w', { collidable: true, isTriggerOnly: true });
+    for (let iz = 0; iz < 4; iz++) {
+      const za = lerp(-1250, 1250, iz / 4), zb = lerp(-1250, 1250, (iz + 1) / 4);
+      mGw.addInvisibleTriggerQuad([1100, -14, za], [1700, -14, za], [1100, -14, zb], [1700, -14, zb], [0, -1, 0]);
+    }
+    sectors.push(mGw.compile());
+    const mGe = new LevelSectorMesh('eg_gap_pool_e', { collidable: true, isTriggerOnly: true });
+    for (let iz = 0; iz < 4; iz++) {
+      const za = lerp(-1250, 1250, iz / 4), zb = lerp(-1250, 1250, (iz + 1) / 4);
+      mGe.addInvisibleTriggerQuad([4200, -14, za], [5000, -14, za], [4200, -14, zb], [5000, -14, zb], [0, -1, 0]);
+    }
+    sectors.push(mGe.compile());
+  }
 
   // --------------------------------------------------------------------------
   // B. EMPTY PHARAOH SWIMMING POOL / BOWL (X in [+1700..+4200], Z in [-1250..+1250], depth Y=+520!)
-  //    True Marseille-scale recessed bowl: Royal Blue-Gold Mosaic floor + 4-band curved VERT walls + 4 corners!
+  //    Normalized circular-arc transitions end at EXACT Y=0 & exact rim X/Z -> ZERO cliff, ZERO collar!
   // --------------------------------------------------------------------------
   const poolR = 520;
   const pX0 = 1700, pX1 = 4200, pZ0 = -1250, pZ1 = 1250;
@@ -1020,13 +1166,13 @@ function buildEgyptWorld(textures, props) {
   // Recessed Pool Floor (Royal Blue & Gold Crash 3 Mosaic!)
   addFloorGrid(sectors, 'eg_pool_floor', pInX0, pInX1, pInZ0, pInZ1, poolR, T.POOL_MOSAIC, SF_FLOOR, 365, 'pool', 0.24);
 
-  // 4 Straight Curved Pool Walls
+  // 4 Straight Curved Pool Walls (100% SOLID SF_FLOOR/SF_VERT!)
   const mPoolW = new LevelSectorMesh('eg_pool_wall_w');
-  addTransitionBands(mPoolW, [pInX0, poolR, pInZ0], [pInX0, poolR, pInZ1], [-1, 0, 0], poolR, poolR, 5, T.POOL_WALL, { family: 'pool', boost: 0.10, vertSf: SF_VERT_TG });
+  addTransitionBands(mPoolW, [pInX0, poolR, pInZ0], [pInX0, poolR, pInZ1], [-1, 0, 0], poolR, poolR, 5, T.POOL_WALL, { family: 'pool', boost: 0.10 });
   sectors.push(mPoolW.compile());
 
   const mPoolE = new LevelSectorMesh('eg_pool_wall_e');
-  addTransitionBands(mPoolE, [pInX1, poolR, pInZ1], [pInX1, poolR, pInZ0], [1, 0, 0], poolR, poolR, 5, T.POOL_WALL, { family: 'pool', boost: 0.10, vertSf: SF_VERT_TG });
+  addTransitionBands(mPoolE, [pInX1, poolR, pInZ1], [pInX1, poolR, pInZ0], [1, 0, 0], poolR, poolR, 5, T.POOL_WALL, { family: 'pool', boost: 0.10 });
   sectors.push(mPoolE.compile());
 
   const mPoolN = new LevelSectorMesh('eg_pool_wall_n');
@@ -1037,7 +1183,11 @@ function buildEgyptWorld(textures, props) {
   addTransitionBands(mPoolS, [pInX0, poolR, pInZ1], [pInX1, poolR, pInZ1], [0, 0, 1], poolR, poolR, 5, T.POOL_WALL, { family: 'pool', boost: 0.10 });
   sectors.push(mPoolS.compile());
 
-  // 4 Smooth Concave Quarter-Bowl Corners + Watertight Deck Spandrel Fillers
+  // Separate invisible Gap 4300 trigger curtains hovering 16u inside Pool West & East walls!
+  addTransitionGapCurtain(sectors, 'eg_gap_pool_wall_w', [pInX0, poolR, pInZ0], [pInX0, poolR, pInZ1], [-1, 0, 0], poolR, poolR, 4);
+  addTransitionGapCurtain(sectors, 'eg_gap_pool_wall_e', [pInX1, poolR, pInZ1], [pInX1, poolR, pInZ0], [ 1, 0, 0], poolR, poolR, 4);
+
+  // 4 Smooth Concave Quarter-Bowl Corners + Exact Flat Y=0 Deck Spandrel Fillers (100% flush with plaza!)
   const poolCorners = [
     { name: 'eg_pool_c_nw', cx: pInX0, cz: pInZ0, ax: pX0, az: pZ0, a0: Math.PI,       a1: Math.PI * 1.5 },
     { name: 'eg_pool_c_ne', cx: pInX1, cz: pInZ0, ax: pX1, az: pZ0, a0: Math.PI * 1.5, a1: Math.PI * 2.0 },
@@ -1047,68 +1197,59 @@ function buildEgyptWorld(textures, props) {
   for (const pc of poolCorners) {
     const mc = new LevelSectorMesh(pc.name);
     addPoolCorner(mc, pc.cx, pc.cz, poolR, poolR, pc.a0, pc.a1, { azSteps: 4, bands: 4 });
-    const rimR = poolR * Math.sin(86 * Math.PI / 180);
-    const deckY = poolR - poolR * (1 - Math.cos(86 * Math.PI / 180));
     for (let s = 0; s < 4; s++) {
       const th0 = lerp(pc.a0, pc.a1, s / 4), th1 = lerp(pc.a0, pc.a1, (s + 1) / 4);
-      const r0 = [pc.cx + Math.cos(th0) * rimR, deckY, pc.cz + Math.sin(th0) * rimR];
-      const r1 = [pc.cx + Math.cos(th1) * rimR, deckY, pc.cz + Math.sin(th1) * rimR];
+      const r0 = [pc.cx + Math.cos(th0) * poolR, 0, pc.cz + Math.sin(th0) * poolR];
+      const r1 = [pc.cx + Math.cos(th1) * poolR, 0, pc.cz + Math.sin(th1) * poolR];
       mc.addTri(r0, r1, [pc.ax, 0, pc.az], T.COPING, SF_FLOOR, { outNormal: [0, -1, 0], family: 'sand', boost: 0.08 });
     }
     sectors.push(mc.compile());
   }
-  // Stitch golden coping collar cleanly around the 4 straight sides of the pool rim (from lipY≈36 up to Y=0)
-  {
-    const rimR = poolR * Math.sin(86 * Math.PI / 180);
-    const lipY = poolR - poolR * (1 - Math.cos(86 * Math.PI / 180));
-    const mCollar = new LevelSectorMesh('eg_pool_collar');
-    mCollar.addQuad([pX0, 0, pInZ0], [pInX0 - rimR, lipY, pInZ0], [pX0, 0, pInZ1], [pInX0 - rimR, lipY, pInZ1], T.COPING, SF_FLOOR, { outNormal: [0, -1, 0] });
-    mCollar.addQuad([pInX1 + rimR, lipY, pInZ0], [pX1, 0, pInZ0], [pInX1 + rimR, lipY, pInZ1], [pX1, 0, pInZ1], T.COPING, SF_FLOOR, { outNormal: [0, -1, 0] });
-    mCollar.addQuad([pInX0, 0, pZ0], [pInX1, 0, pZ0], [pInX0, lipY, pInZ0 - rimR], [pInX1, lipY, pInZ0 - rimR], T.COPING, SF_FLOOR, { outNormal: [0, -1, 0] });
-    mCollar.addQuad([pInX0, lipY, pInZ1 + rimR], [pInX1, lipY, pInZ1 + rimR], [pInX0, 0, pZ1], [pInX1, 0, pZ1], T.COPING, SF_FLOOR, { outNormal: [0, -1, 0] });
-    sectors.push(mCollar.compile());
-  }
 
   // --------------------------------------------------------------------------
-  // C. GRAND EGYPTIAN HALF-PIPE + EAST SPINE TRANSFER (X in [-4380..-1140], Z in [-1600..+1600])
-  //    True THPS2 Vert Half-Pipe: R=580 (height ~540!), wide 1,500-unit flat bottom, massive Spine!
+  // C. GRAND EGYPTIAN HALF-PIPE + EAST SPINE TRANSFER (X in [-4380..-1110], Z in [-1600..+1600])
+  //    Normalized R=580 -> exact hpTopY = -580, watertight curved end-caps, separate Gap 4301 triggers!
   // --------------------------------------------------------------------------
   const hpR = 580;
   const hpZ0 = -1600, hpZ1 = 1600;
-  const hpXWestToe = -3800, hpXEastToe = -2300;
+  const hpXWestToe = -3800;
   const hpXWestLip = hpXWestToe - hpR; // -4380
-  const hpXEastLip = hpXEastToe + hpR; // -1720
-  const hpTopY = -(hpR * (1 - Math.cos(86 * Math.PI / 180))); // ~ -540
+  const hpXEastLip = -1720;            // Spine coping center
+  const hpXEastLipW = hpXEastLip - 30; // -1750
+  const hpXEastLipE = hpXEastLip + 30; // -1690
+  const hpXEastToe = hpXEastLipW - hpR; // -2330
+  const spineEastToe = hpXEastLipE + hpR; // -1110
+  const hpTopY = -hpR;                 // -580 EXACT!
 
-  // West Half-Pipe Ramp (SF_VERT) + West Observation Deck (X in [-5000..-4380])
+  // West Half-Pipe Ramp (100% solid SF_FLOOR/SF_VERT) + West Observation Deck + Watertight Curved End-Caps!
   const mHpW = new LevelSectorMesh('eg_hp_west');
   addTransitionBands(mHpW, [hpXWestToe, 0, hpZ0], [hpXWestToe, 0, hpZ1], [-1, 0, 0], 0, hpR, 6, T.RAMP, { family: 'sand', boost: 0.08 });
   for (let s = 0; s < 4; s++) {
     const za = lerp(hpZ0, hpZ1, s / 4), zb = lerp(hpZ0, hpZ1, (s + 1) / 4);
     mHpW.addQuad([-5000, hpTopY, za], [hpXWestLip, hpTopY, za], [-5000, hpTopY, zb], [hpXWestLip, hpTopY, zb], T.TRIM, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.14, subdiv: true });
   }
-  mHpW.addQuad([-5000, hpTopY, hpZ0], [hpXWestToe, hpTopY, hpZ0], [-5000, 0, hpZ0], [hpXWestToe, 0, hpZ0], T.HIERO_A, SF_WALL, { outNormal: [0, 0, -1], subdiv: true });
-  mHpW.addQuad([hpXWestToe, hpTopY, hpZ1], [-5000, hpTopY, hpZ1], [hpXWestToe, 0, hpZ1], [-5000, 0, hpZ1], T.HIERO_A, SF_WALL, { outNormal: [0, 0, 1], subdiv: true });
+  // Exact 4-band curved end-caps closing North & South ends flush to transition curve (zero sticking-out walls!)
+  addCurvedEndCap(mHpW, [hpXWestToe, 0, hpZ0], [-1, 0, 0], 0, hpR, 1200, [0, 0, -1], T.HIERO_A, { boost: 0.10 });
+  addCurvedEndCap(mHpW, [hpXWestToe, 0, hpZ1], [-1, 0, 0], 0, hpR, 1200, [0, 0,  1], T.HIERO_A, { boost: 0.10 });
   sectors.push(mHpW.compile());
 
-  // East Half-Pipe Ramp (Gap 4301 West Side: eg_gap_spine_w, SF_VERT_TG = 0x1A22!)
-  const mHpE = new LevelSectorMesh('eg_gap_spine_w');
-  addTransitionBands(mHpE, [hpXEastToe, 0, hpZ1], [hpXEastToe, 0, hpZ0], [1, 0, 0], 0, hpR, 6, T.RAMP, { vertSf: SF_VERT_TG, family: 'sand', boost: 0.10 });
+  // East Half-Pipe Ramp (100% solid SF_FLOOR/SF_VERT!)
+  const mHpE = new LevelSectorMesh('eg_hp_east');
+  addTransitionBands(mHpE, [hpXEastToe, 0, hpZ1], [hpXEastToe, 0, hpZ0], [1, 0, 0], 0, hpR, 6, T.RAMP, { family: 'sand', boost: 0.10 });
   sectors.push(mHpE.compile());
 
-  // East Spine Backside Ramp facing Central Pyramid (Gap 4301 East Side: eg_gap_spine_e, SF_VERT_TG = 0x1A22!)
-  const spineEastToe = hpXEastLip + hpR; // -1140!
-  const mSpineE = new LevelSectorMesh('eg_gap_spine_e');
-  addTransitionBands(mSpineE, [spineEastToe, 0, hpZ0], [spineEastToe, 0, hpZ1], [-1, 0, 0], 0, hpR, 6, T.RAMP, { vertSf: SF_VERT_TG, family: 'sand', boost: 0.10 });
+  // East Spine Backside Ramp facing Central Pyramid (100% solid SF_FLOOR/SF_VERT!) + Flush Coping Crest + Curved End-Caps!
+  const mSpineE = new LevelSectorMesh('eg_spine_east');
+  addTransitionBands(mSpineE, [spineEastToe, 0, hpZ0], [spineEastToe, 0, hpZ1], [-1, 0, 0], 0, hpR, 6, T.RAMP, { family: 'sand', boost: 0.10 });
   for (let s = 0; s < 4; s++) {
     const za = lerp(hpZ0, hpZ1, s / 4), zb = lerp(hpZ0, hpZ1, (s + 1) / 4);
-    mSpineE.addQuad([hpXEastLip - 40, hpTopY, za], [hpXEastLip + 40, hpTopY, za], [hpXEastLip - 40, hpTopY, zb], [hpXEastLip + 40, hpTopY, zb], T.COPING, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.18 });
+    mSpineE.addQuad([hpXEastLipW, hpTopY, za], [hpXEastLipE, hpTopY, za], [hpXEastLipW, hpTopY, zb], [hpXEastLipE, hpTopY, zb], T.COPING, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.18 });
   }
-  // Watertight 4-band curved end-caps matching exact circular-arc Spine profile on North & South ends!
+  // Watertight 4-band curved end-caps matching exact normalized circular-arc Spine profile on North & South ends!
   for (let b = 0; b < 4; b++) {
-    const a0 = (b / 4) * (86 * Math.PI / 180), a1 = ((b + 1) / 4) * (86 * Math.PI / 180);
-    const d0 = hpR * Math.sin(a0), y0 = -(hpR * (1 - Math.cos(a0)));
-    const d1 = hpR * Math.sin(a1), y1 = -(hpR * (1 - Math.cos(a1)));
+    const [d0, h0] = transArcDH(hpR, b / 4);
+    const [d1, h1] = transArcDH(hpR, (b + 1) / 4);
+    const y0 = -h0, y1 = -h1;
     const w0 = hpXEastToe + d0, e0 = spineEastToe - d0;
     const w1 = hpXEastToe + d1, e1 = spineEastToe - d1;
     const vTop = Math.round((1 - (b + 1) / 4) * 63), vBot = Math.round((1 - b / 4) * 63);
@@ -1117,8 +1258,13 @@ function buildEgyptWorld(textures, props) {
   }
   sectors.push(mSpineE.compile());
 
+  // Separate invisible Gap 4301 [TRANSFER HALF EGIPCIO] trigger curtains hovering 16u in front of Spine ramps!
+  addTransitionGapCurtain(sectors, 'eg_gap_spine_w', [hpXEastToe, 0, hpZ1], [hpXEastToe, 0, hpZ0], [ 1, 0, 0], 0, hpR, 4);
+  addTransitionGapCurtain(sectors, 'eg_gap_spine_e', [spineEastToe, 0, hpZ0], [spineEastToe, 0, hpZ1], [-1, 0, 0], 0, hpR, 4);
+
   // --------------------------------------------------------------------------
   // D. CENTRAL STEPPED GOLDEN PYRAMID FUNBOX (X,Z in [-780..+780], plateau [-260..+260] @ Y=-260)
+  //    ALL 4 sloped banks + top plateau are 100% SOLID SF_FLOOR! Separate invisible Gap 4302 panel!
   // --------------------------------------------------------------------------
   const pyrB = 780, pyrT = 260, pyrY = -260;
   const mPyrMain = new LevelSectorMesh('eg_pyramid_main');
@@ -1126,55 +1272,84 @@ function buildEgyptWorld(textures, props) {
   mPyrMain.addQuad([-pyrT, pyrY, pyrT], [pyrT, pyrY, pyrT], [-pyrB, 0, pyrB], [pyrB, 0, pyrB], T.PYRAMID, SF_FLOOR, { outNormal: [0, -0.89, 0.45], family: 'sand', boost: 0.12, subdiv: true });
   mPyrMain.addQuad([pyrT, pyrY, -pyrT], [-pyrT, pyrY, -pyrT], [pyrB, 0, -pyrB], [-pyrB, 0, -pyrB], T.PYRAMID, SF_FLOOR, { outNormal: [0, -0.89, -0.45], family: 'sand', boost: 0.08, subdiv: true });
   mPyrMain.addQuad([-pyrT, pyrY, -pyrT], [-pyrT, pyrY, pyrT], [-pyrB, 0, -pyrB], [-pyrB, 0, pyrB], T.PYRAMID, SF_FLOOR, { outNormal: [-0.45, -0.89, 0], family: 'sand', boost: 0.14, subdiv: true });
+  mPyrMain.addQuad([pyrT, pyrY, pyrT], [pyrT, pyrY, -pyrT], [pyrB, 0, pyrB], [pyrB, 0, -pyrB], T.PYRAMID, SF_FLOOR, { outNormal: [0.45, -0.89, 0], family: 'sand', boost: 0.10, subdiv: true });
   sectors.push(mPyrMain.compile());
 
-  // East bank (+X, faces Empty Pool! Separate trigger mesh for Gap 4302 [GRIND OBELISCO]!)
-  const mPyrEast = new LevelSectorMesh('eg_gap_pyr_e');
-  mPyrEast.addQuad([pyrT, pyrY, pyrT], [pyrT, pyrY, -pyrT], [pyrB, 0, pyrB], [pyrB, 0, -pyrB], T.PYRAMID, SF_TRIG, { outNormal: [0.45, -0.89, 0], family: 'sand', boost: 0.10, subdiv: true });
-  sectors.push(mPyrEast.compile());
+  // Separate invisible Gap 4302 [GRIND DO OBELISCO] trigger panel hovering 16u outward from East bank!
+  {
+    const nx = 0.4472, ny = -0.8944;
+    const ox = nx * 16, oy = ny * 16;
+    const mPyrTrig = new LevelSectorMesh('eg_gap_pyr_e', { collidable: true, isTriggerOnly: true });
+    mPyrTrig.addInvisibleTriggerQuad(
+      [pyrT + ox, pyrY + oy, pyrT], [pyrT + ox, pyrY + oy, -pyrT],
+      [pyrB + ox, 0 + oy, pyrB],    [pyrB + ox, 0 + oy, -pyrB],
+      [nx, ny, 0]
+    );
+    sectors.push(mPyrTrig.compile());
+  }
 
   // --------------------------------------------------------------------------
-  // E. NORTH GREAT SPHINX TEMPLE QUARTER-PIPE WALL & ARCHWAY (Z = -3800..-4360)
+  // E. NORTH GREAT SPHINX TEMPLE QUARTER-PIPE WALL & ARCHWAY (Z = -3800..-4360, exact nQpTopY = -560!)
+  //    Watertight curved end-caps on ALL 4 ends, rear deck flush to Z=-5000, separate Gap 4303 triggers!
   // --------------------------------------------------------------------------
   const nQpR = 560;
-  const nQpTopY = -(nQpR * (1 - Math.cos(86 * Math.PI / 180))); // ~ -521
-  const mNqpW = new LevelSectorMesh('eg_gap_sphinx_w');
-  addTransitionBands(mNqpW, [-800, 0, -3800], [-4350, 0, -3800], [0, 0, -1], 0, nQpR, 6, T.RAMP, { vertSf: SF_VERT_TG, family: 'sand', boost: 0.10 });
+  const nQpTopY = -nQpR; // -560 EXACT!
+  const mNqpW = new LevelSectorMesh('eg_north_qp_w');
+  addTransitionBands(mNqpW, [-800, 0, -3800], [-4350, 0, -3800], [0, 0, -1], 0, nQpR, 6, T.RAMP, { family: 'sand', boost: 0.10 });
   for (let s = 0; s < 4; s++) {
     const xa = lerp(-4350, -800, s / 4), xb = lerp(-4350, -800, (s + 1) / 4);
-    mNqpW.addQuad([xa, nQpTopY, -4980], [xb, nQpTopY, -4980], [xa, nQpTopY, -4360], [xb, nQpTopY, -4360], T.HIERO_B, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.10, subdiv: true });
+    mNqpW.addQuad([xa, nQpTopY, -5000], [xb, nQpTopY, -5000], [xa, nQpTopY, -4360], [xb, nQpTopY, -4360], T.HIERO_B, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.10, subdiv: true });
   }
+  addCurvedEndCap(mNqpW, [-4350, 0, -3800], [0, 0, -1], 0, nQpR, 1200, [-1, 0, 0], T.HIERO_A, { boost: 0.10 });
+  addCurvedEndCap(mNqpW, [ -800, 0, -3800], [0, 0, -1], 0, nQpR, 1200, [ 1, 0, 0], T.HIERO_A, { boost: 0.10 });
   sectors.push(mNqpW.compile());
 
-  const mNqpE = new LevelSectorMesh('eg_gap_sphinx_e');
-  addTransitionBands(mNqpE, [4350, 0, -3800], [800, 0, -3800], [0, 0, -1], 0, nQpR, 6, T.RAMP, { vertSf: SF_VERT_TG, family: 'sand', boost: 0.10 });
+  const mNqpE = new LevelSectorMesh('eg_north_qp_e');
+  addTransitionBands(mNqpE, [4350, 0, -3800], [800, 0, -3800], [0, 0, -1], 0, nQpR, 6, T.RAMP, { family: 'sand', boost: 0.10 });
   for (let s = 0; s < 4; s++) {
     const xa = lerp(800, 4350, s / 4), xb = lerp(800, 4350, (s + 1) / 4);
-    mNqpE.addQuad([xa, nQpTopY, -4980], [xb, nQpTopY, -4980], [xa, nQpTopY, -4360], [xb, nQpTopY, -4360], T.HIERO_B, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.10, subdiv: true });
+    mNqpE.addQuad([xa, nQpTopY, -5000], [xb, nQpTopY, -5000], [xa, nQpTopY, -4360], [xb, nQpTopY, -4360], T.HIERO_B, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.10, subdiv: true });
   }
+  addCurvedEndCap(mNqpE, [  800, 0, -3800], [0, 0, -1], 0, nQpR, 1200, [-1, 0, 0], T.HIERO_A, { boost: 0.10 });
+  addCurvedEndCap(mNqpE, [ 4350, 0, -3800], [0, 0, -1], 0, nQpR, 1200, [ 1, 0, 0], T.HIERO_A, { boost: 0.10 });
   sectors.push(mNqpE.compile());
 
-  // Monumental Central Sphinx Temple Archway (X in [-800..+800], Z in [-4650..-3820], height 1180!)
+  // Separate invisible Gap 4303 [SALTO DA ESFINGE] trigger curtains!
+  addTransitionGapCurtain(sectors, 'eg_gap_sphinx_w', [-800, 0, -3800], [-4350, 0, -3800], [0, 0, -1], 0, nQpR, 4);
+  addTransitionGapCurtain(sectors, 'eg_gap_sphinx_e', [4350, 0, -3800], [  800, 0, -3800], [0, 0, -1], 0, nQpR, 4);
+
+  // Monumental Central Sphinx Temple Archway (100% SOLID piers + solid lintel + underside ceiling + rear seal!)
   const mArch = new LevelSectorMesh('eg_sphinx_arch');
-  addBox(mArch, -800, -920, -4560, -460, 0, -3860, T.HIERO_A, T.TRIM, SF_WALL, SF_FLOOR, 'sand', 0.10);
-  addBox(mArch,  460, -920, -4560,  800, 0, -3860, T.HIERO_A, T.TRIM, SF_WALL, SF_FLOOR, 'sand', 0.10);
-  addBox(mArch, -860, -1180, -4600, 860, -700, -3820, T.CORNICE, T.TRIM, SF_DECO, SF_DECO, 'sand', 0.14);
-  // Crisp front Pharaoh Mural plaque on South face of lintel (Z = -3814)
-  mArch.addQuad([-540, -1150, -3814], [540, -1150, -3814], [-540, -720, -3814], [540, -720, -3814], T.PHARAOH, SF_DECO, { outNormal: [0, 0, 1], family: 'neutral', boost: 0.24, subdiv: true });
-  // Towering Golden Temple Door recessed inside the archway (Z = -4540)
+  // Piers flush from Z=-4560 to Z=-3800 (ZERO 60-unit side gap to North QPs!)
+  addBox(mArch, -800, -920, -4560, -460, 0, -3800, T.HIERO_A, T.TRIM, SF_WALL, SF_FLOOR, 'sand', 0.10);
+  addBox(mArch,  460, -920, -4560,  800, 0, -3800, T.HIERO_A, T.TRIM, SF_WALL, SF_FLOOR, 'sand', 0.10);
+  // Solid Lintel (SF_SOLID sides, SF_FLOOR top + underside ceiling face at Y=-700!)
+  addBox(mArch, -860, -1180, -4600, 860, -700, -3800, T.CORNICE, T.TRIM, SF_SOLID, SF_FLOOR, 'sand', 0.14);
+  mArch.addQuad([-860, -700, -3800], [860, -700, -3800], [-860, -700, -4600], [860, -700, -4600], T.CORNICE, SF_SOLID, { outNormal: [0, 1, 0], family: 'sand', boost: 0.04 });
+  // Crisp front Pharaoh Mural plaque on South face of lintel (Z = -3794, visual-only decal on solid lintel)
+  mArch.addQuad([-540, -1150, -3794], [540, -1150, -3794], [-540, -720, -3794], [540, -720, -3794], T.PHARAOH, SF_DECO, { outNormal: [0, 0, 1], family: 'neutral', boost: 0.24, subdiv: true });
+  // Towering Golden Temple Door recessed inside the archway (Z = -4540, solid SF_WALL!)
   mArch.addQuad([-460, -700, -4540], [460, -700, -4540], [-460, 0, -4540], [460, 0, -4540], T.DOOR, SF_WALL, { outNormal: [0, 0, 1], family: 'sunset', boost: 0.16, subdiv: true });
-  // Carved pedestal resting on West Half-Pipe Deck to hold the second Golden Sphinx Mask!
-  addBox(mArch, -4880, hpTopY - 240, -220, -4480, hpTopY, 220, T.HIERO_A, T.TRIM, SF_DECO, SF_DECO, 'sand', 0.14);
+  // Rear alcove cap sealing Z=-5000..-4560 behind Archway (so skater can NEVER fall behind the temple door!)
+  addBox(mArch, -800, -920, -5000, 800, 0, -4560, T.HIERO_A, T.TRIM, SF_WALL, SF_FLOOR, 'sand', 0.08);
   sectors.push(mArch.compile());
 
+  // Dedicated solid carved pedestal resting on West Half-Pipe Deck (split from eg_sphinx_arch for tight CWorldGrid bbox!)
+  {
+    const mHpPed = new LevelSectorMesh('eg_hp_sphinx_ped');
+    addBox(mHpPed, -4880, hpTopY - 240, -220, -4480, hpTopY, 220, T.HIERO_A, T.TRIM, SF_SOLID, SF_FLOOR, 'sand', 0.14);
+    sectors.push(mHpPed.compile());
+  }
+
   // --------------------------------------------------------------------------
-  // F. SOUTH SPAWN ROLL-IN RAMP (4x2 crisp tile grid!), SUBDIVIDED CARVED GRIND LEDGES & SW/SE CORNER QPs
+  // F. SOUTH SPAWN ROLL-IN RAMP (flush to Z=+5000, zero rear trap, zero degenerate triangles!),
+  //    SUBDIVIDED CARVED GRIND LEDGES & WATERTIGHT SW/SE CORNER QPs
   // --------------------------------------------------------------------------
   const mSpawn = new LevelSectorMesh('eg_spawn_rollin');
   for (let ix = 0; ix < 4; ix++) {
     const xa = lerp(-780, 780, ix / 4), xb = lerp(-780, 780, (ix + 1) / 4);
-    for (let iz = 0; iz < 2; iz++) {
-      const za = lerp(3960, 4860, iz / 2), zb = lerp(3960, 4860, (iz + 1) / 2);
+    for (let iz = 0; iz < 3; iz++) {
+      const za = lerp(3960, 5000, iz / 3), zb = lerp(3960, 5000, (iz + 1) / 3);
       mSpawn.addQuad([xa, -240, za], [xb, -240, za], [xa, -240, zb], [xb, -240, zb], T.PLAZA, SF_FLOOR, { outNormal: [0, -1, 0], boost: 0.12, subdiv: true });
     }
     for (let iz = 0; iz < 2; iz++) {
@@ -1184,15 +1359,20 @@ function buildEgyptWorld(textures, props) {
       mSpawn.addQuad([xa, ya, za], [xb, ya, za], [xa, yb, zb], [xb, yb, zb], T.RAMP, SF_FLOOR, { outNormal: [0, -0.96, -0.27], boost: 0.12, subdiv: true });
     }
   }
-  // Subdivided side retaining cheeks (zero PS1 near-plane clipping!)
+  // Subdivided side retaining cheeks: segment s=0 uses exact non-degenerate addTri (ZERO zero-area faces!)
   for (let s = 0; s < 3; s++) {
     const za = lerp(3100, 3960, s / 3), zb = lerp(3100, 3960, (s + 1) / 3);
     const ya = lerp(0, -240, s / 3), yb = lerp(0, -240, (s + 1) / 3);
-    mSpawn.addQuad([-780, ya, za], [-780, yb, zb], [-780, 0, za], [-780, 0, zb], T.HIERO_A, SF_WALL, { outNormal: [-1, 0, 0] });
-    mSpawn.addQuad([ 780, yb, zb], [ 780, ya, za], [ 780, 0, zb], [ 780, 0, za], T.HIERO_A, SF_WALL, { outNormal: [ 1, 0, 0] });
+    if (s === 0) {
+      mSpawn.addTri([-780, 0, za], [-780, yb, zb], [-780, 0, zb], T.HIERO_A, SF_WALL, { outNormal: [-1, 0, 0], uv: [0, 63, 63, 0, 63, 63] });
+      mSpawn.addTri([ 780, yb, zb], [ 780, 0, za], [ 780, 0, zb], T.HIERO_A, SF_WALL, { outNormal: [ 1, 0, 0], uv: [0, 0, 63, 63, 0, 63] });
+    } else {
+      mSpawn.addQuad([-780, ya, za], [-780, yb, zb], [-780, 0, za], [-780, 0, zb], T.HIERO_A, SF_WALL, { outNormal: [-1, 0, 0] });
+      mSpawn.addQuad([ 780, yb, zb], [ 780, ya, za], [ 780, 0, zb], [ 780, 0, za], T.HIERO_A, SF_WALL, { outNormal: [ 1, 0, 0] });
+    }
   }
-  for (let s = 0; s < 2; s++) {
-    const za = lerp(3960, 4860, s / 2), zb = lerp(3960, 4860, (s + 1) / 2);
+  for (let s = 0; s < 3; s++) {
+    const za = lerp(3960, 5000, s / 3), zb = lerp(3960, 5000, (s + 1) / 3);
     mSpawn.addQuad([-780, -240, za], [-780, -240, zb], [-780, 0, za], [-780, 0, zb], T.HIERO_A, SF_WALL, { outNormal: [-1, 0, 0] });
     mSpawn.addQuad([ 780, -240, zb], [ 780, -240, za], [ 780, 0, zb], [ 780, 0, za], T.HIERO_A, SF_WALL, { outNormal: [ 1, 0, 0] });
   }
@@ -1218,21 +1398,31 @@ function buildEgyptWorld(textures, props) {
   addSegmentedLedge('eg_ledge_se',   940, -130,  1600,  1240, 0,  2900, T.HIERO_B, T.TRIM, 1, 4, 0.10);
   addSegmentedLedge('eg_ledge_ne',  2000, -125, -2640,  3900, 0, -2380, T.HIERO_A, T.TRIM, 6, 1, 0.12);
 
-  // SW & SE South Quarter-Pipes (Z = +3900..+4440, R = 540, SF_VERT -> massive combo rebound!)
+  // SW & SE South Quarter-Pipes (Z = +3900..+4440, exact sQpTopY = -540, rear deck to Z=+5000, watertight curved end-caps!)
   const sQpR = 540;
-  const sQpTopY = -(sQpR * (1 - Math.cos(86 * Math.PI / 180)));
+  const sQpTopY = -sQpR; // -540 EXACT!
   const mSqpW = new LevelSectorMesh('eg_south_qp_w');
   addTransitionBands(mSqpW, [-4300, 0, 3900], [-1080, 0, 3900], [0, 0, 1], 0, sQpR, 5, T.RAMP, { family: 'sand', boost: 0.08 });
-  mSqpW.addQuad([-4300, sQpTopY, 4440], [-1080, sQpTopY, 4440], [-4300, sQpTopY, 4980], [-1080, sQpTopY, 4980], T.HIERO_A, SF_FLOOR, { outNormal: [0, -1, 0], subdiv: true });
+  for (let s = 0; s < 4; s++) {
+    const xa = lerp(-4300, -1080, s / 4), xb = lerp(-4300, -1080, (s + 1) / 4);
+    mSqpW.addQuad([xa, sQpTopY, 4440], [xb, sQpTopY, 4440], [xa, sQpTopY, 5000], [xb, sQpTopY, 5000], T.HIERO_A, SF_FLOOR, { outNormal: [0, -1, 0], subdiv: true });
+  }
+  addCurvedEndCap(mSqpW, [-4300, 0, 3900], [0, 0, 1], 0, sQpR, 1100, [-1, 0, 0], T.HIERO_A, { boost: 0.08 });
+  addCurvedEndCap(mSqpW, [-1080, 0, 3900], [0, 0, 1], 0, sQpR, 1100, [ 1, 0, 0], T.HIERO_A, { boost: 0.08 });
   sectors.push(mSqpW.compile());
 
   const mSqpE = new LevelSectorMesh('eg_south_qp_e');
   addTransitionBands(mSqpE, [1080, 0, 3900], [4300, 0, 3900], [0, 0, 1], 0, sQpR, 5, T.RAMP, { family: 'sand', boost: 0.08 });
-  mSqpE.addQuad([1080, sQpTopY, 4440], [4300, sQpTopY, 4440], [1080, sQpTopY, 4980], [4300, sQpTopY, 4980], T.HIERO_A, SF_FLOOR, { outNormal: [0, -1, 0], subdiv: true });
+  for (let s = 0; s < 4; s++) {
+    const xa = lerp(1080, 4300, s / 4), xb = lerp(1080, 4300, (s + 1) / 4);
+    mSqpE.addQuad([xa, sQpTopY, 4440], [xb, sQpTopY, 4440], [xa, sQpTopY, 5000], [xb, sQpTopY, 5000], T.HIERO_A, SF_FLOOR, { outNormal: [0, -1, 0], subdiv: true });
+  }
+  addCurvedEndCap(mSqpE, [1080, 0, 3900], [0, 0, 1], 0, sQpR, 1100, [-1, 0, 0], T.HIERO_A, { boost: 0.08 });
+  addCurvedEndCap(mSqpE, [4300, 0, 3900], [0, 0, 1], 0, sQpR, 1100, [ 1, 0, 0], T.HIERO_A, { boost: 0.08 });
   sectors.push(mSqpE.compile());
 
   // --------------------------------------------------------------------------
-  // G. VISUAL GOLDEN GRIND RAILS (matching exact Type 10 RailDef coordinates!)
+  // G. VISUAL GOLDEN GRIND RAILS + SOLID OBELISK SUPPORT PILLARS
   // --------------------------------------------------------------------------
   const mRails = new LevelSectorMesh('eg_visual_rails', { collidable: false });
   // 1. Elevated Golden Obelisk Rail (Pyramid East -> Pool West Deck!)
@@ -1240,20 +1430,26 @@ function buildEgyptWorld(textures, props) {
   // 2. Twin Pyramid Spine Rails (West & East edges of plateau)
   addVisualRailBar(mRails, [[-260, -16, 740], [-260, -272, 260], [-260, -272, -260], [-260, -16, -740]], 12, 18);
   addVisualRailBar(mRails, [[ 260, -16, 740], [ 260, -272, 260], [ 260, -272, -260], [ 260, -16, -740]], 12, 18);
-  // 3. Support gold pillars under Obelisk Rail
-  addBox(mRails,  890, -206, -30,  950, 0, 30, T.PILLAR, T.TRIM, SF_DECO, SF_DECO, 'sunset', 0.14);
-  addBox(mRails, 1530, -142, -30, 1590, 0, 30, T.PILLAR, T.TRIM, SF_DECO, SF_DECO, 'sunset', 0.14);
-  // 4. Pool Rim Golden Coping Rail visual accents (4 straight segments)
+  // 3. Pool Rim Golden Coping Rail visual accents (4 straight segments)
   addVisualRailBar(mRails, [[pX0, -6, pInZ0], [pX0, -6, pInZ1]], 12, 14);
   addVisualRailBar(mRails, [[pX1, -6, pInZ0], [pX1, -6, pInZ1]], 12, 14);
   addVisualRailBar(mRails, [[pInX0, -6, pZ0], [pInX1, -6, pZ0]], 12, 14);
   addVisualRailBar(mRails, [[pInX0, -6, pZ1], [pInX1, -6, pZ1]], 12, 14);
   sectors.push(mRails.compile());
 
+  // Solid collidable golden support pillars under Obelisk Rail (100% solid SF_SOLID + SF_FLOOR!)
+  {
+    const mObPil = new LevelSectorMesh('eg_obelisk_pillars');
+    addBox(mObPil,  890, -206, -34,  950, 0, 34, T.PILLAR, T.TRIM, SF_SOLID, SF_FLOOR, 'sunset', 0.14);
+    addBox(mObPil, 1530, -142, -34, 1590, 0, 34, T.PILLAR, T.TRIM, SF_SOLID, SF_FLOOR, 'sunset', 0.14);
+    sectors.push(mObPil.compile());
+  }
+
   // --------------------------------------------------------------------------
-  // H. PERIMETER TEMPLE WALLS (X = +/-5000, Z = +/-5000, H = 540, SF_WALL wallrideable!)
+  // H. PERIMETER TEMPLE WALLS (X = +/-5000, Z = +/-5000, H = 620, SF_WALL wallrideable!)
+  //    + 4 TOWERING INVISIBLE ARENA BOUNDARY WALLS (fl=0x0080, sf=0x0040, Y=-2800..+200 -> ZERO out-of-bounds!)
   // --------------------------------------------------------------------------
-  const wallH = -540;
+  const wallH = -620;
   const addPerimeterWall = (name, pStart, pEnd, outN, segs, texMain) => {
     const m = new LevelSectorMesh(name);
     for (let i = 0; i < segs; i++) {
@@ -1262,7 +1458,7 @@ function buildEgyptWorld(textures, props) {
       const x1 = lerp(pStart[0], pEnd[0], t1), z1 = lerp(pStart[2], pEnd[2], t1);
       const useTex = (i % 4 === 1) ? T.PHARAOH : ((i % 4 === 3) ? T.CORTEX : texMain);
       m.addQuad([x0, wallH, z0], [x1, wallH, z1], [x0, 0, z0], [x1, 0, z1], useTex, SF_WALL, { outNormal: outN, family: (useTex === T.PHARAOH || useTex === T.CORTEX) ? 'neutral' : 'sand', boost: 0.08, subdiv: true });
-      m.addQuad([x0, wallH - 96, z0], [x1, wallH - 96, z1], [x0, wallH, z0], [x1, wallH, z1], T.CORNICE, SF_DECO, { outNormal: outN, family: 'sand', boost: 0.14 });
+      m.addQuad([x0, wallH - 96, z0], [x1, wallH - 96, z1], [x0, wallH, z0], [x1, wallH, z1], T.CORNICE, SF_WALL, { outNormal: outN, family: 'sand', boost: 0.14 });
     }
     sectors.push(m.compile());
   };
@@ -1271,41 +1467,58 @@ function buildEgyptWorld(textures, props) {
   addPerimeterWall('eg_wall_w', [-5000, 0,  5000], [-5000, 0, -5000], [ 1, 0,  0], 12, T.HIERO_A);
   addPerimeterWall('eg_wall_e', [ 5000, 0, -5000], [ 5000, 0,  5000], [-1, 0,  0], 12, T.HIERO_B);
 
+  const addInvisibleBoundary = (name, pStart, pEnd, outN, segs = 6) => {
+    const mb = new LevelSectorMesh(name, { collidable: true, isTriggerOnly: true });
+    for (let i = 0; i < segs; i++) {
+      const t0 = i / segs, t1 = (i + 1) / segs;
+      const x0 = lerp(pStart[0], pEnd[0], t0), z0 = lerp(pStart[2], pEnd[2], t0);
+      const x1 = lerp(pStart[0], pEnd[0], t1), z1 = lerp(pStart[2], pEnd[2], t1);
+      mb.addInvisibleQuad([x0, -2800, z0], [x1, -2800, z1], [x0, 200, z0], [x1, 200, z1], outN, SF_BOUNDARY);
+    }
+    sectors.push(mb.compile());
+  };
+  addInvisibleBoundary('eg_bounds_n', [-4992, 0, -4992], [ 4992, 0, -4992], [ 0, 0,  1]);
+  addInvisibleBoundary('eg_bounds_s', [ 4992, 0,  4992], [-4992, 0,  4992], [ 0, 0, -1]);
+  addInvisibleBoundary('eg_bounds_w', [-4992, 0,  4992], [-4992, 0, -4992], [ 1, 0,  0]);
+  addInvisibleBoundary('eg_bounds_e', [ 4992, 0, -4992], [ 4992, 0,  4992], [-1, 0,  0]);
+
   // --------------------------------------------------------------------------
-  // I. REAL EXTRACTED CRASH 3 EGYPT 3D LANDMARKS (Monumental Scale, Zero-Snag SF_DECO!)
+  // I. REAL EXTRACTED CRASH 3 EGYPT 3D LANDMARKS (Visual Mesh + Tight Oriented Solid Collision Hull!)
+  //    EVERY SINGLE ONE of the 19 props has a dedicated CWorldGrid-registered solid hull -> ZERO pass-through!
   // --------------------------------------------------------------------------
   // 1. Giant Golden Pharaoh / Sphinx Masks crowning North Temple Archway & West Half-Pipe Pedestal!
-  addCrash3PropSector(sectors, 'eg_prop_sphinx_arch', props.SwHiG.obj, props.SwHiG.texIdx,     0, -1180, -4180, 620, 0, SF_DECO, 'neutral', 0.24);
-  addCrash3PropSector(sectors, 'eg_prop_sphinx_hp',   props.SwHiG.obj, props.SwHiG.texIdx, -4680, hpTopY - 240, 0, 440, -Math.PI * 0.5, SF_DECO, 'neutral', 0.22);
+  addCrash3PropSector(sectors, 'eg_prop_sphinx_arch', props.SwHiG.obj, props.SwHiG.texIdx,     0, -1180, -4180, 620, 0, SF_DECO, 'neutral', 0.24, { insetXZ: 0.86 });
+  addCrash3PropSector(sectors, 'eg_prop_sphinx_hp',   props.SwHiG.obj, props.SwHiG.texIdx, -4680, hpTopY - 240, 0, 440, -Math.PI * 0.5, SF_DECO, 'neutral', 0.22, { insetXZ: 0.86 });
 
   // 2. 4x Standing Golden Pharaoh Sarcophagi (Sa1iG) — facing INWARD toward Half-Pipe & Temple Plaza!
-  addCrash3PropSector(sectors, 'eg_prop_sarc_1', props.Sa1iG.obj, props.Sa1iG.texIdx, -4680, hpTopY, -980, 480, -Math.PI * 0.5, SF_DECO, 'neutral', 0.22);
-  addCrash3PropSector(sectors, 'eg_prop_sarc_2', props.Sa1iG.obj, props.Sa1iG.texIdx, -4680, hpTopY,  980, 480, -Math.PI * 0.5, SF_DECO, 'neutral', 0.22);
-  addCrash3PropSector(sectors, 'eg_prop_sarc_3', props.Sa1iG.obj, props.Sa1iG.texIdx, -1180, 0, -3420, 500, 0, SF_DECO, 'neutral', 0.22);
-  addCrash3PropSector(sectors, 'eg_prop_sarc_4', props.Sa1iG.obj, props.Sa1iG.texIdx,  1180, 0, -3420, 500, 0, SF_DECO, 'neutral', 0.22);
+  addCrash3PropSector(sectors, 'eg_prop_sarc_1', props.Sa1iG.obj, props.Sa1iG.texIdx, -4680, hpTopY, -980, 480, -Math.PI * 0.5, SF_DECO, 'neutral', 0.22, { insetXZ: 0.92 });
+  addCrash3PropSector(sectors, 'eg_prop_sarc_2', props.Sa1iG.obj, props.Sa1iG.texIdx, -4680, hpTopY,  980, 480, -Math.PI * 0.5, SF_DECO, 'neutral', 0.22, { insetXZ: 0.92 });
+  addCrash3PropSector(sectors, 'eg_prop_sarc_3', props.Sa1iG.obj, props.Sa1iG.texIdx, -1180, 0, -3420, 500, 0, SF_DECO, 'neutral', 0.22, { insetXZ: 0.92 });
+  addCrash3PropSector(sectors, 'eg_prop_sarc_4', props.Sa1iG.obj, props.Sa1iG.texIdx,  1180, 0, -3420, 500, 0, SF_DECO, 'neutral', 0.22, { insetXZ: 0.92 });
 
   // 3. 4x Lotus Pillars (Pl2iG) framing the Great Sphinx Temple Archway & Plaza!
-  addCrash3PropSector(sectors, 'eg_prop_pil_1', props.Pl2iG.obj, props.Pl2iG.texIdx,  -720, 0, -3640, 680, 0, SF_DECO, 'neutral', 0.16);
-  addCrash3PropSector(sectors, 'eg_prop_pil_2', props.Pl2iG.obj, props.Pl2iG.texIdx,   720, 0, -3640, 680, 0, SF_DECO, 'neutral', 0.16);
-  addCrash3PropSector(sectors, 'eg_prop_pil_3', props.Pl2iG.obj, props.Pl2iG.texIdx, -1880, 0, -2360, 600, 0, SF_DECO, 'neutral', 0.16);
-  addCrash3PropSector(sectors, 'eg_prop_pil_4', props.Pl2iG.obj, props.Pl2iG.texIdx,  4560, 0, -1720, 600, 0, SF_DECO, 'neutral', 0.16);
+  addCrash3PropSector(sectors, 'eg_prop_pil_1', props.Pl2iG.obj, props.Pl2iG.texIdx,  -740, 0, -3600, 680, 0, SF_DECO, 'neutral', 0.16, { insetXZ: 0.72, yBandMax: 420 });
+  addCrash3PropSector(sectors, 'eg_prop_pil_2', props.Pl2iG.obj, props.Pl2iG.texIdx,   740, 0, -3600, 680, 0, SF_DECO, 'neutral', 0.16, { insetXZ: 0.72, yBandMax: 420 });
+  addCrash3PropSector(sectors, 'eg_prop_pil_3', props.Pl2iG.obj, props.Pl2iG.texIdx, -1880, 0, -2360, 600, 0, SF_DECO, 'neutral', 0.16, { insetXZ: 0.74, yBandMax: 380 });
+  addCrash3PropSector(sectors, 'eg_prop_pil_4', props.Pl2iG.obj, props.Pl2iG.texIdx,  4560, 0, -1720, 600, 0, SF_DECO, 'neutral', 0.16, { insetXZ: 0.74, yBandMax: 380 });
 
   // 4. 2x Egyptian Shield Guards (sg1mG) flanking the South Spawn Roll-In Ramp!
-  addCrash3PropSector(sectors, 'eg_prop_guard_l', props.sg1mG.obj, props.sg1mG.texIdx, -980, 0, 3550, 440,  Math.PI * 0.25, SF_DECO, 'neutral', 0.20);
-  addCrash3PropSector(sectors, 'eg_prop_guard_r', props.sg1mG.obj, props.sg1mG.texIdx,  980, 0, 3550, 440, -Math.PI * 0.25, SF_DECO, 'neutral', 0.20);
+  addCrash3PropSector(sectors, 'eg_prop_guard_l', props.sg1mG.obj, props.sg1mG.texIdx, -980, 0, 3550, 440,  Math.PI * 0.25, SF_DECO, 'neutral', 0.20, { insetXZ: 0.90 });
+  addCrash3PropSector(sectors, 'eg_prop_guard_r', props.sg1mG.obj, props.sg1mG.texIdx,  980, 0, 3550, 440, -Math.PI * 0.25, SF_DECO, 'neutral', 0.20, { insetXZ: 0.90 });
 
   // 5. 2x Egyptian Mummies (Mu1iG) watching over the Empty Pharaoh Swimming Pool!
-  addCrash3PropSector(sectors, 'eg_prop_mummy_1', props.Mu1iG.obj, props.Mu1iG.texIdx, 2500, 0, -1620, 420, 0, SF_DECO, 'neutral', 0.22);
-  addCrash3PropSector(sectors, 'eg_prop_mummy_2', props.Mu1iG.obj, props.Mu1iG.texIdx, 3400, 0, -1620, 420, 0, SF_DECO, 'neutral', 0.22);
+  addCrash3PropSector(sectors, 'eg_prop_mummy_1', props.Mu1iG.obj, props.Mu1iG.texIdx, 2500, 0, -1620, 420, 0, SF_DECO, 'neutral', 0.22, { insetXZ: 0.85 });
+  addCrash3PropSector(sectors, 'eg_prop_mummy_2', props.Mu1iG.obj, props.Mu1iG.texIdx, 3400, 0, -1620, 420, 0, SF_DECO, 'neutral', 0.22, { insetXZ: 0.85 });
 
-  // 6. 2x Coiled Cobras (CbriG) guarding the Central Stepped Pyramid (seated flush on sandstone!)
-  addCrash3PropSector(sectors, 'eg_prop_cobra_1', props.CbriG.obj, props.CbriG.texIdx, -820, 18,  940, 270, -Math.PI * 0.15, SF_DECO, 'neutral', 0.22);
-  addCrash3PropSector(sectors, 'eg_prop_cobra_2', props.CbriG.obj, props.CbriG.texIdx,  840, 18, -900, 270,  Math.PI * 0.85, SF_DECO, 'neutral', 0.22);
+  // 6. 2x Coiled Cobras (CbriG) guarding the Central Stepped Pyramid (positioned 100% clear of Pyramid corners!)
+  addCrash3PropSector(sectors, 'eg_prop_cobra_1', props.CbriG.obj, props.CbriG.texIdx, -1060, 18,  1080, 270, -Math.PI * 0.15, SF_DECO, 'neutral', 0.22, { insetXZ: 0.82, hullHeight: 240 });
+  addCrash3PropSector(sectors, 'eg_prop_cobra_2', props.CbriG.obj, props.CbriG.texIdx,  1060, 18, -1080, 270,  Math.PI * 0.85, SF_DECO, 'neutral', 0.22, { insetXZ: 0.82, hullHeight: 240 });
 
-  // 7. Real Crash 3 Ankh Platform (Pl3iG) inlaid on Central Pyramid Plateau + 2 Octagonal Hieroglyph Pedestals (El2iG)
-  addCrash3PropSector(sectors, 'eg_prop_ankh_top', props.Pl3iG.obj, props.Pl3iG.texIdx,     0, pyrY + 10, 0, 48, 0, SF_DECO, 'neutral', 0.20);
-  addCrash3PropSector(sectors, 'eg_prop_ped_1',    props.El2iG.obj, props.El2iG.texIdx,  2950, 0,  1720, 130, 0, SF_DECO, 'neutral', 0.16);
-  addCrash3PropSector(sectors, 'eg_prop_ped_2',    props.El2iG.obj, props.El2iG.texIdx, -3050, 0, -2300, 130, 0, SF_DECO, 'neutral', 0.16);
+  // 7. Real Crash 3 Ankh Platform (Pl3iG) flush on Central Pyramid Plateau (top @ Y=-280 -> Vase #2 sits cleanly on top!)
+  //    + 2 Octagonal Hieroglyph Pedestals (El2iG) with skatable SF_FLOOR tops!
+  addCrash3PropSector(sectors, 'eg_prop_ankh_top', props.Pl3iG.obj, props.Pl3iG.texIdx,     0, pyrY, 0, 20, 0, SF_DECO, 'neutral', 0.20, { insetXZ: 0.94, hullHeight: 20 });
+  addCrash3PropSector(sectors, 'eg_prop_ped_1',    props.El2iG.obj, props.El2iG.texIdx,  2950, 0,  1720, 130, 0, SF_DECO, 'neutral', 0.16, { insetXZ: 0.92 });
+  addCrash3PropSector(sectors, 'eg_prop_ped_2',    props.El2iG.obj, props.El2iG.texIdx, -3050, 0, -2300, 130, 0, SF_DECO, 'neutral', 0.16, { insetXZ: 0.92 });
 
   // --------------------------------------------------------------------------
   // J. 5 INVISIBLE GOAL-4 VASE SMASH TRIGGER BOXES (fl=0x0080, sf=0x0002, matching skhan.psx #102!)
@@ -1313,7 +1526,7 @@ function buildEgyptWorld(textures, props) {
   const VASE_POSITIONS = [
     [ 1090, -130,  2250], // Vase #0: Right on South-East Carved Ledge (visible ahead from Spawn!)
     [-1190, -130,  2250], // Vase #1: On South-West Carved Ledge
-    [    0, -260,     0], // Vase #2: Peak of Central Stepped Pyramid!
+    [    0, -280,     0], // Vase #2: Seated cleanly atop Central Stepped Pyramid Ankh!
     [ 2950, -125, -2510], // Vase #3: North-East Plaza Ledge above Empty Pool!
     [-3050,    0, -1960], // Vase #4: North exit of Grand Egyptian Half-Pipe!
   ];
@@ -1817,10 +2030,10 @@ function buildEgyptTrg(worldInfo) {
     }
   };
 
-  // 1. 360-degree Empty Pharaoh Pool Coping Rail (16 smooth points around circular-cornered bowl!)
+  // 1. 360-degree Empty Pharaoh Pool Coping Rail (16 smooth points around normalized circular-cornered bowl!)
   const poolRailPts = [];
   const rimY = -6;
-  const rC = poolR * Math.sin(86 * Math.PI / 180);
+  const rC = poolR;
   // NW corner (PI -> 1.5*PI)
   for (let k = 0; k <= 3; k++) { const a = lerp(Math.PI, Math.PI * 1.5, k / 3); poolRailPts.push([Math.round(pInX0 + Math.cos(a) * rC), rimY, Math.round(pInZ0 + Math.sin(a) * rC)]); }
   // NE corner (1.5*PI -> 2*PI)
@@ -1831,7 +2044,7 @@ function buildEgyptTrg(worldInfo) {
   for (let k = 0; k <= 3; k++) { const a = lerp(Math.PI * 0.5, Math.PI, k / 3); poolRailPts.push([Math.round(pInX0 + Math.cos(a) * rC), rimY, Math.round(pInZ1 + Math.sin(a) * rC)]); }
   addRailChain(poolRailPts, true, 0); // stone pool coping!
 
-  // 2 & 3. Grand Egyptian Half-Pipe West & East Coping Rails
+  // 2 & 3. Grand Egyptian Half-Pipe West & East Coping Rails (synced to exact hpTopY = -580!)
   addRailChain([[hpXWestLip, Math.round(hpTopY) - 6, hpZ0 + 30], [hpXWestLip, Math.round(hpTopY) - 6, hpZ1 - 30]], false, 1);
   addRailChain([[hpXEastLip, Math.round(hpTopY) - 6, hpZ0 + 30], [hpXEastLip, Math.round(hpTopY) - 6, hpZ1 - 30]], false, 1);
 
@@ -1842,7 +2055,7 @@ function buildEgyptTrg(worldInfo) {
   // 6. Elevated Golden Obelisk Rail (Pyramid East -> Pool West Deck!)
   addRailChain([[320, -270, 0], [920, -210, 0], [1560, -145, 0]], false, 1);
 
-  // 7 & 8. North Great Sphinx Temple NW & NE Quarter-Pipe Coping Rails
+  // 7 & 8. North Great Sphinx Temple NW & NE Quarter-Pipe Coping Rails (synced to exact nQpTopY = -560!)
   addRailChain([[-4320, Math.round(nQpTopY) - 6, -4354], [-820, Math.round(nQpTopY) - 6, -4354]], false, 1);
   addRailChain([[  820, Math.round(nQpTopY) - 6, -4354], [4320, Math.round(nQpTopY) - 6, -4354]], false, 1);
 
@@ -1851,7 +2064,7 @@ function buildEgyptTrg(worldInfo) {
   addRailChain([[ 1090, -134, 1610], [ 1090, -134, 2890]], false, 0);
   addRailChain([[ 2020, -129, -2510], [3880, -129, -2510]], false, 0);
 
-  // 11 & 12. SW & SE South Quarter-Pipe Coping Rails
+  // 11 & 12. SW & SE South Quarter-Pipe Coping Rails (synced to exact sQpTopY = -540!)
   addRailChain([[-4280, Math.round(sQpTopY) - 6, 4434], [-1100, Math.round(sQpTopY) - 6, 4434]], false, 1);
   addRailChain([[ 1100, Math.round(sQpTopY) - 6, 4434], [ 4280, Math.round(sQpTopY) - 6, 4434]], false, 1);
 
@@ -1868,20 +2081,20 @@ function buildEgyptTrg(worldInfo) {
 
   // G3: C-R-A-S-H / S-K-A-T-E (verified live order: 4='C'/'S', 5='R'/'K', 6='A'/'A', 15='S'/'T', 10='H'/'E'!)
   addPowerUp( 4,     0, -200,  2250); // 'C' — right down spawn roll-in!
-  addPowerUp( 5,     0, -390,     0); // 'R' — floating high above Central Pyramid plateau!
+  addPowerUp( 5,     0, -410,     0); // 'R' — floating high above Central Pyramid plateau & Vase #2!
   addPowerUp( 6, -3050, -190,     0); // 'A' — center of Grand Egyptian Half-Pipe!
   addPowerUp(15,  2950,  340,     0); // 'S' — floating inside the Empty Pharaoh Swimming Pool!
   addPowerUp(10,     0, -210, -3350); // 'H' — directly in front of the Great Sphinx Temple Archway!
 
   // G8: Secret Power Crystal / Secret Tape (subtype 16 = 0x0010!) — soaring above Half-Pipe Spine!
-  addPowerUp(16, -1720, -780,     0);
+  addPowerUp(16, -1720, -820,     0);
 
   // G5: 5x Real Crash 3 Spinning Emerald-Gold Scarab Beetles (subtype 33 = 0x0021 -> 0x5120A107 in skegyp_o.psx!)
   addPowerUp(33,     0, -145,  2750); // Scarab #1 — directly ahead down Spawn Roll-In on Frame 1!
-  addPowerUp(33, -1720, -640,  -850); // Scarab #2 — North Half-Pipe Spine Lip!
+  addPowerUp(33, -1720, -680,  -850); // Scarab #2 — North Half-Pipe Spine Lip!
   addPowerUp(33,  2950, -145,  1220); // Scarab #3 — South Rim of Empty Pharaoh Pool!
-  addPowerUp(33,  2450, -620, -4220); // Scarab #4 — Above North-East Sphinx Temple Quarter-Pipe!
-  addPowerUp(33, -2450, -620, -4220); // Scarab #5 — Above North-West Sphinx Temple Quarter-Pipe!
+  addPowerUp(33,  2450, -660, -4220); // Scarab #4 — Above North-East Sphinx Temple Quarter-Pipe!
+  addPowerUp(33, -2450, -660, -4220); // Scarab #5 — Above North-West Sphinx Temple Quarter-Pipe!
 
   // 18 Cash Pickups (6x Wumpa $50 [25], 6x Crystal $100 [26], 6x Diamond $250 [24] with unique high-byte cashBit 0..17!)
   const cashSpecs = [
@@ -1892,8 +2105,8 @@ function buildEgyptTrg(worldInfo) {
     [26,  -260, -365,     0], [26,   260, -365,     0], [26,   920, -310,     0],
     [26,  2400,  360,   420], [26,  3500,  360,  -420], [26,  2950, -245, -2510],
     // Clear Gems / Diamonds ($250, sub 24) high on Half-Pipe, Pool Air & North/South QPs
-    [24, -4370, -660,     0], [24, -1720, -660,   850], [24,  4190, -155,     0],
-    [24, -2650, -640, -4220], [24,  2650, -640, -4220], [24, -2650, -620,  4320],
+    [24, -4370, -680,     0], [24, -1720, -680,   850], [24,  4190, -155,     0],
+    [24, -2650, -660, -4220], [24,  2650, -660, -4220], [24, -2650, -640,  4320],
   ];
   cashSpecs.forEach(([sub, x, y, z], bitIdx) => {
     addPowerUp(((bitIdx & 0xFF) << 8) | (sub & 0xFF), x, y, z);
@@ -1962,11 +2175,11 @@ function buildEgyptTrg(worldInfo) {
       }, 2);
     }
   };
-  addBidirectionalGap('eg_gap_pool_w',   'eg_gap_pool_e',   4300); // [PISCINA DO FARAO] (gt=2, G6 Kickflip!)
-  addBidirectionalGap('eg_pool_wall_w',  'eg_pool_wall_e',  4300); // Also trigger pool transfer wall-to-wall!
-  addBidirectionalGap('eg_gap_spine_w',  'eg_gap_spine_e',  4301); // [TRANSFER HALF EGIPCIO] (gt=1, G7!)
-  addBidirectionalGap('eg_gap_pyr_e',    'eg_gap_pool_w',   4302); // [GRIND DO OBELISCO] (gt=1, G7!)
-  addBidirectionalGap('eg_gap_sphinx_w', 'eg_gap_sphinx_e', 4303); // [SALTO DA ESFINGE] (gt=1, G7!)
+  addBidirectionalGap('eg_gap_pool_w',      'eg_gap_pool_e',      4300); // [PISCINA DO FARAO] (gt=2, G6 Kickflip!)
+  addBidirectionalGap('eg_gap_pool_wall_w', 'eg_gap_pool_wall_e', 4300); // Also trigger pool transfer wall-to-wall!
+  addBidirectionalGap('eg_gap_spine_w',     'eg_gap_spine_e',     4301); // [TRANSFER HALF EGIPCIO] (gt=1, G7!)
+  addBidirectionalGap('eg_gap_pyr_e',       'eg_gap_pool_w',      4302); // [GRIND DO OBELISCO] (gt=1, G7!)
+  addBidirectionalGap('eg_gap_sphinx_w',    'eg_gap_sphinx_e',    4303); // [SALTO DA ESFINGE] (gt=1, G7!)
 
   // --- E. FILL RESERVED CORE NODES (#0 Re_Start_Skate, #1 AutoExec, #2 Re_Start_2P, #3 AutoExec2, #4 Startup) ---
   // #4 Startup Type 6 (exact match to skhan_t.trg #238: 0x0086 0x0001 0x0003 0xFFFF -> spawns PowerUps & Vases!)
@@ -2299,15 +2512,48 @@ function buildEgyptLevel() {
       p += len;
     }
     if (!sawRgbs || !sawGrid) throw new Error('Missing RGBs or TAG 0x0A in skegyp.psx!');
-    let totalFaces = 0, vertFaces = 0, trigFaces = 0;
+    let totalFaces = 0, vertFaces = 0, trigFaces = 0, visibleTrigFaces = 0;
+    let zeroAreaFaces = 0, badNormalFaces = 0, propHulls = 0, boundaryWalls = 0;
+    const gridCollidableNames = new Set();
     for (const s of worldInfo.sectors) {
+      if (s.collidable) gridCollidableNames.add(s.name);
+      if (s.name.endsWith('_hull') && s.collidable) propHulls++;
+      if (s.name.startsWith('eg_bounds_') && s.collidable) boundaryWalls++;
       for (const f of s.faces) {
         totalFaces++;
         if (f.sf & 0x0020) vertFaces++;
-        if (f.sf & 0x0002) trigFaces++;
+        if (f.sf & 0x0002) {
+          trigFaces++;
+          if ((f.fl & 0x0080) === 0) visibleTrigFaces++;
+        }
+        // Check exact triangle area and normal polarity (dot(cross(v1-v0, v2-v0), storedNormal) <= -0.95)
+        const v0 = s.worldVerts[f.v[0]], v1 = s.worldVerts[f.v[1]], v2 = s.worldVerts[f.v[2]];
+        const e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        const e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        const cx = e1[1] * e2[2] - e1[2] * e2[1];
+        const cy = e1[2] * e2[0] - e1[0] * e2[2];
+        const cz = e1[0] * e2[1] - e1[1] * e2[0];
+        const cl = Math.hypot(cx, cy, cz);
+        if (cl < 1e-3) {
+          zeroAreaFaces++;
+        } else if (s.collidable && (f.sf & 1) === 0) {
+          const sn = s.norms[f.ni];
+          const sl = Math.hypot(sn[0], sn[1], sn[2]) || 1;
+          const dot = (cx * sn[0] + cy * sn[1] + cz * sn[2]) / (cl * sl);
+          if (dot > -0.95) badNormalFaces++;
+        }
       }
     }
-    console.log(`  [VERIFY] skegyp.psx: ${numObjs} setores, ${totalFaces} poligonos (${vertFaces} VERT 0x0020, ${trigFaces} TRIGGER 0x0002)`);
+    if (visibleTrigFaces > 0) throw new Error(`BUG: ${visibleTrigFaces} visible solid faces still have sf & 0x0002 (pass-through hole!)`);
+    if (zeroAreaFaces > 0) throw new Error(`BUG: ${zeroAreaFaces} zero-area degenerate faces found!`);
+    if (badNormalFaces > 0) throw new Error(`BUG: ${badNormalFaces} collidable faces have misaligned normals (dot > -0.95)!`);
+    if (propHulls !== 19) throw new Error(`BUG: Expected 19 solid prop collision hulls, got ${propHulls}!`);
+    if (boundaryWalls !== 4) throw new Error(`BUG: Expected 4 invisible arena boundary walls, got ${boundaryWalls}!`);
+    for (const reqGap of ['eg_gap_pool_w','eg_gap_pool_e','eg_gap_pool_wall_w','eg_gap_pool_wall_e','eg_gap_spine_w','eg_gap_spine_e','eg_gap_pyr_e','eg_gap_sphinx_w','eg_gap_sphinx_e']) {
+      if (!gridCollidableNames.has(reqGap)) throw new Error(`BUG: Missing collidable invisible gap trigger sector ${reqGap}!`);
+    }
+    console.log(`  [VERIFY] skegyp.psx: ${numObjs} setores, ${totalFaces} poligonos (${vertFaces} VERT 0x0020, ${trigFaces} TRIGGER invisiveis, 0 visiveis pass-through, 0 degenerados, 0 normais desalinhadas)`);
+    console.log(`  [VERIFY] Colisoes blindadas: ${propHulls}/19 hulls solidos de props Crash 3 + ${boundaryWalls}/4 barreiras perimetrais + 9 triggers de Gap + 5 triggers de Vaso`);
     const parsedObj = psxLib.parsePsxStructure(objBuf);
     if (parsedObj.numMeshes !== 2 || parsedObj.meshHashes[0] !== 0x5120A107 || parsedObj.textures.length !== 2) {
       throw new Error('skegyp_o.psx self-verify failed!');

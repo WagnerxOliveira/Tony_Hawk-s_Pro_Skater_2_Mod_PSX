@@ -709,16 +709,17 @@ function main() {
   console.log(`  [+] c_cabl1.psx (${cableBuf.length} B, 11-texture THPS1 SF Cable Car)`);
 
   // 4B. Build & include Brand-New Crash 3 Egypt Level ("Tomb Time", Level ID 20, Slot 19 right before Create-A-Park!)
+  //     Pack in EXACT engine load order (_t.trg -> _l.psx -> _o.psx -> .psx -> _2.psx) -> ZERO backward seeks in THPS1.WAD!
   console.log('');
   const egyptRes = buildEgyptLevel();
   addFile('t1rend09.bmp', egyptRes.rendBmp);
   addFile('t1levl09.bmp', egyptRes.levlBmp);
-  addFile('skegyp.psx',   egyptRes.levelBuf);
-  addFile('skegyp_2.psx', egyptRes.levelBuf);
+  addFile('SkEgyp_T.trg', egyptRes.trgBuf);
   addFile('skegyp_l.psx', egyptRes.texBuf);
   addFile('skegyp_o.psx', egyptRes.objBuf);
-  addFile('SkEgyp_T.trg', egyptRes.trgBuf);
-  console.log(`  [EGYPT-20]   +7 ativos ineditos de Tomb Time (Egito - Crash 3) integrados (2 BMPs in-place + 5 em THPS1.WAD)!`);
+  addFile('skegyp.psx',   egyptRes.levelBuf);
+  addFile('skegyp_2.psx', egyptRes.levelBuf);
+  console.log(`  [EGYPT-20]   +7 ativos ineditos de Tomb Time (Egito - Crash 3) integrados (2 BMPs in-place + 5 em ordem linear no THPS1.WAD)!`);
 
   // 5. Deduplicate against originals_backup/CD.WAD (Neversoft left 43 byte-identical THPS1 .PSX files inside THPS2!)
   const origCdWad = fs.readFileSync(path.join(ROOT, 'originals_backup', 'CD.WAD'));
@@ -866,23 +867,97 @@ function main() {
     writeOff += it.sectors * SECTOR_SIZE;
   }
 
-  fs.writeFileSync(path.join(ROOT, 'CD.WAD'), curCdWad);
-  fs.writeFileSync(path.join(ROOT, 'CD.HED'), curCdHed);
-  console.log(`  [FAST-CDWAD] 20 BMPs LevelSel (9 THPS1 + 1 Egito Crash 3) gravados in-place em CD.WAD[573] (50/61s) & CD.WAD[578] (60/61s) (0 shift!).`);
-  console.log(`  [FAST-CDWAD] ${cdWadZoneMeta.length} arquivos THPS1 (9 TRGs + 4 PSXs + 6 sk*_o.psx esculpidos) gravados na zona fechada CD.WAD[1127..1185] (${packedSec}/${zoneTotalSec} setores, delta=${packedSec - zoneTotalSec}, 0 shift em todos 1.472 itens THPS2!).`);
-
-  // Append all binary Crash Bandicoot (Slot 20) assets from build/crash_assets/ into THPS1.WAD (0 CD.WAD shift!)
+  // 6C. ZERO-MINUTE-71-SEEK IN-PLACE PACKING OF ALL 26 HOT CRASH B. MENU/SHOP/GAMEPLAY ASSETS!
+  //     Uses ONLY proven 100%-dead .PRE-shadowed CD.WAD slots (0 shift on all 1,472 THPS2 entries, 0 CD.HED changes!):
+  //       - [460]      s2bgd1.bmp         (sec 4499..4559, 61s, 100% in player.pre)   -> crash.psh + crash.psx + s2face20 + crash_it + cr_ware (61/61s)
+  //       - [475]      s2win3.bmp         (sec 4582..4590,  9s, 100% in player.pre)   -> crashb.psh + crash_L.psh + crashb_L.psh + s2gCR01c..03c (9/9s)
+  //       - [568]      control.psx        (sec 7361..7393, 33s, 100% in options.pre)  -> crashb.psx + s2gCR04c (32/33s)
+  //       - [570..571] s2bgd2 + s2wheel   (sec 7406..7498, 93s, 100% in mainmenu.pre) -> cr_han_o + s2gCR05c..08c + s2dCR01c..02c (93/93s)
+  //       - [573..574] s2bgd3 tail + globe(sec 7550..7582, 33s, 100% in levelsel.pre) -> s2dCR03c..05c (27/33s; 7500..7549 = t1rend00..09!)
+  //       - [579..580] barrel + truck     (sec 7655..7714, 60s, 100% in equipsel.pre) -> s2dCR06c..08c + cr_schl + cr_sf (53/60s)
   const crashAssetsDir = path.join(ROOT, 'build', 'crash_assets');
+  const cdWadCrashMeta = [];
+  const inPlaceCrashSet = new Set();
   if (fs.existsSync(crashAssetsDir)) {
+    const CRASH_INPLACE_SLOTS = [
+      {
+        label: 'CD.WAD[460] (s2bgd1/player.pre)',
+        hedIndices: [460], startSec: 4499, maxSec: 61,
+        files: ['crash.psh', 'crash.psx', 's2face20.bmp', 'crash_it.psx', 'cr_ware.psx'],
+      },
+      {
+        label: 'CD.WAD[475] (s2win3/player.pre)',
+        hedIndices: [475], startSec: 4582, maxSec: 9,
+        files: ['crashb.psh', 'crash_L.psh', 'crashb_L.psh', 's2gCR01c.bmp', 's2gCR02c.bmp', 's2gCR03c.bmp'],
+      },
+      {
+        label: 'CD.WAD[568] (control/options.pre)',
+        hedIndices: [568], startSec: 7361, maxSec: 33,
+        files: ['crashb.psx', 's2gCR04c.bmp'],
+      },
+      {
+        label: 'CD.WAD[570..571] (s2bgd2+s2wheel/mainmenu.pre)',
+        hedIndices: [570, 571], startSec: 7406, maxSec: 93,
+        files: ['cr_han_o.psx', 's2gCR05c.bmp', 's2gCR06c.bmp', 's2gCR07c.bmp', 's2gCR08c.bmp', 's2dCR01c.bmp', 's2dCR02c.bmp'],
+      },
+      {
+        label: 'CD.WAD[573..574] (s2bgd3-tail+globe/levelsel.pre)',
+        hedIndices: [573, 574], startSec: 7550, maxSec: 33,
+        files: ['s2dCR03c.bmp', 's2dCR04c.bmp', 's2dCR05c.bmp'],
+      },
+      {
+        label: 'CD.WAD[579..580] (barrel+truck/equipsel.pre)',
+        hedIndices: [579, 580], startSec: 7655, maxSec: 60,
+        files: ['s2dCR06c.bmp', 's2dCR07c.bmp', 's2dCR08c.bmp', 'cr_schl.psx', 'cr_sf.psx'],
+      },
+    ];
+    let totalCrashInPlaceSec = 0;
+    for (const slot of CRASH_INPLACE_SLOTS) {
+      const firstIdx = slot.hedIndices[0];
+      const lastIdx  = slot.hedIndices[slot.hedIndices.length - 1];
+      const rawStartSec = origCdHed.readUInt32LE(firstIdx * 12 + 4) >> 11;
+      const rawEndSec   = origCdHed.readUInt32LE((lastIdx + 1) * 12 + 4) >> 11;
+      if (slot.startSec < rawStartSec || slot.startSec + slot.maxSec > rawEndSec) {
+        throw new Error(`Crash in-place slot out of bounds for ${slot.label}: [${slot.startSec}..${slot.startSec + slot.maxSec}) vs [${rawStartSec}..${rawEndSec})`);
+      }
+      curCdWad.fill(0, slot.startSec * SECTOR_SIZE, (slot.startSec + slot.maxSec) * SECTOR_SIZE);
+      let curSec = slot.startSec;
+      for (const fname of slot.files) {
+        const buf = fs.readFileSync(path.join(crashAssetsDir, fname));
+        const sec = Math.max(1, Math.ceil(buf.length / SECTOR_SIZE));
+        if (curSec + sec > slot.startSec + slot.maxSec) {
+          throw new Error(`Crash in-place overflow in ${slot.label} on ${fname}: ${curSec + sec} > ${slot.startSec + slot.maxSec}`);
+        }
+        const cdWadOff = curSec * SECTOR_SIZE;
+        buf.copy(curCdWad, cdWadOff);
+        const h = nsHash(fname);
+        cdWadCrashMeta.push({
+          name: fname, hash: h, hashHex: '0x' + h.toString(16).padStart(8, '0'),
+          slotLabel: slot.label, hedIndices: slot.hedIndices,
+          cdWadOff, sec: curSec, lba: 455 + curSec, size: buf.length, sectors: sec, sha256: sha256(buf),
+        });
+        inPlaceCrashSet.add(fname.toLowerCase());
+        curSec += sec;
+        totalCrashInPlaceSec += sec;
+      }
+    }
+    console.log(`  [FAST-CRASH] ${cdWadCrashMeta.length} ativos quentes de Crash B. gravados in-place em 6 slots .PRE mortos de CD.WAD (${totalCrashInPlaceSec}/289s, 0 shift, ZERO seek Minuto 71 no PlaySel/LevelSel/Shop/Hangar!)`);
+
+    // Only the remaining non-hot Crash assets (crash_L, crashb_L, cr_mall, cr_down, cr_jam) go into THPS1.WAD!
     const crashFiles = fs.readdirSync(crashAssetsDir)
-      .filter(f => /\.(psx|psh|bmp)$/i.test(f))
+      .filter(f => /\.(psx|psh|bmp)$/i.test(f) && !inPlaceCrashSet.has(f.toLowerCase()))
       .sort();
     for (const f of crashFiles) {
       const buf = fs.readFileSync(path.join(crashAssetsDir, f));
       remainingForThps1Wad.push({ name: f, hash: nsHash(f), buf });
     }
-    console.log(`  [CRASH-WAD]  +${crashFiles.length} ativos exclusivos de Crash B. (Slot 20) anexados em THPS1.WAD!`);
+    console.log(`  [CRASH-WAD]  +${crashFiles.length} ativos restantes de Crash B. anexados em THPS1.WAD.`);
   }
+
+  fs.writeFileSync(path.join(ROOT, 'CD.WAD'), curCdWad);
+  fs.writeFileSync(path.join(ROOT, 'CD.HED'), curCdHed);
+  console.log(`  [FAST-CDWAD] 20 BMPs LevelSel (9 THPS1 + 1 Egito Crash 3) gravados in-place em CD.WAD[573] (50/61s) & CD.WAD[578] (60/61s) (0 shift!).`);
+  console.log(`  [FAST-CDWAD] ${cdWadZoneMeta.length} arquivos THPS1 (9 TRGs + 4 PSXs + 6 sk*_o.psx esculpidos) gravados na zona fechada CD.WAD[1127..1185] (${packedSec}/${zoneTotalSec} setores, delta=${packedSec - zoneTotalSec}, 0 shift em todos 1.472 itens THPS2!).`);
   console.log(`  [PACK]       ${remainingForThps1Wad.length} arquivos exclusivos empacotados em THPS1.WAD.`);
 
   const wadChunks = [];
@@ -927,6 +1002,7 @@ function main() {
       zoneUsedSectors: packedSec,
       bmps: cdWadBmpsMeta,
       levelFiles: cdWadZoneMeta,
+      crashFiles: cdWadCrashMeta,
     },
     summary: {
       levels: THPS1_LEVELS.length,
@@ -943,7 +1019,7 @@ function main() {
 
   console.log(`\n=== CONCLUIDO ===`);
   console.log(`  THPS1.WAD : ${OUT_WAD}`);
-  console.log(`  Arquivos  : ${manifestEntries.length} em THPS1.WAD + ${cdWadBmpsMeta.length + cdWadZoneMeta.length} in-place em CD.WAD`);
+  console.log(`  Arquivos  : ${manifestEntries.length} em THPS1.WAD + ${cdWadBmpsMeta.length + cdWadZoneMeta.length + cdWadCrashMeta.length} in-place em CD.WAD`);
   console.log(`  Tamanho   : ${(wadBuf.length / 1048576).toFixed(2)} MB (${wadBuf.length / SECTOR_SIZE} setores)`);
   console.log(`  Trilhos   : ${totalRails} convertidos (100% verificados)`);
   console.log(`  Moedas    : ${totalCoins} -> $100 Cash ($${totalCoins * 100} total para comprar Stats!)`);

@@ -9,10 +9,10 @@
 
 | Categoria | Quantidade | Resolvidos por Nome | Tamanho Total | Descrição |
 | :--- | :-: | :-: | :---: | :--- |
-| **`BMP`** | 1040 | 793 (76%) | 10.32 MB | Texturas 2D, roupas de skatista, rostos, decks, telas de loading e UI (BMP 4-bit/8-bit indexado) |
-| **`PSX`** | 227 | 146 (64%) | 27.36 MB | Modelos 3D, geometria de fases, skyboxes e texturas VRAM embutidas (magic `04 00 02 00`) |
-| **`PSH`** | 74 | 74 (100%) | 0.12 MB | Headers C em texto plano (`#ifndef ..._PSH`) com hierarquia de ossos/esqueletos |
-| **`DATA`** | 53 | 25 (47%) | 0.56 MB | Fontes (`.fnt`), `tricks.bin`, tabelas de animação e dados binários |
+| **`BMP`** | 1037 | 790 (76%) | 10.11 MB | Texturas 2D, roupas de skatista, rostos, decks, telas de loading e UI (BMP 4-bit/8-bit indexado) |
+| **`PSX`** | 225 | 144 (64%) | 27.32 MB | Modelos 3D, geometria de fases, skyboxes e texturas VRAM embutidas (magic `04 00 02 00`) |
+| **`PSH`** | 76 | 76 (100%) | 0.25 MB | Headers C em texto plano (`#ifndef ..._PSH`) com hierarquia de ossos/esqueletos |
+| **`DATA`** | 56 | 28 (50%) | 0.68 MB | Fontes (`.fnt`), `tricks.bin`, tabelas de animação e dados binários |
 | **`PRK`** | 50 | 50 (100%) | 0.21 MB | 50 parques pré-fabricados do Park Editor (`park0.prk`..`park49.prk`, 2.560 B cada) |
 | **`TRG`** | 25 | 13 (52%) | 0.49 MB | Triggers, spawns, coletáveis, rails e gaps das fases (`_TRG v2.0`) |
 | **`VAB`** | 17 | 17 (100%) | 4.64 MB | Bancos de efeitos sonoros PSX (`pBAV`: header `.VH` + corpo ADPCM `.VB`) |

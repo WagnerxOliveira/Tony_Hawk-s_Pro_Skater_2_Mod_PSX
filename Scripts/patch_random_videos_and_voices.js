@@ -126,9 +126,11 @@ const ADDR = {
   g_SilvioClipIdx:     0x800E33F4, // uint32 runtime round-robin clip index for Silvio Santos (Slot 1)
   g_LulaoClipIdx:      0x800E33F8, // uint32 runtime round-robin clip index for Lulao (Slot 2)
   g_BolsoClipIdx:      0x800E33FC, // uint32 runtime round-robin clip index for Bolsonaro (Slot 3)
-  Hook_BailSfx:        0x800E3400, // Sector 1 +0x400..+0x5FF (512 B: 9 rotating bail screams)
+  Hook_BailSfx:        0x800E3400, // Sector 1 +0x400..+0x53F (320 B: 9 rotating bail screams)
+  Entry_BurstXaResume: 0x800E3540, // Sector 1 +0x540..+0x5FF (192 B: deferred single-resume XA after TURBO_BURST / FastMap!)
   VoiceSelect_Lookup:  0x800E3600, // Sector 1 +0x600..+0x67F (128 B: multi-skater voice dispatcher: Slots 1, 2, 3)
-  VoiceSelect_SeedAll: 0x800E3680, // Sector 1 +0x680..+0x7FF (384 B: PRNG seeder for Slots 1, 2, 3)
+  VoiceSelect_SeedAll: 0x800E3680, // Sector 1 +0x680..+0x6FF (128 B: PRNG seeder for Slots 1, 2, 3)
+  TurboClusterTable:   0x800E3700, // Sector 1 +0x700..+0x7FF (256 B: 34-entry universal menu/skater/level CD-ROM burst table!)
   // Sectors 2..4 of VOICES.DAT (6144 B): Lulao Career Swapper + Cash/EndRun/CarHit/PsxUpload Hooks + 2 KB SPU Ping-Pong Streamer
   LulaoCodeBase:       0x800E3800,
   Entry_LulaoSync:     0x800E3800,
@@ -621,8 +623,51 @@ function assembleBailHookCode() {
   a.bytes(tbl);
 
   const bailUsed = a.pc() - ADDR.Hook_BailSfx;
-  if (bailUsed > 512) throw new Error(`Hook_BailSfx excede 512 B (${bailUsed} B)!`);
-  console.log(`  [ASM] Hook_BailSfx: 0x${ADDR.Hook_BailSfx.toString(16)}..0x${a.pc().toString(16)} (${bailUsed} B / 512 B, livre: ${512 - bailUsed} B)`);
+  if (bailUsed > 320) throw new Error(`Hook_BailSfx excede 320 B (${bailUsed} B)!`);
+  console.log(`  [ASM] Hook_BailSfx: 0x${ADDR.Hook_BailSfx.toString(16)}..0x${a.pc().toString(16)} (${bailUsed} B / 320 B, livre: ${320 - bailUsed} B)`);
+
+  // --------------------------------------------------------------------------
+  // Entry_BurstXaResume() @ 0x800E3540 (192 B slot):
+  //   Deferred single-resume of XA background music on Frame 1 after TURBO_BURST / FastMap!
+  //   Eliminates ALL mid-load XA<->WAD laser ping-pong while resuming music cleanly when idle!
+  // --------------------------------------------------------------------------
+  a.padTo(ADDR.Entry_BurstXaResume);
+  a.label('Entry_BurstXaResume');
+  a.la(R.t0, THPS1_ADDR.g_TurboState);
+  a.lw(R.t1, 20, R.t0);                  // g_BurstXaSaved
+  a.lw(R.t2, 18928, R.gp);               // g_CdState (must be idle == 0)
+  a.beq(R.t1, R.zero, 'bxr_fast_ret');
+  a.lw(R.t3, 18936, R.gp);               // delay slot: g_FileOpen (must be 0 = no active CDWAD file!)
+  a.bne(R.t2, R.zero, 'bxr_fast_ret');
+  a.nop();
+  a.bne(R.t3, R.zero, 'bxr_fast_ret');   // wait until async CDWAD transfer finishes!
+  a.nop();
+  a.sw(R.zero, 20, R.t0);                // clear g_BurstXaSaved
+  a.lw(R.t1, 14704, R.gp);               // xaActive
+  a.lw(R.t2, 14712, R.gp);               // xaPaused
+  a.nop();
+  a.beq(R.t1, R.zero, 'bxr_fast_ret');
+  a.nop();
+  a.beq(R.t2, R.zero, 'bxr_fast_ret');
+  a.nop();
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.jal(SYM.XA_SetMode);
+  a.nop();
+  a.jal(SYM.XA_Pause);
+  a.move(R.a0, R.zero);
+  a.jal(SYM.XA_UpdateVolume);
+  a.nop();
+  a.lw(R.ra, 20, R.sp);
+  a.nop();
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 24);
+  a.label('bxr_fast_ret');
+  a.jr(R.ra);
+  a.nop();
+  const bxrUsed = a.pc() - ADDR.Entry_BurstXaResume;
+  if (bxrUsed > 192) throw new Error(`Entry_BurstXaResume excede 192 B (${bxrUsed} B)!`);
+  console.log(`  [ASM] BurstXaRes:   0x${ADDR.Entry_BurstXaResume.toString(16)}..0x${a.pc().toString(16)} (${bxrUsed} B / 192 B, livre: ${192 - bxrUsed} B)`);
 
   // --------------------------------------------------------------------------
   // VoiceSelect_Lookup(int skaterIdx in $a0) @ 0x800E3600 (leaf function)
@@ -706,8 +751,65 @@ function assembleBailHookCode() {
   a.nop();
 
   const vsUsed = a.pc() - ADDR.VoiceSelect_Lookup;
-  if (vsUsed > 512) throw new Error(`VoiceSelect excede 512 B (${vsUsed} B)!`);
-  console.log(`  [ASM] VoiceSelect:  0x${ADDR.VoiceSelect_Lookup.toString(16)}..0x${a.pc().toString(16)} (${vsUsed} B / 512 B, livre: ${512 - vsUsed} B)`);
+  if (vsUsed > 256) throw new Error(`VoiceSelect excede 256 B (${vsUsed} B)!`);
+  console.log(`  [ASM] VoiceSelect:  0x${ADDR.VoiceSelect_Lookup.toString(16)}..0x${a.pc().toString(16)} (${vsUsed} B / 256 B, livre: ${256 - vsUsed} B)`);
+
+  // --------------------------------------------------------------------------
+  // TurboClusterTable @ 0x800E3700 (256 B: up to 63 x { u16 triggerSec, i8 startDelta, u8 nSec } + 0xFFFF)
+  //   Universal single-read CD-ROM burst cache for ALL 21 skaters & ALL menus (Roda Gigante -> Gameplay)!
+  // --------------------------------------------------------------------------
+  a.padTo(ADDR.TurboClusterTable);
+  const TURBO_CLUSTERS = [
+    // Level Load Core Clusters (ALL 21 skaters, ALL 20 levels — evicted BEFORE skate2.vab so VH header never splits Heap[1] before 605KB sk2anim!)
+    [   0,   0,  67], // s2bgd6 + s2_scrib + s2pressx (3 files in 1 CdRead!)
+    [  61,   0,   6], // s2_scrib + s2pressx (competitions: 2 files in 1 CdRead!)
+    [ 347,   0,  25], // items.psx + bits.psx (2 files in 1 CdRead!)
+    // All 8 Menu Overlays (.bin + .rel in 1 CdRead!)
+    [1047,   0,   9], // mainmenu.bin + .rel (Roda Gigante)
+    [1093,   0,   7], // multisel.bin + .rel
+    [1100,   0,  25], // options.bin + .rel
+    [1872,   0,   7], // carsel.bin + .rel
+    [1955,   0,  10], // statedit.bin + .rel
+    [2239,   0,  15], // tricksel.bin + .rel
+    [2510,   0,  18], // playsel.bin + .rel
+    [2566,   0,  28], // creedit.bin + .rel
+    // PlaySel & LevelSel Shared Menu Asset Clusters
+    [2528,   0,  38], // player2.pre + s2win1 + s2face0 + anims_fe.psx
+    [3463,   0,   8], // s2face14..s2face17 back-to-back on PlaySel entry!
+    [4484,   0,  15], // s2font1..s2tricks
+    [4499,   0,  33], // Crash B. in-place CD.WAD[460]: crash.psh + crash.psx + s2face20.bmp!
+    [4569,   0,  12], // s2win4 + s2medal1..3
+    [4593,   0,   7], // s2icon1..7
+    // All 17 Contiguous Classic Skaters (.psx + .psh in 1 single CdRead -> PlaySel + Scrolling + Level Load!)
+    [3503, -30, 31], // burnq2  (Slot 1: Silvio Santos)
+    [3534, -30, 31], // cab     (Slot 2: Lulao)
+    [3566, -31, 32], // campb2  (Slot 3: Bolsonaro)
+    [3596, -29, 30], // glif2   (Slot 4: Ze Pilintra)
+    [3625, -28, 29], // koston  (Slot 5)
+    [3655, -29, 30], // lasek2  (Slot 6)
+    [3684, -28, 29], // mullen  (Slot 7)
+    [3716, -31, 32], // muska2  (Slot 8)
+    [3745, -28, 29], // rowley2 (Slot 10)
+    [3773, -27, 28], // rynld2  (Slot 9)
+    [3774,   0, 29], // steam2  (Slot 11: forward .psh + .psx)
+    [3832, -29, 30], // thomas2 (Slot 12)
+    [3860, -27, 28], // secret1 (Slot 17: Officer Dick)
+    [3922, -32, 33], // secret2 (Slot 18: Spider-Man)
+    [3984, -28, 29], // secret3 (Slot 19: Private Carrera)
+    [4040, -27, 28], // secret3c
+    [4100, -30, 31], // secret4
+  ];
+  const ctBuf = Buffer.alloc((TURBO_CLUSTERS.length + 1) * 4, 0);
+  for (let i = 0; i < TURBO_CLUSTERS.length; i++) {
+    const [trig, delta, nSec] = TURBO_CLUSTERS[i];
+    ctBuf.writeUInt16LE(trig & 0xFFFF, i * 4 + 0);
+    ctBuf.writeInt8(delta,             i * 4 + 2);
+    ctBuf.writeUInt8(nSec & 0xFF,      i * 4 + 3);
+  }
+  ctBuf.writeUInt16LE(0xFFFF, TURBO_CLUSTERS.length * 4);
+  if (ctBuf.length > 256) throw new Error(`TurboClusterTable exceeds 256 B (${ctBuf.length} B)!`);
+  a.bytes(ctBuf);
+  console.log(`  [DATA] TurboCluster: 0x${ADDR.TurboClusterTable.toString(16)}..0x${a.pc().toString(16)} (${TURBO_CLUSTERS.length} clusters, ${ctBuf.length}/256 B)`);
 
   a.padTo(ADDR.Hook_BailSfx + 1024);
   return a.emit();
@@ -2016,12 +2118,22 @@ function assembleLulaoEngine(gpMeta) {
   a.j(0x80014140);
   a.move(R.v0, R.a0);
 
-  // Waits for CDWAD idle and pauses XA once if active & unpaused (sets g_AsyncXaSaved = 1)
+  // Waits for CDWAD idle and pauses XA once if active & unpaused (or inherits ownership of g_BurstXaSaved!)
   a.label('LulaoCache_PrepCd');
   a.addiu(R.sp, R.sp, -24);
   a.sw(R.ra, 20, R.sp);
   a.jal(SYM.CDWAD_WaitIdle);
   a.nop();
+  a.la(R.t3, THPS1_ADDR.g_TurboState);
+  a.lw(R.t2, 20, R.t3);                  // g_BurstXaSaved
+  a.nop();
+  a.beq(R.t2, R.zero, 'lpc_chk_xa');
+  a.nop();
+  a.sw(R.zero, 20, R.t3);                // transfer deferred XA resume ownership -> g_AsyncXaSaved!
+  a.swSym(R.t2, R.t0, 'g_AsyncXaSaved');
+  a.j('lpc_ret');
+  a.nop();
+  a.label('lpc_chk_xa');
   a.lw(R.t0, 14704, R.gp);               // xaActive
   a.lw(R.t1, 14712, R.gp);               // xaPaused
   a.nop();
@@ -3671,7 +3783,7 @@ function applyAll() {
   const wad = fs.readFileSync(wadPath);
   patchWord(wad, playselOff + 0x3388, jalWord(SYM.GetSelectedSkaterIdx), jalWord(ADDR.Tramp_PlaySelScroll),  'playsel.bin Scroll  +0x3388', [jalWord(0x800E2780)]);
   patchWord(wad, playselOff + 0x100C, jalWord(SYM.SFX_Play),             jalWord(ADDR.Tramp_PlaySelConfirm), 'playsel.bin Confirm +0x100C', [jalWord(0x800E27A8)]);
-  patchWord(wad, playselOff + 0x415C, 0x240400EC,                        0x24040070,                         'playsel.bin Fade->LevelSel 236->112 +0x415C');
+  patchWord(wad, playselOff + 0x415C, 0x240400EC,                        0x2404001C,                         'playsel.bin Fade->LevelSel 236->28 +0x415C', [0x24040070]);
 
   // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin + frontend overlays)
   applyThps1EnginePatches(slus, wad, hed);

@@ -746,10 +746,20 @@ function applyCrashEnginePatches(slusBuf, wadBuf, hedBuf, thps1Manifest) {
   slusBuf[r2f(CRASH_ADDR.CrashDeckShadow + 42)] = 1;  // Wheel color 1
 
   const maxHed = Math.floor((CRASH_ADDR.CodeBase - CRASH_ADDR.Thps1Hed - 4) / 12);
-  if (thps1Manifest.entries.length > maxHed) {
-    throw new Error(`THPS1.WAD entries (${thps1Manifest.entries.length}) > maxHed (${maxHed})!`);
+  const inPlaceCrash = (thps1Manifest.cdWadInPlace && thps1Manifest.cdWadInPlace.crashFiles) || [];
+  const totalHedEntries = thps1Manifest.entries.length + inPlaceCrash.length;
+  if (totalHedEntries > maxHed) {
+    throw new Error(`THPS1+Crash HED entries (${totalHedEntries}) > maxHed (${maxHed})!`);
   }
   let hedRam = CRASH_ADDR.Thps1Hed;
+  // 1. Direct CD.WAD in-place Crash B. files first (bit 31 = 0x80000000 -> ZERO Minute-71 seek + Entry_BurstCdOpen!)
+  for (const e of inPlaceCrash) {
+    slusBuf.writeUInt32LE(e.hash >>> 0,                     r2f(hedRam + 0));
+    slusBuf.writeUInt32LE(((e.cdWadOff | 0x80000000) >>> 0), r2f(hedRam + 4));
+    slusBuf.writeUInt32LE(e.size >>> 0,                     r2f(hedRam + 8));
+    hedRam += 12;
+  }
+  // 2. Remaining THPS1.WAD files (bit 31 == 0 -> relative offset inside THPS1.WAD)
   for (const e of thps1Manifest.entries) {
     slusBuf.writeUInt32LE(e.hash      >>> 0, r2f(hedRam + 0));
     slusBuf.writeUInt32LE(e.relOffset >>> 0, r2f(hedRam + 4));
@@ -757,7 +767,7 @@ function applyCrashEnginePatches(slusBuf, wadBuf, hedBuf, thps1Manifest) {
     hedRam += 12;
   }
   slusBuf.writeUInt32LE(0, r2f(hedRam)); // null terminator
-  console.log(`  [HED]   g_Thps1Hed relocado em SLUS @ 0x${CRASH_ADDR.Thps1Hed.toString(16)}: ${thps1Manifest.entries.length}/${maxHed} entradas (THPS1 + 33 Crash assets!)`);
+  console.log(`  [HED]   g_Thps1Hed relocado em SLUS @ 0x${CRASH_ADDR.Thps1Hed.toString(16)}: ${totalHedEntries}/${maxHed} entradas (${inPlaceCrash.length} in-place CD.WAD + ${thps1Manifest.entries.length} THPS1.WAD!)`);
 
   // --- E. Build Crash B. Dynamic Goal/HUD/Cash/Podium String Map @ 0x800B8E80..0x800B943F ---
   //        Applied ONLY when Crash B. (Slot 20) is active; 100% restored for all other skaters!
