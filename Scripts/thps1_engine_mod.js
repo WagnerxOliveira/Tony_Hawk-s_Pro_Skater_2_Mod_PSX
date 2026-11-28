@@ -60,11 +60,8 @@ const THPS1_ADDR = {
   ExtLevelTable:     0x800E6000, // 21 * 0x174 = 7,812 B -> 0x800E7E84 (0..10 THPS2, 11..19 THPS1, 20 Tomb Time Egypt!)
   DisplayOrderWords: 0x800E7E84, // 21 * 4 = 84 B -> 0x800E7ED8 (interleaved carousel + Egypt right before Custom Park!)
   SlotOfLevel:       0x800E7ED8, // 21 B (padded 24 B) -> 0x800E7EF0
-  S2RendDiscOrder:   0x800E7EF0, // 11 B (padded 16 B): exact CD.WAD sector order for s2rend01..11 (sec 9553..9607)
-  S2LevlDiscOrder:   0x800E7F00, // 11 B (padded 16 B): exact CD.WAD sector order for s2levl00..10 (sec 9476..9541)
-  T1DiscOrder:       0x800E7F10, // 10 B (padded 16 B): exact CD.WAD[573]/[578] order [11..20] (9 THPS1 + Egypt!)
-  FastBurstRendDesc: 0x800E7F20, // alias to start of 5-descriptor FastBurstMapDesc (80 B -> 0x800E7F70)
-  FastBurstMapDesc:  0x800E7F20, //  5 * 16 B = 80 B -> 0x800E7F70 (all 5 strictly ascending CD.WAD bursts, max 60s = 120 KB!)
+  LevelBmpSecTable:  0x800E7EF0, // 21 * 4 = 84 B -> 0x800E7F44: { u16 rendSec, u16 levlSec } inside CD.WAD for O(1) lazy load!
+  g_LevelSelState:   0x800E7F44, // 16 B -> 0x800E7F54: +0 SavedRendSprites, +4 SavedMapSprites, +8 SavedMapMode, +12 LoadedMask!
   g_TurboState:      0x800E7F70, // 32 B -> 0x800E7F90: LastBarFrame(+0), LastPadFrame(+4), BurstBuf(+8), StartSec(+12), EndSec(+16), XaSaved(+20)
   Thps1StringsSpill2:0x800E7F90, // 112 B secondary overflow string pool -> 0x800E8000!
 
@@ -302,8 +299,9 @@ const THPS1_DEFS = [
   },
   {
     // Brand-New Original Crash Bandicoot 3 Egypt Level (Slot 19, right before Create-A-Park!)
-    id: 20, name: 'Tomb Time', loc: 'Egito - Crash 3', vab: 'mar', isComp: 0, trg: 'SkEgyp_T',
-    rend: 't1rend09.bmp', levl: 't1levl09.bmp', globeLon: 340, globeLat: -14, lightFrom: 4, primBufDelta: 0,
+    // Built on 100% watertight Hangar geometry + Hangar SFX bank ('hangar') + muted warm sandstone Crash 3 Tomb visuals!
+    id: 20, name: 'Tomb Time', loc: 'Egito - Crash 3', vab: 'hangar', isComp: 0, trg: 'SkEgyp_T',
+    rend: 't1rend09.bmp', levl: 't1levl09.bmp', globeLon: 340, globeLat: -14, lightFrom: 0, primBufDelta: 0,
     gapMin: 4300, gapMax: 4399,
     scores: [15000, 45000, 95000], par: [20000, 7000, 3000],
     goals: [
@@ -313,15 +311,15 @@ const THPS1_DEFS = [
       { type: 1, p1: 0,          p2: 0,              text: 'Formar C-R-A-S-H',      cash: 600 },
       { type: 4, p1: 5,          p2: 'VASOS FARAO',  text: 'Quebrar 5 Vasos Farao', cash: 700 },
       { type: 3, p1: 0x5120A107, p2: 'ESCARAVELHOS', text: '5 Escaravelhos Reais',  cash: 800 },
-      { type: 5, p1: 0,          p2: 'Kickflip',     text: 'Kickflip Piscina',      cash: 800 },
-      { type: 2, p1: 0,          p2: 'GAPS EGITO',   text: '3 Gaps da Piramide',    cash: 900 },
+      { type: 5, p1: 0,          p2: 'Kickflip',     text: 'Kickflip Grind Farao',  cash: 800 },
+      { type: 2, p1: 0,          p2: 'GAPS TUMBA',   text: '3 Gaps da Tumba',       cash: 900 },
       { type: 6, p1: 0,          p2: 0,              text: 'Cristal Secreto',       cash: 900 },
       { type: 7, p1: 0,          p2: 0,              text: '100% Rei do Egito!',    cash: 1500 },
     ],
   },
 ];
 
-// 28 Live Verified Extended Gaps (24 THPS1 + 4 Crash 3 Egypt Tomb Time: 1x gt=2 for G6 + 3x gt=1 for G7!)
+// 28 Live Verified Extended Gaps (24 THPS1 + 4 Crash 3 Egypt Tomb Time mapped directly from Hangar's 4 career gaps!)
 // Every gapId matches an exact live 0x00C9 EndGap trigger inside its level's .TRG and falls inside [gapMin, gapMax]!
 const THPS1_GAPS = [
   // [11] Warehouse (gapMin=1000, gapMax=1099)
@@ -354,11 +352,11 @@ const THPS1_GAPS = [
   { f0: 19, gt: 1, gapId:  3311, pts: 300, name: '[CANTEIRO DA FUGA]'  },
   { f0: 19, gt: 1, gapId:  3314, pts: 500, name: '[RAMPA DO HABEAS]'   },
   { f0: 19, gt: 1, gapId:  3320, pts: 500, name: '[KICKER DO INDULTO]' },
-  // [20] Tomb Time - Egito (Crash 3) (gapMin=4300, gapMax=4399)
-  { f0: 19, gt: 2, gapId:  4300, pts: 500, name: '[PISCINA DO FARAO]'  },
-  { f0: 19, gt: 1, gapId:  4301, pts: 400, name: '[TRANSFER HALF]'     },
-  { f0: 25, gt: 1, gapId:  4302, pts: 450, name: '[GRIND OBELISCO]'    },
-  { f0: 19, gt: 1, gapId:  4303, pts: 500, name: '[SALTO DA ESFINGE]'  },
+  // [20] Tomb Time - Egito (Crash 3, Hangar geometry, gapMin=4300, gapMax=4399)
+  { f0: 25, gt: 2, gapId:  4300, pts: 400, name: '[GRIND DO FARAO]'    },
+  { f0: 23, gt: 1, gapId:  4301, pts: 500, name: '[VOO DO HALFPIPE]'   },
+  { f0: 19, gt: 1, gapId:  4302, pts: 500, name: '[VOO DA ESFINGE]'    },
+  { f0: 19, gt: 1, gapId:  4303, pts: 500, name: '[SALTO DA TUMBA]'    },
 ];
 
 // ============================================================================
@@ -636,50 +634,41 @@ function buildThps1ResidentBlock() {
     block.writeUInt32LE(DISPLAY_ORDER[i] >>> 0, (THPS1_ADDR.DisplayOrderWords - THPS1_ADDR.Base) + i * 4);
     block.writeUInt8(SLOT_OF_LEVEL[i] & 0xFF, (THPS1_ADDR.SlotOfLevel - THPS1_ADDR.Base) + i);
   }
-  // Exact contiguous disc-LBA order of all 42 Level Select BMPs — 100% INSIDE CD.WAD (ZERO Minute-71 seeks!):
-  //   - t1rend: CD.WAD[573] sec 7500..7549 (50 sec <= 61s, stride 5 sec = 10,240 B, LBA 7955) [11..20]
-  //   - t1levl: CD.WAD[578] sec 7594..7653 (60 sec <= 61s, stride 6 sec = 12,288 B, LBA 8049) [11..20]
-  //   - s2levl: CD.WAD      sec 9476..9541 (66 sec, stride 6 sec = 12,288 B, LBA 9931)
-  //   - s2rend: CD.WAD      sec 9553..9607 (55 sec, stride 5 sec = 10,240 B, LBA 10008)
+  // Build direct O(1) LevelBmpSecTable @ 0x800E7EF0 (21 x { u16 rendSec, u16 levlSec } = 84 B -> 0x800E7F44)
+  // Enables Instant 1-Level On-Demand LevelSel BMP Loading (11 sectors = 0.07s on entry vs 231 sectors = 2.42s!):
+  //   - THPS2 0..10: s2rend (sec 9553..9607, 5s each) & s2levl (sec 9476..9541, 6s each)
+  //   - THPS1+Egypt 11..20: t1rend in CD.WAD[573] (sec 7500..7549, 5s each) & t1levl in CD.WAD[578] (sec 7594..7653, 6s each)
   const S2_REND_DISC_ORDER = [2, 5, 3, 1, 6, 0, 4, 7, 8, 9, 10];
   const S2_LEVL_DISC_ORDER = [9, 2, 5, 3, 1, 6, 4, 0, 7, 8, 10];
-  const T1_DISC_ORDER      = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
   const inPlace = manifest.cdWadInPlace;
   if (!inPlace || !Array.isArray(inPlace.bmps) || inPlace.bmps.length !== 20) {
     throw new Error('thps1_manifest.json sem 20 cdWadInPlace.bmps (rode tools/port_thps1_levels.js primeiro!)');
   }
   const T1_REND_CD_SEC = inPlace.rendBaseSec; // 7500 (LBA 7955)
   const T1_LEVL_CD_SEC = inPlace.levlBaseSec; // 7594 (LBA 8049)
+  const rendSecByLvl = new Array(21).fill(0);
+  const levlSecByLvl = new Array(21).fill(0);
+  for (let k = 0; k < 11; k++) {
+    rendSecByLvl[S2_REND_DISC_ORDER[k]] = 9553 + k * 5;
+    levlSecByLvl[S2_LEVL_DISC_ORDER[k]] = 9476 + k * 6;
+  }
   for (let k = 0; k < 10; k++) {
     const rName = `t1rend0${k}.bmp`, lName = `t1levl0${k}.bmp`;
     const rEnt = inPlace.bmps.find(e => e.name === rName);
     const lEnt = inPlace.bmps.find(e => e.name === lName);
-    if (!rEnt || (rEnt.cdWadOff >> 11) !== T1_REND_CD_SEC + k * 5) throw new Error(`FastBurst mismatch: ${rName}`);
-    if (!lEnt || (lEnt.cdWadOff >> 11) !== T1_LEVL_CD_SEC + k * 6) throw new Error(`FastBurst mismatch: ${lName}`);
+    if (!rEnt || (rEnt.cdWadOff >> 11) !== T1_REND_CD_SEC + k * 5) throw new Error(`FastMap mismatch: ${rName}`);
+    if (!lEnt || (lEnt.cdWadOff >> 11) !== T1_LEVL_CD_SEC + k * 6) throw new Error(`FastMap mismatch: ${lName}`);
+    rendSecByLvl[11 + k] = T1_REND_CD_SEC + k * 5;
+    levlSecByLvl[11 + k] = T1_LEVL_CD_SEC + k * 6;
   }
-  putAt(THPS1_ADDR.S2RendDiscOrder, Buffer.from(S2_REND_DISC_ORDER));
-  putAt(THPS1_ADDR.S2LevlDiscOrder, Buffer.from(S2_LEVL_DISC_ORDER));
-  putAt(THPS1_ADDR.T1DiscOrder,     Buffer.from(T1_DISC_ORDER));
-
-  // Write burst descriptor tables:
-  //   { u32 srcFlags (bit0: 0=CD.WAD; bit1: 1=upload to g_SavedRendSprites with mode=-1),
-  //     u32 secOff, u16 count, u16 strideSec, u32 orderPtr }
-  function writeBurstDesc(ram, srcFlags, secOff, count, strideSec, orderPtr) {
-    const off = ram - THPS1_ADDR.Base;
-    block.writeUInt32LE(srcFlags >>> 0, off + 0);
-    block.writeUInt32LE(secOff >>> 0, off + 4);
-    block.writeUInt16LE(count & 0xFFFF, off + 8);
-    block.writeUInt16LE(strideSec & 0xFFFF, off + 10);
-    block.writeUInt32LE(orderPtr >>> 0, off + 12);
+  const bmpTblOff = THPS1_ADDR.LevelBmpSecTable - THPS1_ADDR.Base;
+  for (let lv = 0; lv < 21; lv++) {
+    if (!rendSecByLvl[lv] || !levlSecByLvl[lv]) throw new Error(`Missing LevelBmpSecTable entry for level ${lv}`);
+    block.writeUInt16LE(rendSecByLvl[lv] & 0xFFFF, bmpTblOff + lv * 4 + 0);
+    block.writeUInt16LE(levlSecByLvl[lv] & 0xFFFF, bmpTblOff + lv * 4 + 2);
   }
-  // Single-Pass Strictly Ascending 5-Burst CD.WAD-ONLY FastBurst (ZERO Minute-71 seeks, ZERO backward seeks, max 60s = 120 KB < 125.7 KB Heap[1]!):
-  //   - FastRend saves CLevelRend->spritesBase and returns immediately in 0 frames!
-  //   - FastMap frees g_BurstBuf and reads all 42 BMPs monotonically forward in 5 bursts (LBA 7955 -> LBA 10062)!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc +  0, 2, T1_REND_CD_SEC, 10, 5, THPS1_ADDR.T1DiscOrder);        // CD.WAD[573] LBA 7955  (50s) -> CLevelRend!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 16, 0, T1_LEVL_CD_SEC, 10, 6, THPS1_ADDR.T1DiscOrder);        // CD.WAD[578] LBA 8049  (60s) -> CLevelMap!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 32, 0, 9476,            6, 6, THPS1_ADDR.S2LevlDiscOrder);    // CD.WAD      LBA 9931  (36s) -> CLevelMap!
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 48, 0, 9512,            5, 6, THPS1_ADDR.S2LevlDiscOrder+6);  // CD.WAD      LBA 9967  (30s) -> CLevelMap! (+0 seek!)
-  writeBurstDesc(THPS1_ADDR.FastBurstMapDesc + 64, 2, 9553,           11, 5, THPS1_ADDR.S2RendDiscOrder);    // CD.WAD      LBA 10008 (55s) -> CLevelRend!
+  // Zero g_LevelSelState (16 B @ 0x800E7F44)
+  block.fill(0, THPS1_ADDR.g_LevelSelState - THPS1_ADDR.Base, (THPS1_ADDR.g_LevelSelState - THPS1_ADDR.Base) + 16);
 
   // --- C2. Build Live THPS1 + Egypt Gap Table @ 0x800E8814 (28 gaps + sentinel = 348 B!) ---
   let gapOff = THPS1_ADDR.Thps1GapList - THPS1_ADDR.Base;
@@ -1554,9 +1543,18 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.lw(R.v0, 0, R.t3);            // newLevelId = DisplayOrderWords[curSlot]
   a.nop();
   a.sw(R.v0, -32136, R.t0);       // store new g_SelectedLevel!
-  // Set s0 = 0 (not hidden bonus) so levelsel +0x1320 shows Career Goal panel cleanly!
-  a.jr(R.ra);
+  // On-demand instant BMP ensure for newLevelId (0.00ms if cached, 0.07s = 11 sectors on first visit!)
+  a.addiu(R.sp, R.sp, -16);
+  a.sw(R.ra, 12, R.sp);
+  a.sw(R.v0, 8, R.sp);
+  a.jal('Helper_EnsureLevelBmps');
+  a.move(R.a0, R.v0);
+  a.lw(R.v0, 8, R.sp);
+  a.lw(R.ra, 12, R.sp);
+  // Set s0 = 0 (not hidden bonus, also fills R3000A load-delay slot for $ra!)
   a.move(R.s0, R.zero);
+  a.jr(R.ra);
+  a.addiu(R.sp, R.sp, 16);
 
   // --------------------------------------------------------------------------
   // 16. Hook_LevelSelPct(SCareerSkater* $a0, int levelId $a1, int isComp $a2) -> $v0 = pct (0..100)
@@ -1819,207 +1817,198 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.nop();
 
   // --------------------------------------------------------------------------
-  // 27. Zero-Minute-71-Seek Strictly Ascending CD.WAD-ONLY Level Select Loader
-  //     - Hook_LevelSelFastRend: saves CLevelRend->spritesBase and returns in 0 frames (ZERO seek, ZERO back-and-forth!).
-  //     - Hook_LevelSelFastMap: frees g_BurstBuf (s2win4..s2arrow8), pauses XA ONCE, then streams ALL 40 LevelSel BMPs
-  //       monotonically forward inside CD.WAD:
-  //         Burst 0: CD.WAD[573] LBA 7955  (45s) -> t1rend00..08 -> CLevelRend!
-  //         Burst 1: CD.WAD[578] LBA 8049  (54s) -> t1levl00..08 -> CLevelMap!
-  //         Burst 2: CD.WAD      LBA 9931  (66s) -> s2levl00..10 -> CLevelMap! (1 single CdRead!)
-  //         Burst 3: CD.WAD      LBA 10008 (55s) -> s2rend01..11 -> CLevelRend! (+11s forward!)
-  //       then resumes XA ONCE! Eliminates the 64-frame Minute-71 seek AND all backward seeks!
+  // 27. Instant On-Demand Single-Level LevelSel BMP Loader (ZERO Minute-71 Seeks, -2.35s Startup!)
+  //     - Hook_LevelSelFastRend: saves CLevelRend->spritesBase and resets LoadedLevelMask = 0 (0 frames!).
+  //     - Hook_LevelSelFastMap: saves CLevelMap->spritesBase & gameMode, then loads ONLY the initial active
+  //       level (11 sectors = 0.07s, 12 KB temp buffer!) instead of blocking 2.42s for all 42 BMPs!
+  //     - Hook_LevelSelMoveCursor calls Helper_EnsureLevelBmps(newLevel) on Left/Right (0.00ms if cached,
+  //       0.07s on first visit, cleanly calling Movie_Stop first so preview FMV never collides!).
   // --------------------------------------------------------------------------
   a.label('Hook_LevelSelFastRend');
-  a.addiu(R.t0, R.s1, 300);        // spritesBase = &CLevelRend->sprites[0]
-  a.la(R.t1, THPS1_ADDR.g_SavedRendSprites);
-  a.sw(R.t0, 0, R.t1);             // remember for single-pass ascending upload during FastMap!
+  a.la(R.t0, THPS1_ADDR.g_LevelSelState);
+  a.addiu(R.t1, R.s1, 300);        // &CLevelRend->sprites[0]
+  a.sw(R.t1, 0, R.t0);             // g_SavedRendSprites
+  a.jr(R.ra);
+  a.sw(R.zero, 12, R.t0);          // g_LoadedLevelMask = 0
+
+  a.label('Hook_LevelSelFastMap');
+  a.la(R.t0, THPS1_ADDR.g_LevelSelState);
+  a.addiu(R.t1, R.s2, 624);        // &CLevelMap->sprites[0]
+  a.lw(R.t2, 36, R.s2);            // CLevelMap->gameMode
+  a.lw(R.a0, 472, R.s2);           // initial active levelId (exact level drawn on Frame 1!)
+  a.sw(R.t1, 4, R.t0);             // g_SavedMapSprites
+  a.sw(R.t2, 8, R.t0);             // g_SavedMapMode
+  a.sw(R.zero, 12, R.t0);          // g_LoadedLevelMask = 0
+  a.sltiu(R.t3, R.a0, 21);
+  a.bne(R.t3, R.zero, 'lsfm_go');
+  a.nop();
+  a.move(R.a0, R.zero);
+  a.label('lsfm_go');
+  a.j('Helper_EnsureLevelBmps');
+  a.nop();
+
+  // Helper_EnsureLevelBmps($a0 = levelId 0..20)
+  // Fast path (<8 CPU cycles): returns immediately if bit (1 << levelId) is already set in g_LoadedLevelMask!
+  // Slow path (~0.07s): loads rend (5s) + levl (6s) into a tiny 12 KB Heap[1] temp buffer & uploads to VRAM!
+  a.label('Helper_EnsureLevelBmps');
+  a.sltiu(R.t0, R.a0, 21);
+  a.beq(R.t0, R.zero, 'elb_fast_ret');
+  a.nop();
+  a.la(R.t1, THPS1_ADDR.g_LevelSelState);
+  a.lw(R.t2, 12, R.t1);            // g_LoadedLevelMask
+  a.addiu(R.t3, R.zero, 1);
+  a.sllv(R.t3, R.t3, R.a0);        // bit = 1 << levelId (also fills $t2 load delay!)
+  a.and(R.t4, R.t2, R.t3);
+  a.bne(R.t4, R.zero, 'elb_fast_ret');
+  a.nop();
+  a.lw(R.t4, 0, R.t1);             // g_SavedRendSprites
+  a.lw(R.t5, 4, R.t1);             // g_SavedMapSprites
+  a.nop();
+  a.beq(R.t4, R.zero, 'elb_fast_ret');
+  a.nop();
+  a.bne(R.t5, R.zero, 'elb_slow');
+  a.nop();
+  a.label('elb_fast_ret');
   a.jr(R.ra);
   a.nop();
 
-  a.label('Hook_LevelSelFastMap');
-  a.addiu(R.a0, R.s2, 624);        // spritesBase = &CLevelMap->sprites[0]
-  a.lw(R.a1, 36, R.s2);            // modeOrNeg1 = CLevelMap->gameMode (>= 0)
-  a.la(R.a2, THPS1_ADDR.FastBurstMapDesc);
-  a.j('Helper_RunFastBurstGroup');
-  a.addiu(R.a3, R.zero, 5);        // 5 strictly ascending CD.WAD bursts (t1rend 50s + t1levl 60s + s2levl 36s+30s + s2rend 55s)!
+  // Stack frame (48 B): 0..15=argSave, 16..19=CdlLOC, 20=s0, 24=s1, 28=s2, 32=s3, 36=s4, 40=ra
+  a.label('elb_slow');
+  a.addiu(R.sp, R.sp, -48);
+  a.sw(R.ra, 40, R.sp);
+  a.sw(R.s4, 36, R.sp);
+  a.sw(R.s3, 32, R.sp);
+  a.sw(R.s2, 28, R.sp);
+  a.sw(R.s1, 24, R.sp);
+  a.sw(R.s0, 20, R.sp);
+  a.move(R.s0, R.a0);              // s0 = levelId (0..20)
+  a.move(R.s1, R.t1);              // s1 = &g_LevelSelState
 
-  // Helper_RunFastBurstGroup($a0=spritesBase, $a1=modeOrNeg1, $a2=descPtr, $a3=numDescs)
-  // Stack frame (64 B): 0..15=argSave, 16..19=CdlLOC, 20=totalSec/rem, 24=activeMode, 28..60=s0..s7,ra
-  a.label('Helper_RunFastBurstGroup');
-  a.addiu(R.sp, R.sp, -64);
-  a.sw(R.ra, 60, R.sp);
-  a.sw(R.s7, 56, R.sp);
-  a.sw(R.s6, 52, R.sp);
-  a.sw(R.s5, 48, R.sp);
-  a.sw(R.s4, 44, R.sp);
-  a.sw(R.s3, 40, R.sp);
-  a.sw(R.s2, 36, R.sp);
-  a.sw(R.s1, 32, R.sp);
-  a.sw(R.s0, 28, R.sp);
-  a.move(R.s0, R.a0);              // s0 = spritesBase
-  a.move(R.s1, R.a1);              // s1 = gameMode (>= 0)
-  a.move(R.s2, R.a2);              // s2 = descPtr
-  a.move(R.s3, R.a3);              // s3 = numDescs
-
-  // Free LevelSel s2win4 burst buffer BEFORE allocating 66-sector buffer (0 B leaked!)
+  // Free any lingering burst buffer & allocate tiny 12,288 B (6-sector) temp buffer top-down in Heap[1]
   a.jal(THPS1_ADDR.Entry_BurstFree);
   a.nop();
-
-  // Temp burst buffer: 60 * 2048 = 122,880 B top-down in Heap[1] (safely < 128,740 B Heap[1] free in LevelSel, freed immediately!)
-  a.li(R.a0, 122880);
+  a.li(R.a0, 12288);
   a.addiu(R.a1, R.zero, 1);
   a.addiu(R.a2, R.zero, 1);
-  a.jal(0x8005515C);               // Mem_Alloc
+  a.jal(0x8005515C);               // Mem_Alloc(12288, 1, 1, 0)
   a.move(R.a3, R.zero);
-  a.beq(R.v0, R.zero, 'fbg_epilogue');
-  a.move(R.s4, R.v0);              // s4 = buf
+  a.beq(R.v0, R.zero, 'elb_epilogue');
+  a.move(R.s2, R.v0);              // s2 = buf (12 KB)
 
-  // Wait CDWAD idle & pause XA ONCE if active and not yet paused (deferred single-resume in Hook_FrameTick!)
+  // Stop any active LevelSel preview FMV, wait CDWAD idle, and pause XA once (resumed on Frame 1 by Entry_BurstXaResume!)
+  a.jal(0x8007AFE4);               // Movie_Stop
+  a.nop();
   a.jal(0x800544C4);               // CDWAD_WaitIdle
   a.nop();
   a.lw(R.t0, 14704, R.gp);         // xaActive
   a.lw(R.t1, 14712, R.gp);         // xaPaused
   a.nop();
-  a.beq(R.t0, R.zero, 'fbg_desc_loop');
+  a.beq(R.t0, R.zero, 'elb_read_rend');
   a.nop();
-  a.bne(R.t1, R.zero, 'fbg_desc_loop');
+  a.bne(R.t1, R.zero, 'elb_read_rend');
   a.nop();
   a.la(R.t2, THPS1_ADDR.g_TurboState);
   a.addiu(R.t3, R.zero, 1);
-  a.sw(R.t3, 20, R.t2);            // g_BurstXaSaved = 1 -> Hook_FrameTick resumes XA ONCE on Frame 1!
+  a.sw(R.t3, 20, R.t2);            // g_BurstXaSaved = 1 -> Entry_BurstXaResume resumes XA cleanly on next VSync!
   a.jal(0x80038D60);               // XA_Pause(1)
   a.addiu(R.a0, R.zero, 1);
 
-  a.label('fbg_desc_loop');
-  a.lw(R.t0, 24440, R.gp);         // CD.WAD start LBA (455) — ALL 4 bursts live inside CD.WAD!
-  a.lw(R.t1, 4, R.s2);             // secOff
-  a.nop();
-  a.addu(R.a0, R.t0, R.t1);        // target LBA = baseLba + secOff
-  a.lhu(R.t2, 8, R.s2);            // count
-  a.lhu(R.t3, 10, R.s2);           // strideSec
-  a.nop();
-  a.mult(R.t2, R.t3);
-  a.mflo(R.t4);                    // totalSectors = count * strideSec
-  a.sw(R.t4, 20, R.sp);
+  // s3 = &LevelBmpSecTable[levelId], s4 = phase (0 = rend 5s, 1 = levl 6s + lock tint)
+  a.label('elb_read_rend');
+  a.la(R.s3, THPS1_ADDR.LevelBmpSecTable);
+  a.sll(R.t0, R.s0, 2);
+  a.addu(R.s3, R.s3, R.t0);
+  a.move(R.s4, R.zero);            // phase = 0 (rend)
 
+  a.label('elb_phase_lp');
+  a.lw(R.t0, 24440, R.gp);         // CD.WAD start LBA (455)
+  a.sll(R.t2, R.s4, 1);            // 0 or 2
+  a.addu(R.t2, R.s3, R.t2);
+  a.lhu(R.t1, 0, R.t2);            // rendSec (phase 0) or levlSec (phase 1)
+  a.nop();
+  a.addu(R.a0, R.t0, R.t1);
   a.jal(0x800A1698);               // CdIntToPos(lba, &loc @ 16(sp))
   a.addiu(R.a1, R.sp, 16);
   a.addiu(R.a0, R.zero, 2);        // CdlSetloc
   a.addiu(R.a1, R.sp, 16);
   a.jal(0x800A08C4);               // CdControl
   a.move(R.a2, R.zero);
-  a.lw(R.a0, 20, R.sp);            // totalSectors
-  a.move(R.a1, R.s4);              // buf
-  a.jal(0x800A5B30);               // CdRead(totalSectors, buf, CdlModeSpeed 0x80)
+  a.addiu(R.a0, R.s4, 5);          // nSec = 5 (rend) or 6 (levl)!
+  a.move(R.a1, R.s2);
+  a.jal(0x800A5B30);               // CdRead(nSec, buf, 0x80)
   a.addiu(R.a2, R.zero, 0x80);
-
-  // Tight zero-VSync CdReadSync(1, 0) poll -> immediate handoff to next contiguous burst!
-  a.label('fbg_cd_wait');
+  a.label('elb_wait');
   a.addiu(R.a0, R.zero, 1);
   a.jal(0x800A5CCC);               // CdReadSync(1, 0)
   a.move(R.a1, R.zero);
-  a.bgtz(R.v0, 'fbg_cd_wait');
+  a.bgtz(R.v0, 'elb_wait');
   a.nop();
 
-  // Select target sprite array (s5) & activeMode (24(sp)): bit1 of srcFlags redirects t1rend -> CLevelRend!
-  a.label('fbg_upload_init');
-  a.lw(R.t0, 0, R.s2);
-  a.move(R.s5, R.s0);              // default: caller's spritesBase
-  a.sw(R.s1, 24, R.sp);            // default: caller's modeOrNeg1
-  a.andi(R.t0, R.t0, 2);
-  a.beq(R.t0, R.zero, 'fbg_tgt_ok');
+  // Upload to sprArr[levelId] (sprArr = s1[phase*4]: +0 SavedRendSprites, +4 SavedMapSprites)
+  a.sll(R.t0, R.s4, 2);
+  a.addu(R.t0, R.s1, R.t0);
+  a.lw(R.t0, 0, R.t0);             // sprArr
+  a.sll(R.t1, R.s0, 2);            // fills $t0 load delay!
+  a.addu(R.t0, R.t0, R.t1);
+  a.lw(R.a0, 0, R.t0);             // spr = sprArr[levelId]
   a.nop();
-  a.la(R.t1, THPS1_ADDR.g_SavedRendSprites);
-  a.lw(R.s5, 0, R.t1);             // target = CLevelRend->spritesBase
-  a.addiu(R.t2, R.zero, -1);
-  a.sw(R.t2, 24, R.sp);            // activeMode = -1 (no lock tint!)
-  a.label('fbg_tgt_ok');
-  a.move(R.s6, R.s4);              // s6 = curBmpPtr
-  a.lw(R.s7, 12, R.s2);            // s7 = curOrderPtr
-  a.lhu(R.t0, 8, R.s2);            // rem = count
-  a.nop();
-  a.sw(R.t0, 20, R.sp);
-
-  a.label('fbg_upload_loop');
-  a.lbu(R.t0, 0, R.s7);            // lv = *curOrderPtr
-  a.nop();
-  a.sll(R.t1, R.t0, 2);
-  a.addu(R.t1, R.s5, R.t1);
-  a.lw(R.a0, 0, R.t1);             // spr = activeSprites[lv]
-  a.nop();
-  a.beq(R.a0, R.zero, 'fbg_upload_next');
+  a.beq(R.a0, R.zero, 'elb_phase_next');
   a.nop();
   a.lw(R.v1, 0, R.a0);
-  a.nop();
-  a.lw(R.v0, 16, R.v1);            // vtable[4] = CSprite::LoadBmp
+  a.sw(R.a0, 44, R.sp);            // save spr in 44(sp) (also fills $v1 load delay!)
+  a.lw(R.v0, 16, R.v1);            // CSprite::LoadBmp
   a.nop();
   a.jalr(R.ra, R.v0);
-  a.move(R.a1, R.s6);              // curBmpPtr
+  a.move(R.a1, R.s2);
 
-  // If CLevelMap burst (activeMode >= 0), apply lock tint (0x8005E39C) when level is locked
-  a.lw(R.t8, 24, R.sp);            // t8 = activeMode
+  // On phase 1 (CLevelMap), apply lock tint (0x8005E39C) if level is locked in g_SavedMapMode
+  a.beq(R.s4, R.zero, 'elb_phase_next');
+  a.lw(R.t8, 8, R.s1);             // t8 = gameMode
+  a.addiu(R.t0, R.zero, 10);       // fills $t8 load delay!
+  a.bltz(R.t8, 'elb_phase_next');
   a.nop();
-  a.bltz(R.t8, 'fbg_upload_next');
-  a.nop();
-  a.lbu(R.a0, 0, R.s7);            // lv
-  a.addiu(R.t0, R.zero, 10);       // delay slot
-  a.bne(R.a0, R.t0, 'fbg_chk_open');
+  a.bne(R.s0, R.t0, 'elb_chk_open');
   a.addiu(R.t0, R.zero, 1);
-  a.bne(R.t8, R.t0, 'fbg_upload_next'); // lv==10 & mode!=1 -> UNLOCKED
+  a.bne(R.t8, R.t0, 'elb_phase_next'); // lv==10 & mode!=1 -> UNLOCKED
   a.nop();
-  a.j('fbg_do_lock');              // lv==10 & mode==1 (Career) -> LOCKED
+  a.j('elb_do_lock');              // lv==10 & mode==1 (Career) -> LOCKED
   a.nop();
-
-  a.label('fbg_chk_open');
+  a.label('elb_chk_open');
+  a.move(R.a0, R.s0);
   a.jal('Hook_CareerLevelIsOpenMode');
   a.move(R.a1, R.t8);
-  a.bne(R.v0, R.zero, 'fbg_upload_next');
+  a.bne(R.v0, R.zero, 'elb_phase_next');
+  a.nop();
+  a.label('elb_do_lock');
+  a.lw(R.a0, 44, R.sp);            // saved mapSpr
+  a.nop();
+  a.jal(0x8005E39C);               // CSprite::SetLockedTint(mapSpr)
   a.nop();
 
-  a.label('fbg_do_lock');
-  a.lbu(R.t0, 0, R.s7);
-  a.nop();
-  a.sll(R.t1, R.t0, 2);
-  a.addu(R.t1, R.s5, R.t1);
-  a.lw(R.a0, 0, R.t1);
-  a.nop();
-  a.jal(0x8005E39C);               // CSprite::SetLockedTint(spr)
-  a.nop();
+  a.label('elb_phase_next');
+  a.beq(R.s4, R.zero, 'elb_phase_lp');
+  a.addiu(R.s4, R.s4, 1);
 
-  a.label('fbg_upload_next');
-  a.lhu(R.t0, 10, R.s2);           // strideSec
-  a.addiu(R.s7, R.s7, 1);          // curOrderPtr++ (fills load delay)
-  a.sll(R.t0, R.t0, 11);           // strideBytes = strideSec * 2048
-  a.addu(R.s6, R.s6, R.t0);        // curBmpPtr += strideBytes
-  a.lw(R.t1, 20, R.sp);
-  a.nop();
-  a.addiu(R.t1, R.t1, -1);
-  a.bne(R.t1, R.zero, 'fbg_upload_loop');
-  a.sw(R.t1, 20, R.sp);
+  // Mark bit (1 << levelId) in g_LoadedLevelMask & free 12 KB temp buffer
+  a.lw(R.t2, 12, R.s1);
+  a.addiu(R.t3, R.zero, 1);
+  a.sllv(R.t3, R.t3, R.s0);        // fills $t2 load delay!
+  a.or(R.t2, R.t2, R.t3);
+  a.sw(R.t2, 12, R.s1);
 
-  a.addiu(R.s2, R.s2, 16);
-  a.addiu(R.s3, R.s3, -1);
-  a.bne(R.s3, R.zero, 'fbg_desc_loop');
-  a.nop();
-
-  // XA background music is resumed cleanly ONCE on Frame 1 by Hook_FrameTick (ZERO mid-load laser ping-pong!)
-  a.label('fbg_free');
   a.jal(0x800551A8);               // Mem_Free(buf)
-  a.move(R.a0, R.s4);
+  a.move(R.a0, R.s2);
 
-  a.label('fbg_epilogue');
-  a.lw(R.s0, 28, R.sp);
-  a.lw(R.s1, 32, R.sp);
-  a.lw(R.s2, 36, R.sp);
-  a.lw(R.s3, 40, R.sp);
-  a.lw(R.s4, 44, R.sp);
-  a.lw(R.s5, 48, R.sp);
-  a.lw(R.s6, 52, R.sp);
-  a.lw(R.s7, 56, R.sp);
-  a.lw(R.ra, 60, R.sp);
+  a.label('elb_epilogue');
+  a.lw(R.s0, 20, R.sp);
+  a.lw(R.s1, 24, R.sp);
+  a.lw(R.s2, 28, R.sp);
+  a.lw(R.s3, 32, R.sp);
+  a.lw(R.s4, 36, R.sp);
+  a.lw(R.ra, 40, R.sp);
   a.nop();
   a.jr(R.ra);
-  a.addiu(R.sp, R.sp, 64);
+  a.addiu(R.sp, R.sp, 48);
 
   // --------------------------------------------------------------------------
   // 28. Hook_SetGapList [jal @ 0x80083848 inside Game_StartLevel, $s1 = new levelId 0..19]
@@ -2550,17 +2539,26 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   patchExact(slusBuf, r2f(0x80044318), 0x24052000, 0x24053000, 'CModel::KnockDown Hit SFX vol 8192->12288 @ 0x80044318');
   patchExact(slusBuf, r2f(0x80044A08), 0x24052000, 0x24052C00, 'CModel::KnockDown Bounce SFX vol 8192->11264 @ 0x80044A08');
 
-  // Ultra-snappy smooth Fade_Update & Fade_Start tile-wipes across ALL menus & gameplay:
-  //   - Mode 1 (RGB alternating): step 8->32 (0x20) & min tail -96->-24 -> full 255->0 smooth black wipe in 28f (0.47s vs 1.87s!)
-  //   - Mode 2 (simultaneous RGB): step 8->16 (0x10) & min tail -32->-16 -> full 255->0 smooth black wipe in 18f (0.30s vs 0.57s!)
+  // ZERO-BLACK-SCREEN Instant Menu Transitions (ALL 21 Skaters, Roda Gigante -> CarSel -> PlaySel -> LevelSel -> GoalList -> Gameplay):
+  //   - 0x8004E33C (inside Fade_Stop): NOP `jal 0x8002D69C` (ClearImage(0,0,512,512,0,0,0) that wiped both visible display
+  //     framebuffers to solid black right before MainMenu, PlaySel, and LevelSel finished loading!). Boot/FMV/Gameplay callers
+  //     of 0x8002D69C remain 100% untouched!
+  //   - 0x80082B4C (CarSel->PlaySel), 0x8008332C (Frontend->SkateShop/Options), 0x80023110 (GoalList->Gameplay):
+  //     NOP `jal Fade_Start` so the live menu stays crisp on screen until Frame 1 of the next screen flips cleanly in 1 VBlank!
+  // Restore Fade_Start arg words if previously shortened, then NOP the 4 menu Fade_Start calls + Fade_Stop ClearScreen!
+  patchExact(slusBuf, r2f(0x80082B48), 0x240400EC, 0x240400EC, 'Restore CarSel->PlaySel a0 @ 0x80082B48', [0x2404001C, 0x24040070]);
+  patchExact(slusBuf, r2f(0x80083328), 0x240400EC, 0x240400EC, 'Restore Frontend->SubMenu a0 @ 0x80083328', [0x2404001C, 0x24040070]);
+  patchExact(slusBuf, r2f(0x8002310C), 0x24040034, 0x24040034, 'Restore GoalList->Game a0 @ 0x8002310C', [0x24040012, 0x24040022]);
+  patchExact(slusBuf, r2f(0x8004E33C), 0x0C00B5A7, 0x00000000, 'Fade_Stop NOP ClearScreen(0,0,0) -> ZERO black flash @ 0x8004E33C');
+  patchExact(slusBuf, r2f(0x80082B4C), 0x0C0138C7, 0x00000000, 'CarSel->PlaySel NOP Fade_Start -> ZERO black screen @ 0x80082B4C');
+  patchExact(slusBuf, r2f(0x8008332C), 0x0C0138C7, 0x00000000, 'Frontend->SubMenu NOP Fade_Start -> ZERO black screen @ 0x8008332C');
+  patchExact(slusBuf, r2f(0x80023110), 0x0C0138C7, 0x00000000, 'GoalList->Gameplay NOP Fade_Start -> instant cut @ 0x80023110');
+  // Keep fast Fade_Update speeds intact in case any other caller invokes Fade_Start (e.g., FMV/cheat/retry)
   patchExact(slusBuf, r2f(0x8004E564), 0x24020008, 0x24020020, 'Fade_Update Mode1 B-step 8->32 @ 0x8004E564');
   patchExact(slusBuf, r2f(0x8004E59C), 0x24020008, 0x24020020, 'Fade_Update Mode1 G/R-step 8->32 @ 0x8004E59C');
   patchExact(slusBuf, r2f(0x8004E5E0), 0x24A4FFA0, 0x24A4FFE8, 'Fade_Update Mode1 tail -96->-24 @ 0x8004E5E0');
   patchExact(slusBuf, r2f(0x8004E678), 0x24020008, 0x24020010, 'Fade_Update Mode2 RGB-step 8->16 @ 0x8004E678');
   patchExact(slusBuf, r2f(0x8004E69C), 0x24A4FFE0, 0x24A4FFF0, 'Fade_Update Mode2 tail -32->-16 @ 0x8004E69C');
-  patchExact(slusBuf, r2f(0x80082B48), 0x240400EC, 0x2404001C, 'Fade_Start MainMenu->PlaySel 236->28 @ 0x80082B48', [0x24040070]);
-  patchExact(slusBuf, r2f(0x80083328), 0x240400EC, 0x2404001C, 'Fade_Start Gameplay->Menu 236->28 @ 0x80083328', [0x24040070]);
-  patchExact(slusBuf, r2f(0x8002310C), 0x24040034, 0x24040012, 'Fade_Start GoalList->Game 52->18 @ 0x8002310C', [0x24040022]);
   // Deferred single-resume of XA background music at VSync_Wait exit (universal across ALL menus & gameplay!)
   patchExact(slusBuf, r2f(0x8004E820), 0x03E00008, jW(0x800E3540), 'VSync_Wait tail-jump Entry_BurstXaResume @ 0x8004E820');
 

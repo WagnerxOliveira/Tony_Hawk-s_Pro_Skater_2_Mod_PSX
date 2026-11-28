@@ -27,7 +27,7 @@ flowchart TB
     DUMP --> EXT["Scripts/extract_thps1.js<br/>Parser CD.HED ASCII + Desempacotador .PRE"]
     EXT --> TREE["📂 EXTRAIDOS_ARQUIVOS_THPS1/<br/>669 arquivos do CD.WAD + 58 sub-arquivos .PRE<br/>organizados em 9 categorias / 25 subpastas"]
     TREE --> PORT["Scripts/port_thps1_levels.js + mod_thps1_custom_objects.js<br/>• Converte 2.301 trilhos .TRG + 68 moedas -> $100 Cash + 333 remapes SFX/Shatter<br/>• Esculpe 6 objetos 3D satiricos (fl=0x2003) nos sk*_o.psx<br/>• Injeta 30 coletaveis Type 5 subtype 33 (5 por fase regular, Mall #3/#4 auditados)<br/>• Gera 18 BMPs Level Select + 3 telas Comp (t1comp0..2.bmp) + 60 metas + 24 Gaps"]
-    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,13 MB • 579 setores • 15 arquivos prioritários"]
+    PORT --> WAD["📦 THPS1.WAD (50º arquivo da ISO)<br/>1,44 MB • 736 setores • 15 arquivos prioritários"]
     WAD --> ENG["⚡ Motor Residente MIPS (0x800E6000..0x800EC7FF)<br/>• g_ExtLevelTable[20] (60 metas) + g_Thps1GapList[24] + CASHART @ 0x800EB000<br/>• Hook_CdWadFallback + Entry_CompLoadBmp + FastBurst 1-Visita + Fade 2×<br/>• 70+13+8 relocações + Carrossel Intercalado 19 fases"]
 ```
 
@@ -127,7 +127,7 @@ Em vez de duplicar 7,7 MB de geometria ou forçar o canhão laser a saltar até 
   - **9 arquivos `.TRG` integralmente convertidos** (2.301 trilhos + 68 moedas → `$100 Cash` + **30 coletáveis 3D `Type 5 subtype 33` injetados** — 5 por fase regular, com Malas #3/#4 de *Mall NY* auditadas em espaço aberto contra os 11.126 triângulos — + **333 remapes cirúrgicos SFX/Shatter** (`84` shatters + `249` SFX) + `C_Cable → C_Cabl1`),
   - **6 arquivos `sk*_o.psx` com novos objetos 3D geométricos esculpidos** (`skware_o`, `skschl_o`, `skmall_o`, `skdown_o`, `skjam_o`, `sksf_o`: `+2,8 KB..+3,9 KB` cada, todos em `fl = 0x2003` full-quad + texturas `64×48` 4-bit 16 cores),
   - **4 `.PSX` divergentes do THPS1 USA** (`skware.psx`, `skware_2.psx`, `skware_l.psx`, `skschl.psx`).
-- **`THPS1.WAD` ultraleve (50º arquivo da ISO, `1,13 MB` / `579 setores`, apenas 15 arquivos sem correspondente em `CD.WAD`):** `skvans_t.psx` (Chicago), `c_cabl1.psx` (bonde 11 texturas de San Francisco) e as **3 telas oficiais de competição `512×240` 8bpp** (`t1comp0.bmp` *Skate Park Chicago*, `t1comp1.bmp` *Burnside* e `t1comp2.bmp` *Roswell*, `123.960 B` / `61` set. cada, despachadas por `Entry_CompLoadBmp @ 0x80022E2C`).
+- **`THPS1.WAD` ultraleve (50º arquivo da ISO, `1,44 MB` / `736 setores`, apenas 15 arquivos sem correspondente em `CD.WAD`):** `skvans_t.psx` (Chicago), `c_cabl1.psx` (bonde 11 texturas de San Francisco) e as **3 telas oficiais de competição `512×240` 8bpp** (`t1comp0.bmp` *Skate Park Chicago*, `t1comp1.bmp` *Burnside* e `t1comp2.bmp` *Roswell*, `123.960 B` / `61` set. cada, despachadas por `Entry_CompLoadBmp @ 0x80022E2C`).
 
 No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (15 entradas) PRIMEIRO** (sem nunca chamar `CdSearchFile` em runtime — calcula `thps1BaseLba = g_VoicesBaseLba + 1174` diretamente da RAM!) e cai imediatamente para o `CD.HED` original (com suporte a `TURBO_BURST`), lendo todos os 37 ativos *in-place* em velocidade nativa de `CD.WAD`!
 
@@ -140,16 +140,16 @@ No executável, `Hook_CdWadFallback @ 0x80054190` consulta **`g_Thps1Hed` (15 en
 | 3 | `t1comp1.bmp` | `0X679DCF3A` | `0x00022800` | 123.960 B | 61 | Tela oficial de competição `512×240` 8bpp (`123.960 B`, despachada por `Entry_CompLoadBmp`) |
 | 4 | `t1comp2.bmp` | `0X1B7F5645` | `0x00041000` | 123.960 B | 61 | Tela oficial de competição `512×240` 8bpp (`123.960 B`, despachada por `Entry_CompLoadBmp`) |
 | 5 | `c_cabl1.psx` | `0X85651A4D` | `0x0005F800` | 21.004 B | 11 | Bonde de San Francisco (11 texturas originais THPS1) |
-| 6 | `skegyp_t.trg` | `0XE0C0961F` | `0x00065000` | 3.188 B | 2 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D + remapeamento SFX/Shatter) |
-| 7 | `skegyp_l.psx` | `0X47AC578A` | `0x00066000` | 122.244 B | 60 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 8 | `skegyp_o.psx` | `0X3B4ECEF5` | `0x00084000` | 19.116 B | 10 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
-| 9 | `skegyp.psx` | `0X333D0C49` | `0x00089000` | 197.852 B | 97 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 10 | `skegyp_2.psx` | `0XB02F9C74` | `0x000B9800` | 197.852 B | 97 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 11 | `cr_down.psx` | `0X00863604` | `0x000EA000` | 18.792 B | 10 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 12 | `cr_jam.psx` | `0X89CDB8F3` | `0x000EF000` | 45.916 B | 23 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 13 | `cr_mall.psx` | `0X24A822FD` | `0x000FA800` | 36.072 B | 18 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 14 | `crash_L.psx` | `0X5B4B3564` | `0x00103800` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
-| 15 | `crashb_L.psx` | `0XA4E62AC1` | `0x00112800` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 6 | `skegyp_t.trg` | `0XE0C0961F` | `0x00065000` | 23.708 B | 12 | `.TRG v2.0` convertido (trilhos THPS2 + moedas → `$100` Cash + 5 coletáveis 3D + remapeamento SFX/Shatter) |
+| 7 | `skegyp_l.psx` | `0X47AC578A` | `0x0006B000` | 316.604 B | 155 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 8 | `skegyp_o.psx` | `0X3B4ECEF5` | `0x000B8800` | 129.864 B | 64 | Objetos da fase + **Novo Objeto 3D Geométrico Satírico esculpido (`fl=0x2003`)** |
+| 9 | `skegyp.psx` | `0X333D0C49` | `0x000D8800` | 213.772 B | 105 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 10 | `skegyp_2.psx` | `0XB02F9C74` | `0x0010D000` | 177.916 B | 87 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 11 | `cr_down.psx` | `0X00863604` | `0x00138800` | 18.792 B | 10 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 12 | `cr_jam.psx` | `0X89CDB8F3` | `0x0013D800` | 45.916 B | 23 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 13 | `cr_mall.psx` | `0X24A822FD` | `0x00149000` | 36.072 B | 18 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 14 | `crash_L.psx` | `0X5B4B3564` | `0x00152000` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
+| 15 | `crashb_L.psx` | `0XA4E62AC1` | `0x00161000` | 60.428 B | 30 | Geometria/Texturas THPS1 USA (override sobre sobra divergente do THPS2) |
 
 ---
 
@@ -215,10 +215,10 @@ Cada uma das 6 fases regulares do THPS1 recebeu **4 Gaps reais verificados** con
 | 22 | [18] Streets SF | `3311` | `G7` Multi-Gap | `300` | `[CANTEIRO DA FUGA]` |
 | 23 | [18] Streets SF | `3314` | `G7` Multi-Gap | `500` | `[RAMPA DO HABEAS]` |
 | 24 | [18] Streets SF | `3320` | `G7` Multi-Gap | `500` | `[KICKER DO INDULTO]` |
-| 25 | [18] Streets SF | `4300` | `G6` Trick+Gap | `500` | `[PISCINA DO FARAO]` |
-| 26 | [18] Streets SF | `4301` | `G7` Multi-Gap | `400` | `[TRANSFER HALF]` |
-| 27 | [18] Streets SF | `4302` | `G7` Multi-Gap | `450` | `[GRIND OBELISCO]` |
-| 28 | [18] Streets SF | `4303` | `G7` Multi-Gap | `500` | `[SALTO DA ESFINGE]` |
+| 25 | [18] Streets SF | `4300` | `G6` Trick+Gap | `400` | `[GRIND DO FARAO]` |
+| 26 | [18] Streets SF | `4301` | `G7` Multi-Gap | `500` | `[VOO DO HALFPIPE]` |
+| 27 | [18] Streets SF | `4302` | `G7` Multi-Gap | `500` | `[VOO DA ESFINGE]` |
+| 28 | [18] Streets SF | `4303` | `G7` Multi-Gap | `500` | `[SALTO DA TUMBA]` |
 
 ---
 

@@ -718,7 +718,7 @@ function main() {
   addFile('skegyp_l.psx', egyptRes.texBuf);
   addFile('skegyp_o.psx', egyptRes.objBuf);
   addFile('skegyp.psx',   egyptRes.levelBuf);
-  addFile('skegyp_2.psx', egyptRes.levelBuf);
+  addFile('skegyp_2.psx', egyptRes.level2Buf || egyptRes.levelBuf);
   console.log(`  [EGYPT-20]   +7 ativos ineditos de Tomb Time (Egito - Crash 3) integrados (2 BMPs in-place + 5 em ordem linear no THPS1.WAD)!`);
 
   // 5. Deduplicate against originals_backup/CD.WAD (Neversoft left 43 byte-identical THPS1 .PSX files inside THPS2!)

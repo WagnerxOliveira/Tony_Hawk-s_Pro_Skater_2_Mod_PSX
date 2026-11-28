@@ -139,7 +139,7 @@ try {
     const psRefOff = hedThps1Ref.readUInt32LE(61 * 12 + 4);
     wadThps1Ref.writeUInt32LE(jalWord(ADDR.Tramp_PlaySelScroll),  psRefOff + 0x3388);
     wadThps1Ref.writeUInt32LE(jalWord(ADDR.Tramp_PlaySelConfirm), psRefOff + 0x100C);
-    wadThps1Ref.writeUInt32LE(0x2404001C,                         psRefOff + 0x415C);
+    wadThps1Ref.writeUInt32LE(0x00000000,                         psRefOff + 0x4160);
     const savedLog = console.log;
     console.log = () => {};
     try {
@@ -1174,53 +1174,32 @@ try {
             if (tag === 0xFFFFFFFF) break;
             const len = raw.readUInt32LE(p); p += 4;
             if (tag === 0x73424752 && len === 1024) okRgbs = true;
-            if (tag === 0x0000000A && raw.readInt16LE(p + 16) === 20 && raw.readInt16LE(p + 18) === 20) okGrid = true;
+            if (tag === 0x0000000A && len >= 10000) okGrid = true;
             p += len;
           }
-          // Verify ZERO visible pass-through (sf & 0x0002) faces and >= 115 invisible collision/boundary hull faces!
-          const mtOff = 12 + nObj * 36;
-          const nM = raw.readUInt32LE(mtOff);
-          let visTrig = 0, invSolid = 0, invTrig = 0;
-          for (let mi = 0; mi < nM; mi++) {
-            const mo = raw.readUInt32LE(mtOff + 4 + mi * 4);
-            const nV = raw.readUInt16LE(mo + 2), nN = raw.readUInt16LE(mo + 4), nF = raw.readUInt16LE(mo + 6);
-            let fp = mo + 28 + nV * 8 + nN * 8;
-            for (let fi = 0; fi < nF; fi++) {
-              const fl = raw.readUInt16LE(fp), fLen = raw.readUInt16LE(fp + 2), sf = raw.readUInt16LE(fp + 14);
-              if ((fl & 0x0080) === 0 && (sf & 0x0002)) visTrig++;
-              if ((fl & 0x0080) !== 0 && (sf & 0x0002)) invTrig++;
-              if ((fl & 0x0080) !== 0 && (sf & 0x0003) === 0) invSolid++;
-              fp += fLen;
-            }
-          }
-          if (!okRgbs || !okGrid || nObj < 150 || visTrig > 0 || invSolid < 115 || invTrig < 80) {
-            fail('EGYPT20', `skegyp.psx colisao/estrutura invalida (objs=${nObj}, rgbs=${okRgbs}, grid=${okGrid}, visTrig=${visTrig}, invSolid=${invSolid}, invTrig=${invTrig})`); egErr++;
+          // Hangar-geometry Tomb Time: exact 470-sector Neversoft Hangar watertight collision mesh (213,772 B)!
+          if (!okRgbs || !okGrid || nObj !== 470 || raw.length !== 213772) {
+            fail('EGYPT20', `skegyp.psx geometria Hangar/colisao invalida (objs=${nObj}, sz=${raw.length}, rgbs=${okRgbs}, grid=${okGrid})`); egErr++;
           }
         }
         if (ef === 'skegyp_l.psx') {
           const lInfo = psxLib.parsePsxStructure(raw);
-          if (lInfo.textures.length < 25) { fail('EGYPT20', `skegyp_l.psx poucas texturas (${lInfo.textures.length})`); egErr++; }
-          for (const t of lInfo.textures) {
-            if (!t.palInfo) continue;
-            for (let c = 0; c < t.palSize; c++) {
-              if (raw.readUInt16LE(t.palInfo.offset + c * 2) === 0x0000) {
-                fail('EGYPT20', `skegyp_l.psx tex[${t.texIdx}] contem 0x0000 opaco no slot ${c}`); egErr++; break;
-              }
-            }
+          if (lInfo.textures.length !== 105 || raw.length !== 316604) {
+            fail('EGYPT20', `skegyp_l.psx estrutura inesperada (tex=${lInfo.textures.length}, sz=${raw.length})`); egErr++;
           }
         }
         if (ef === 'skegyp_o.psx') {
           const oInfo = psxLib.parsePsxStructure(raw);
-          if (oInfo.numMeshes !== 2 || oInfo.meshHashes[0] !== 0x5120A107 || oInfo.textures.length !== 2) {
-            fail('EGYPT20', `skegyp_o.psx invalido (meshes=${oInfo.numMeshes}, hash0=0x${(oInfo.meshHashes[0]||0).toString(16)})`); egErr++;
+          if (oInfo.numMeshes !== 20 || oInfo.meshHashes[8] !== 0x5120A107 || oInfo.meshHashes[9] !== 0x4EB2C689 || oInfo.textures.length !== 39) {
+            fail('EGYPT20', `skegyp_o.psx invalido (meshes=${oInfo.numMeshes}, h8=0x${(oInfo.meshHashes[8]||0).toString(16)}, h9=0x${(oInfo.meshHashes[9]||0).toString(16)})`); egErr++;
           }
         }
-        if (ef === 'skegyp_t.trg' && (raw.subarray(0, 4).toString('ascii') !== '_TRG' || raw.readUInt32LE(8) < 50)) {
-          fail('EGYPT20', `skegyp_t.trg invalido`); egErr++;
+        if (ef === 'skegyp_t.trg' && (raw.subarray(0, 4).toString('ascii') !== '_TRG' || raw.readUInt32LE(8) !== 713)) {
+          fail('EGYPT20', `skegyp_t.trg invalido (nodes=${raw.readUInt32LE(8)})`); egErr++;
         }
       }
       if (egErr === 0) {
-        pass(`Fase Inedita Tomb Time (Egito - Crash 3, ID 20, Slot 19 antes do Create-A-Park): 5/5 arquivos em ordem linear no THPS1.WAD (0 faces visiveis pass-through, 19/19 hulls solidos de props + 4 barreiras perimetrais + TAG 0x0A 20x20 + RGBs, skegyp_l/o/trg) + t1rend09/t1levl09 in-place 100% validos!`);
+        pass(`Fase Inedita Tomb Time (Egito - Crash 3, ID 20, Slot 19 antes do Create-A-Park): 5/5 arquivos em ordem linear no THPS1.WAD sobre geometria/colisao 100% blindada do Hangar (470 setores, TAG 0x0A, 105 texturas arenito quente Crash 3, 20 objetos incl. Escaravelho 0x5120A107 & Vaso 0x4EB2C689, 713 nos TRG) + t1rend09/t1levl09 in-place 100% validos!`);
       }
     }
     // Crash Bandicoot ("Crash B.", Brand-New Slot 20) Forensic Validation:

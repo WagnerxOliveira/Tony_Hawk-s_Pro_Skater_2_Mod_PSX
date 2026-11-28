@@ -764,21 +764,23 @@ function assembleBailHookCode() {
     [   0,   0,  67], // s2bgd6 + s2_scrib + s2pressx (3 files in 1 CdRead!)
     [  61,   0,   6], // s2_scrib + s2pressx (competitions: 2 files in 1 CdRead!)
     [ 347,   0,  25], // items.psx + bits.psx (2 files in 1 CdRead!)
-    // All 8 Menu Overlays (.bin + .rel in 1 CdRead!)
+    // All 10 Menu Overlays (.bin + .rel + contiguous .pre in 1 single CdRead!)
     [1047,   0,   9], // mainmenu.bin + .rel (Roda Gigante)
+    [1080,   0,  13], // levelsel.bin + .rel (Level Select — 1 single CdRead!)
     [1093,   0,   7], // multisel.bin + .rel
     [1100,   0,  25], // options.bin + .rel
-    [1872,   0,   7], // carsel.bin + .rel
+    [1125,   0,  15], // equipsel.bin + .rel (Skate Shop)
+    [1872,   0,  83], // carsel.bin + .rel + carsel.pre (166 KB in 1 single CdRead!)
     [1955,   0,  10], // statedit.bin + .rel
     [2239,   0,  15], // tricksel.bin + .rel
-    [2510,   0,  18], // playsel.bin + .rel
+    [2510,   0,  18], // playsel.bin + .rel (Player Select — zero eviction!)
     [2566,   0,  28], // creedit.bin + .rel
-    // PlaySel & LevelSel Shared Menu Asset Clusters
-    [2528,   0,  38], // player2.pre + s2win1 + s2face0 + anims_fe.psx
-    [3463,   0,   8], // s2face14..s2face17 back-to-back on PlaySel entry!
+    // PlaySel & LevelSel Shared Menu Asset Clusters (zero wasted evictions!)
+    [2537,   0,  29], // s2win1.bmp + s2face0.bmp + anims_fe.psx (opened right after sec=2095 -> 3 files in 1 single CdRead!)
     [4484,   0,  15], // s2font1..s2tricks
     [4499,   0,  33], // Crash B. in-place CD.WAD[460]: crash.psh + crash.psx + s2face20.bmp!
     [4569,   0,  12], // s2win4 + s2medal1..3
+    [4591,   0,   2], // s2arrow9 + s2arrow8 (LevelSel arrows in 1 single CdRead!)
     [4593,   0,   7], // s2icon1..7
     // All 17 Contiguous Classic Skaters (.psx + .psh in 1 single CdRead -> PlaySel + Scrolling + Level Load!)
     [3503, -30, 31], // burnq2  (Slot 1: Silvio Santos)
@@ -3783,7 +3785,8 @@ function applyAll() {
   const wad = fs.readFileSync(wadPath);
   patchWord(wad, playselOff + 0x3388, jalWord(SYM.GetSelectedSkaterIdx), jalWord(ADDR.Tramp_PlaySelScroll),  'playsel.bin Scroll  +0x3388', [jalWord(0x800E2780)]);
   patchWord(wad, playselOff + 0x100C, jalWord(SYM.SFX_Play),             jalWord(ADDR.Tramp_PlaySelConfirm), 'playsel.bin Confirm +0x100C', [jalWord(0x800E27A8)]);
-  patchWord(wad, playselOff + 0x415C, 0x240400EC,                        0x2404001C,                         'playsel.bin Fade->LevelSel 236->28 +0x415C', [0x24040070]);
+  patchWord(wad, playselOff + 0x415C, 0x240400EC,                        0x240400EC,                         'playsel.bin Restore Fade arg +0x415C', [0x2404001C, 0x24040070]);
+  patchWord(wad, playselOff + 0x4160, 0x0C0138C7,                        0x00000000,                         'playsel.bin NOP Fade_Start(PlaySel->LevelSel) -> ZERO black screen +0x4160');
 
   // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin + frontend overlays)
   applyThps1EnginePatches(slus, wad, hed);
