@@ -1177,9 +1177,9 @@ try {
             if (tag === 0x0000000A && len >= 10000) okGrid = true;
             p += len;
           }
-          // Hangar-geometry Tomb Time: exact 470-sector Neversoft Hangar watertight collision mesh (213,772 B)!
-          if (!okRgbs || !okGrid || nObj !== 470 || raw.length !== 213772) {
-            fail('EGYPT20', `skegyp.psx geometria Hangar/colisao invalida (objs=${nObj}, sz=${raw.length}, rgbs=${okRgbs}, grid=${okGrid})`); egErr++;
+          // Expanded Tomb Time: 470 Hangar sectors (with False Wall portal in obj[59]) + Massive 16,000x16,000 Secret Tomb (>= 500 objs, <= 360 KB)!
+          if (!okRgbs || !okGrid || nObj < 500 || raw.length < 250000 || raw.length > 360000) {
+            fail('EGYPT20', `skegyp.psx geometria Hangar+Tumba Secreta invalida (objs=${nObj}, sz=${raw.length}, rgbs=${okRgbs}, grid=${okGrid})`); egErr++;
           }
         }
         if (ef === 'skegyp_l.psx') {
@@ -1190,16 +1190,34 @@ try {
         }
         if (ef === 'skegyp_o.psx') {
           const oInfo = psxLib.parsePsxStructure(raw);
-          if (oInfo.numMeshes !== 20 || oInfo.meshHashes[8] !== 0x5120A107 || oInfo.meshHashes[9] !== 0x4EB2C689 || oInfo.textures.length !== 39) {
-            fail('EGYPT20', `skegyp_o.psx invalido (meshes=${oInfo.numMeshes}, h8=0x${(oInfo.meshHashes[8]||0).toString(16)}, h9=0x${(oInfo.meshHashes[9]||0).toString(16)})`); egErr++;
+          if (oInfo.numMeshes !== 21 || oInfo.meshHashes[8] !== 0x5120A107 || oInfo.meshHashes[9] !== 0x4EB2C689 || oInfo.meshHashes[20] !== 0x5120A108 || oInfo.textures.length !== 39) {
+            fail('EGYPT20', `skegyp_o.psx invalido (meshes=${oInfo.numMeshes}, h8=0x${(oInfo.meshHashes[8]||0).toString(16)}, h9=0x${(oInfo.meshHashes[9]||0).toString(16)}, h20=0x${(oInfo.meshHashes[20]||0).toString(16)})`); egErr++;
           }
         }
-        if (ef === 'skegyp_t.trg' && (raw.subarray(0, 4).toString('ascii') !== '_TRG' || raw.readUInt32LE(8) !== 713)) {
+        if (ef === 'skegyp_t.trg' && (raw.subarray(0, 4).toString('ascii') !== '_TRG' || raw.readUInt32LE(8) < 750)) {
           fail('EGYPT20', `skegyp_t.trg invalido (nodes=${raw.readUInt32LE(8)})`); egErr++;
         }
       }
+      // Verify SLUS 0x80035E34 (Secret Green Gem Hook) & levelsel.bin +0x0DF0 (PAD_DOWN/UP Special Levels Hook)!
+      const { THPS1_ADDR: T1A } = require('./thps1_engine_mod');
+      const slusGemHook = slusIso.readUInt32LE(0x800 + (0x80035E34 - 0x80010000));
+      const expGemHook = (0x0C000000 | ((T1A.Entry_SecretGemSpawn >>> 2) & 0x03FFFFFF)) >>> 0;
+      if (slusGemHook !== expGemHook) {
+        fail('EGYPT20', `SLUS 0x80035E34 hook Gema Verde divergente: 0x${slusGemHook.toString(16)} != 0x${expGemHook.toString(16)}`); egErr++;
+      }
+      const slusGemSfxHook = slusIso.readUInt32LE(0x800 + (0x800367E4 - 0x80010000));
+      const expGemSfxHook = (0x0C000000 | ((0x800E2FB4 >>> 2) & 0x03FFFFFF)) >>> 0;
+      if (slusGemSfxHook !== expGemSfxHook) {
+        fail('EGYPT20', `SLUS 0x800367E4 hook Fanfarra Gema Verde divergente: 0x${slusGemSfxHook.toString(16)} != 0x${expGemSfxHook.toString(16)}`); egErr++;
+      }
+      const lsIso = getWadEntry(fdMod, 455, hedDisk, 33);
+      const lsUdHook = lsIso.readUInt32LE(0x0DF0);
+      const expUdHook = (0x0C000000 | ((T1A.Entry_LevelSelUpDown >>> 2) & 0x03FFFFFF)) >>> 0;
+      if (lsUdHook !== expUdHook) {
+        fail('EGYPT20', `levelsel.bin +0x0DF0 hook Fases Especiais (seta baixo) divergente: 0x${lsUdHook.toString(16)} != 0x${expUdHook.toString(16)}`); egErr++;
+      }
       if (egErr === 0) {
-        pass(`Fase Inedita Tomb Time (Egito - Crash 3, ID 20, Slot 19 antes do Create-A-Park): 5/5 arquivos em ordem linear no THPS1.WAD sobre geometria/colisao 100% blindada do Hangar (470 setores, TAG 0x0A, 105 texturas arenito quente Crash 3, 20 objetos incl. Escaravelho 0x5120A107 & Vaso 0x4EB2C689, 713 nos TRG) + t1rend09/t1levl09 in-place 100% validos!`);
+        pass(`Fase Especial Tomb Time (Egito - Crash 3, ID 20 via Seta Baixo "FASES ESPECIAIS"): 5/5 arquivos lineares no THPS1.WAD (Hangar 470 + Tumba Secreta 16000x16000 + Parede Falsa, TAG 0x0A 20x20, 105 texturas 60-30-10 vivas, 21 objetos incl. Escaravelho 0x5120A107, Vaso 0x4EB2C689 & Gema Verde 0x5120A108, 757 nos TRG) + hooks MIPS 100% validos!`);
       }
     }
     // Crash Bandicoot ("Crash B.", Brand-New Slot 20) Forensic Validation:

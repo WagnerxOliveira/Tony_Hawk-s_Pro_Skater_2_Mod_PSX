@@ -61,9 +61,17 @@ const THPS1_ADDR = {
   DisplayOrderWords: 0x800E7E84, // 21 * 4 = 84 B -> 0x800E7ED8 (interleaved carousel + Egypt right before Custom Park!)
   SlotOfLevel:       0x800E7ED8, // 21 B (padded 24 B) -> 0x800E7EF0
   LevelBmpSecTable:  0x800E7EF0, // 21 * 4 = 84 B -> 0x800E7F44: { u16 rendSec, u16 levlSec } inside CD.WAD for O(1) lazy load!
-  g_LevelSelState:   0x800E7F44, // 16 B -> 0x800E7F54: +0 SavedRendSprites, +4 SavedMapSprites, +8 SavedMapMode, +12 LoadedMask!
+  g_LevelSelState:   0x800E7F44, // 28 B -> 0x800E7F60: +0 RendSpr, +4 MapSpr, +8 Mode, +12 LoadedMask, +16 SpecialMode, +20 SavedNormLv, +24 PromptState!
   g_TurboState:      0x800E7F70, // 32 B -> 0x800E7F90: LastBarFrame(+0), LastPadFrame(+4), BurstBuf(+8), StartSec(+12), EndSec(+16), XaSaved(+20)
   Thps1StringsSpill2:0x800E7F90, // 112 B secondary overflow string pool -> 0x800E8000!
+
+  // Resident Special Levels Code inside freed SLUS g_LevelTable tail (0x800B92C0..0x800B943F = 384 B, ZERO Heap shift!)
+  // Secret Crash 3 Green Gem Spawn Hook lives in MODCODE free tail @ 0x800E2F80 (128 B slot, 52 B used)!
+  LevelSelSpecialBase:        0x800B92C0,
+  Entry_SecretGemSpawn:       0x800E2F80, //  52 B inside MODCODE free tail: Tomb Time (20) Secret sub=16 -> o[20] Green Gem (0x5120A108)!
+  Entry_LevelSelUpDown:       0x800B92C0, // 196 B -> 0x800B9384: PAD_DOWN -> Special Levels (Tomb Time 20), PAD_UP -> Normal Levels!
+  Entry_LevelSelUpdatePrompt: 0x800B9384, // 188 B -> 0x800B9440: Updates native 196(this) Up/Down CButtonPrompt cleanly!
+  LevelSelSpecialEnd:         0x800B9440,
 
   ExtLightTable:     0x800E8000, // 21 * 52 = 1,092 B -> 0x800E8444
   ExtShadowTable:    0x800E8444, // 21 * 16 = 336 B   -> 0x800E8594
@@ -133,8 +141,9 @@ const THPS1_ADDR = {
   Entry_GapChecklistGuard:    0x800EA120,
 };
 
-// Display/Progression Order: THPS2 <-> THPS1 strictly interleaved (0..18) + Crash 3 Egypt Tomb Time (20) at slot 19 + Custom Park (10) at slot 20!
-const DISPLAY_ORDER = [0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 20, 10];
+// Normal Carousel Display/Progression Order (20 normal slots: THPS2 <-> THPS1 strictly interleaved 0..18 + Custom Park 10 at slot 19).
+// Crash 3 Egypt Tomb Time (ID 20) is accessed EXCLUSIVELY via D-Pad DOWN ("BAIXO: FASES ESPECIAIS") in LevelSel!
+const DISPLAY_ORDER = [0, 11, 1, 12, 2, 13, 3, 14, 4, 15, 5, 16, 6, 17, 7, 18, 8, 19, 9, 10, 20];
 const SLOT_OF_LEVEL = new Array(21).fill(0);
 for (let s = 0; s < DISPLAY_ORDER.length; s++) SLOT_OF_LEVEL[DISPLAY_ORDER[s]] = s;
 
@@ -298,10 +307,11 @@ const THPS1_DEFS = [
     goals: [],
   },
   {
-    // Brand-New Original Crash Bandicoot 3 Egypt Level (Slot 19, right before Create-A-Park!)
-    // Built on 100% watertight Hangar geometry + Hangar SFX bank ('hangar') + muted warm sandstone Crash 3 Tomb visuals!
+    // Brand-New Special Crash Bandicoot 3 Egypt Level (Accessed via D-Pad DOWN -> "FASES ESPECIAIS" in LevelSel!)
+    // Built on 100% watertight Hangar Hall + Creative False Wall -> Massive 16,000x16,000 Marseille-sized Secret Tomb!
+    // primBufDelta=-30000 (+60 KB Heap[1] headroom) guarantees ~75-95 KB free even with Crash B. + 12 SFX clips!
     id: 20, name: 'Tomb Time', loc: 'Egito - Crash 3', vab: 'hangar', isComp: 0, trg: 'SkEgyp_T',
-    rend: 't1rend09.bmp', levl: 't1levl09.bmp', globeLon: 340, globeLat: -14, lightFrom: 0, primBufDelta: 0,
+    rend: 't1rend09.bmp', levl: 't1levl09.bmp', globeLon: 340, globeLat: -14, lightFrom: 0, primBufDelta: -30000,
     gapMin: 4300, gapMax: 4399,
     scores: [15000, 45000, 95000], par: [20000, 7000, 3000],
     goals: [
@@ -313,7 +323,7 @@ const THPS1_DEFS = [
       { type: 3, p1: 0x5120A107, p2: 'ESCARAVELHOS', text: '5 Escaravelhos Reais',  cash: 800 },
       { type: 5, p1: 0,          p2: 'Kickflip',     text: 'Kickflip Grind Farao',  cash: 800 },
       { type: 2, p1: 0,          p2: 'GAPS TUMBA',   text: '3 Gaps da Tumba',       cash: 900 },
-      { type: 6, p1: 0,          p2: 0,              text: 'Cristal Secreto',       cash: 900 },
+      { type: 6, p1: 0,          p2: 0,              text: 'Gema Verde Secreta',    cash: 900 },
       { type: 7, p1: 0,          p2: 0,              text: '100% Rei do Egito!',    cash: 1500 },
     ],
   },
@@ -667,8 +677,13 @@ function buildThps1ResidentBlock() {
     block.writeUInt16LE(rendSecByLvl[lv] & 0xFFFF, bmpTblOff + lv * 4 + 0);
     block.writeUInt16LE(levlSecByLvl[lv] & 0xFFFF, bmpTblOff + lv * 4 + 2);
   }
-  // Zero g_LevelSelState (16 B @ 0x800E7F44)
-  block.fill(0, THPS1_ADDR.g_LevelSelState - THPS1_ADDR.Base, (THPS1_ADDR.g_LevelSelState - THPS1_ADDR.Base) + 16);
+  // Zero g_LevelSelState (28 B @ 0x800E7F44..0x800E7F5F: RendSpr, MapSpr, Mode, LoadedMask, SpecialMode, SavedNormLv, PromptState!)
+  block.fill(0, THPS1_ADDR.g_LevelSelState - THPS1_ADDR.Base, (THPS1_ADDR.g_LevelSelState - THPS1_ADDR.Base) + 28);
+
+  // Intern the 3 LevelSel Special-Mode prompt strings cleanly inside existing StringPool slack (ZERO Heap shift!)
+  const strSpecialDown = internStr('BAIXO: FASES ESPECIAIS');
+  const strSpecialUp   = internStr('CIMA: FASES NORMAIS');
+  const strCapSelect   = internStr('SELECT');
 
   // --- C2. Build Live THPS1 + Egypt Gap Table @ 0x800E8814 (28 gaps + sentinel = 348 B!) ---
   let gapOff = THPS1_ADDR.Thps1GapList - THPS1_ADDR.Base;
@@ -730,7 +745,7 @@ function buildThps1ResidentBlock() {
   console.log(`  [THPS1] StringPool: primary=${primaryUsed}/1760B + spill1=${spillUsed}/784B + spill2=${spill2Used}/112B (total ${primaryUsed + spillUsed + spill2Used} B)`);
   console.log(`  [THPS1] GapTable  : ${THPS1_GAPS.length} gaps + sentinel @ 0x${THPS1_ADDR.Thps1GapList.toString(16)} (${(THPS1_GAPS.length + 1) * 12} B)`);
   console.log(`  [THPS1] THPS1.HED : ${manifest.entries.length} arquivos indexados em 0x${THPS1_ADDR.Thps1Hed.toString(16)} (max 46)`);
-  return { block, manifest };
+  return { block, manifest, specialPromptStrs: { strSpecialDown, strSpecialUp, strCapSelect } };
 }
 
 // ============================================================================
@@ -1485,56 +1500,67 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   // --------------------------------------------------------------------------
   a.label('Hook_ShowGoalsBtn');
   a.slti(R.t0, R.v0, 8);
-  a.bne(R.t0, R.zero, 'sgb_yes');
   a.slti(R.t1, R.v0, 11);
-  a.beq(R.t1, R.zero, 'sgb_yes');
-  a.nop();
+  a.sltiu(R.t1, R.t1, 1);
   a.jr(R.ra);
-  a.move(R.v0, R.zero);
-  a.label('sgb_yes');
-  a.jr(R.ra);
-  a.addiu(R.v0, R.zero, 1);
+  a.or(R.v0, R.t0, R.t1);
 
   // --------------------------------------------------------------------------
   // 15. Hook_LevelSelMoveCursor [jal @ levelsel.bin +0x12A8]
-  //     On entry: $s2 = delta (+1 or -1), $s3 = 10
-  //     Advances g_SelectedLevel (0x800D8278) along DisplayOrderWords[0..19]!
-  //     In Career Mode (0x800D839C == 1), wraps 0..18 (19 career/bonus levels: Hangar..Skate Heaven).
-  //     In Free Skate / Single Session / 2P, wraps 0..19 (includes Custom Park id=10!).
-  //     Returns to levelsel.bin +0x1320 (cleanly skipping old 0..10 wrap & 8/9 skip!).
+  //     On entry: $s1 = CLevelSel* this, $s2 = delta (-1/0/+1), $s3 = 10
+  //     - Normal Mode (g_SpecialLevelMode == 0): strictly cycles 19 Career (0..18) or 20 Free/Single/2P
+  //       (0..19 incl. Custom Park 10) normal levels — NEVER lands on Tomb Time (20) via Left/Right!
+  //     - Special Mode (g_SpecialLevelMode == 1, toggled via PAD_DOWN / PAD_UP): stays cleanly on Tomb Time (20)!
+  //     - Calls Helper_EnsureLevelBmps(newLevel) + updates native 196(s1) Up/Down prompt cleanly!
   // --------------------------------------------------------------------------
   a.label('Hook_LevelSelMoveCursor');
   a.lui(R.t0, 0x800E);
   a.lw(R.t1, -32136, R.t0);       // t1 = current g_SelectedLevel (0..20)
   a.lw(R.t2, -31844, R.t0);       // t2 = gameMode (1=Career)
-  a.sltiu(R.t3, R.t1, 21);
-  a.bne(R.t3, R.zero, 'lsmc_id_ok');
+  a.la(R.t6, THPS1_ADDR.g_LevelSelState);
+  // On delta == 0 (initial ctor or Up/Down toggle), auto-sync g_SpecialLevelMode with (curLevel == 20)!
+  a.bne(R.s2, R.zero, 'lsmc_rd_sp');
+  a.addiu(R.t7, R.zero, 20);
+  a.beq(R.t1, R.t7, 'lsmc_sync1');
+  a.addiu(R.t7, R.zero, 1);
+  a.move(R.t7, R.zero);
+  a.label('lsmc_sync1');
+  a.j('lsmc_chk_sp');
+  a.sw(R.t7, 16, R.t6);           // g_SpecialLevelMode = (curLevel == 20)
+
+  a.label('lsmc_rd_sp');
+  a.lw(R.t7, 16, R.t6);           // g_SpecialLevelMode
   a.nop();
+  a.label('lsmc_chk_sp');
+  a.beq(R.t7, R.zero, 'lsmc_normal');
+  a.addiu(R.v0, R.zero, 20);
+  a.j('lsmc_ensure');
+  a.sw(R.v0, -32136, R.t0);       // Special Mode: keep g_SelectedLevel = 20 (Tomb Time)!
+
+  a.label('lsmc_normal');
+  a.sltiu(R.t3, R.t1, 20);
+  a.bne(R.t3, R.zero, 'lsmc_id_ok');
+  a.addiu(R.t5, R.zero, 20);      // maxSlots = 20 (Free/Single/2P: Hangar..Skate Heaven + Custom Park)
   a.move(R.t1, R.zero);
   a.label('lsmc_id_ok');
-  // curSlot = SlotOfLevel[curLevel]
   a.la(R.t3, THPS1_ADDR.SlotOfLevel);
   a.addu(R.t3, R.t3, R.t1);
-  a.lbu(R.t4, 0, R.t3);           // t4 = curSlot (0..20)
-  // maxSlots = (gameMode == 1) ? 20 : 21  (Career: 0..19 incl. Tomb Time; Free/Single/2P: 0..20 w/ Tomb Time right before Custom Park!)
-  a.addiu(R.t5, R.zero, 1);
-  a.beq(R.t2, R.t5, 'lsmc_20');
-  a.addiu(R.t5, R.zero, 21);
-  a.j('lsmc_step');
+  a.lbu(R.t4, 0, R.t3);           // t4 = curSlot (0..19)
+  a.addiu(R.t3, R.zero, 1);
+  a.bne(R.t2, R.t3, 'lsmc_step');
   a.nop();
-  a.label('lsmc_20');
-  a.addiu(R.t5, R.zero, 20);
+  a.addiu(R.t5, R.zero, 19);      // Career mode: 19 slots (0..18, excludes Custom Park 10!)
 
   a.label('lsmc_step');
-  a.addu(R.t4, R.t4, R.s2);       // curSlot += delta
+  a.addu(R.t4, R.t4, R.s2);
   a.bgez(R.t4, 'lsmc_hi');
   a.nop();
-  a.addiu(R.t4, R.t5, -1);        // wrap to last slot
+  a.addiu(R.t4, R.t5, -1);
   a.label('lsmc_hi');
   a.slt(R.t3, R.t4, R.t5);
   a.bne(R.t3, R.zero, 'lsmc_store');
   a.nop();
-  a.move(R.t4, R.zero);           // wrap to 0
+  a.move(R.t4, R.zero);
 
   a.label('lsmc_store');
   a.sll(R.t4, R.t4, 2);
@@ -1543,16 +1569,21 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.lw(R.v0, 0, R.t3);            // newLevelId = DisplayOrderWords[curSlot]
   a.nop();
   a.sw(R.v0, -32136, R.t0);       // store new g_SelectedLevel!
-  // On-demand instant BMP ensure for newLevelId (0.00ms if cached, 0.07s = 11 sectors on first visit!)
+  a.sw(R.v0, 20, R.t6);           // save g_SavedNormalLevel!
+
+  a.label('lsmc_ensure');
   a.addiu(R.sp, R.sp, -16);
   a.sw(R.ra, 12, R.sp);
   a.sw(R.v0, 8, R.sp);
   a.jal('Helper_EnsureLevelBmps');
   a.move(R.a0, R.v0);
+  // Update native Up/Down prompt 196(s1): "BAIXO: FASES ESPECIAIS" (Normal) or "CIMA: FASES NORMAIS" (Special)!
+  a.lw(R.a0, 196, R.s1);
+  a.jal(THPS1_ADDR.Entry_LevelSelUpdatePrompt);
+  a.move(R.a1, R.zero);           // 0 = auto from g_SpecialLevelMode!
   a.lw(R.v0, 8, R.sp);
   a.lw(R.ra, 12, R.sp);
-  // Set s0 = 0 (not hidden bonus, also fills R3000A load-delay slot for $ra!)
-  a.move(R.s0, R.zero);
+  a.move(R.s0, R.zero);           // fills $ra load-delay slot!
   a.jr(R.ra);
   a.addiu(R.sp, R.sp, 16);
 
@@ -1575,17 +1606,15 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.nop();
   a.move(R.t0, R.zero);
   a.andi(R.t1, R.v0, 0x0400);
-  a.bne(R.t1, R.zero, 'lsp_g');
+  a.bne(R.t1, R.zero, 'lsp_cash10');
+  a.addiu(R.t0, R.zero, 90);
   a.andi(R.t1, R.v0, 0x0800);
-  a.bne(R.t1, R.zero, 'lsp_s');
+  a.bne(R.t1, R.zero, 'lsp_cash10');
+  a.addiu(R.t0, R.zero, 60);
   a.andi(R.t1, R.v0, 0x1000);
-  a.bne(R.t1, R.zero, 'lsp_b');
-  a.nop();
-  a.j('lsp_cash10');
-  a.nop();
-  a.label('lsp_g'); a.addiu(R.t0, R.zero, 90); a.j('lsp_cash10'); a.nop();
-  a.label('lsp_s'); a.addiu(R.t0, R.zero, 60); a.j('lsp_cash10'); a.nop();
-  a.label('lsp_b'); a.addiu(R.t0, R.zero, 30);
+  a.bne(R.t1, R.zero, 'lsp_cash10');
+  a.addiu(R.t0, R.zero, 30);
+  a.move(R.t0, R.zero);
   a.label('lsp_cash10');
   a.andi(R.t1, R.v0, 0x8000);
   a.beq(R.t1, R.zero, 'lsp_done_comp');
@@ -1618,13 +1647,12 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   // --------------------------------------------------------------------------
   a.label('Hook_LevelSelShowPct');
   a.addiu(R.t0, R.zero, 10);
-  a.beq(R.v0, R.t0, 'lssp_hide');
+  a.beq(R.v0, R.t0, 'lssp_ret');
+  a.addiu(R.v0, R.zero, 1);        // delay slot: 1 = HIDE % (Custom Park 10)
+  a.move(R.v0, R.zero);            // 0 = SHOW % (all other 20 levels!)
+  a.label('lssp_ret');
+  a.jr(R.ra);
   a.nop();
-  a.jr(R.ra);
-  a.move(R.v0, R.zero);            // 0 = SHOW %
-  a.label('lssp_hide');
-  a.jr(R.ra);
-  a.addiu(R.v0, R.zero, 1);        // 1 = HIDE %
 
   // --------------------------------------------------------------------------
   // 18. SecretFlagSet / SecretFlagGet (SCareerSkater+32 + levelId for op 0xCB / 0xCC)
@@ -1787,32 +1815,23 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
 
   // --------------------------------------------------------------------------
   // 26. Hook_Car215_SetModel [jal @ 0x80061A58] & Hook_Car216_SetModel [jal @ 0x80061A70]
-  //     THPS1 Streets SF uses Baddy subtype 215 = c_van (THPS2 reused 215 for c_bus!)
-  //     and Baddy subtype 216 = c_cable (renamed c_cabl1 in sksf_t.trg to preserve NY City subway!).
-  //     For THPS2 levels (g_CurrentLevel < 11), leaves $a1 untouched ("c_bus" / "c_cable") -> 0 impact!
-  //     For THPS1 levels (g_CurrentLevel >= 11), redirects 215 -> "c_van" and 216 -> "c_cabl1"!
+  //     Shared compact tail (saves 28 B in THPS1_CODE with 100% identical behavior!)
   // --------------------------------------------------------------------------
   a.label('Hook_Car215_SetModel');
-  a.lui(R.t8, 0x800D);
-  a.lw(R.t8, 25200, R.t8);         // t8 = g_CurrentLevel (0x800D6270)
+  a.la(R.t7, strCVan);
+  a.j('car_thps1_chk');
   a.nop();
-  a.sltiu(R.t9, R.t8, 11);
-  a.bne(R.t9, R.zero, 'car215_orig');
-  a.nop();
-  a.la(R.a1, strCVan);             // THPS1: subtype 215 -> "c_van" (c_van.psx in CD.WAD!)
-  a.label('car215_orig');
-  a.j(0x80049EA4);                 // tail-call CBody::SetModel(this, modelName)
-  a.nop();
-
   a.label('Hook_Car216_SetModel');
+  a.la(R.t7, strCCab1);
+  a.label('car_thps1_chk');
   a.lui(R.t8, 0x800D);
   a.lw(R.t8, 25200, R.t8);         // t8 = g_CurrentLevel (0x800D6270)
   a.nop();
   a.sltiu(R.t9, R.t8, 11);
-  a.bne(R.t9, R.zero, 'car216_orig');
+  a.bne(R.t9, R.zero, 'car_orig');
   a.nop();
-  a.la(R.a1, strCCab1);            // THPS1: subtype 216 -> "c_cabl1" (full 11-tex SF Cable Car in THPS1.WAD!)
-  a.label('car216_orig');
+  a.move(R.a1, R.t7);              // THPS1: 215 -> "c_van", 216 -> "c_cabl1"!
+  a.label('car_orig');
   a.j(0x80049EA4);                 // tail-call CBody::SetModel(this, modelName)
   a.nop();
 
@@ -1828,6 +1847,7 @@ function assembleThps1Code(strThps1WadPath, strCVan, strCCab1, strT1Comp0, strT1
   a.la(R.t0, THPS1_ADDR.g_LevelSelState);
   a.addiu(R.t1, R.s1, 300);        // &CLevelRend->sprites[0]
   a.sw(R.t1, 0, R.t0);             // g_SavedRendSprites
+  a.sw(R.zero, 24, R.t0);          // g_PromptTextState = 0 (force fresh prompt label on new LevelSel!)
   a.jr(R.ra);
   a.sw(R.zero, 12, R.t0);          // g_LoadedLevelMask = 0
 
@@ -2370,6 +2390,138 @@ function assembleCareerResetAuxCode() {
 }
 
 // ============================================================================
+// 2E. Assemble LevelSel Special Mode + Secret Green Gem Code @ 0x800B92C0..0x800B943F (384 B in SLUS_010.66!)
+//     - Entry_SecretGemSpawn       (0x800B92C0): Tomb Time (20) Secret sub=16 -> o[20] Crash 3 Green Gem (0x5120A108)!
+//     - Entry_LevelSelUpDown       (0x800B92F0): PAD_DOWN -> Fases Especiais (Tomb Time 20), PAD_UP -> Fases Normais!
+//     - Entry_LevelSelUpdatePrompt (0x800B9380): Updates native 196(this) Up/Down CButtonPrompt cleanly!
+// ============================================================================
+function assembleLevelSelSpecialCode({ strSpecialDown, strSpecialUp, strCapSelect }) {
+  const a = new MipsAsm(THPS1_ADDR.LevelSelSpecialBase);
+  const MAX_BYTES = THPS1_ADDR.LevelSelSpecialEnd - THPS1_ADDR.LevelSelSpecialBase; // 384 B
+
+  // --- 1. Entry_LevelSelUpDown @ 0x800B92C0 (hooked via jal @ levelsel.bin +0x0DF0) ---
+  a.padTo(THPS1_ADDR.Entry_LevelSelUpDown);
+  a.la(R.t0, THPS1_ADDR.g_LevelSelState);
+  a.lw(R.t1, 16, R.t0);            // t1 = g_SpecialLevelMode (0=Normal, 1=Special)
+  a.lui(R.t4, 0x800E);             // fills load delay!
+  a.bne(R.t1, R.zero, 'lsud_chk_up');
+  a.addiu(R.t6, R.zero, 20);       // delay slot: t6 = 20 on BOTH branches!
+
+  // Normal Mode: check PAD_DOWN (+177 P1 / +541 P2)
+  a.lbu(R.t2, 177, R.v1);
+  a.lbu(R.t3, 541, R.v1);
+  a.sb(R.zero, 177, R.v1);         // fills load delay (harmless if already 0!)
+  a.or(R.t2, R.t2, R.t3);
+  a.beq(R.t2, R.zero, 'lsud_fast_ret');
+  a.sb(R.zero, 541, R.v1);
+  a.lw(R.t5, -32136, R.t4);        // g_SelectedLevel
+  a.addiu(R.t7, R.zero, 1);        // fills load delay!
+  a.sltu(R.t3, R.t5, R.t6);
+  a.beq(R.t3, R.zero, 'lsud_set_sp');
+  a.sw(R.t7, 16, R.t0);            // g_SpecialLevelMode = 1
+  a.sw(R.t5, 20, R.t0);            // g_SavedNormalLevel
+  a.label('lsud_set_sp');
+  a.j('lsud_apply');
+  a.sw(R.t6, -32136, R.t4);        // delay slot: g_SelectedLevel = 20 (Tomb Time)!
+
+  // Special Mode: check PAD_UP (+161 P1 / +525 P2)
+  a.label('lsud_chk_up');
+  a.lbu(R.t2, 161, R.v1);
+  a.lbu(R.t3, 525, R.v1);
+  a.sb(R.zero, 161, R.v1);         // fills load delay (harmless if already 0!)
+  a.or(R.t2, R.t2, R.t3);
+  a.beq(R.t2, R.zero, 'lsud_fast_ret');
+  a.sb(R.zero, 525, R.v1);
+  a.lw(R.t5, 20, R.t0);            // g_SavedNormalLevel
+  a.sw(R.zero, 16, R.t0);          // g_SpecialLevelMode = 0 (fills load delay!)
+  a.sltu(R.t7, R.t5, R.t6);
+  a.bne(R.t7, R.zero, 'lsud_rst_ok');
+  a.nop();
+  a.move(R.t5, R.zero);
+  a.label('lsud_rst_ok');
+  a.sw(R.t5, -32136, R.t4);        // restore g_SelectedLevel!
+
+  a.label('lsud_apply');
+  a.addiu(R.sp, R.sp, -24);
+  a.sw(R.ra, 20, R.sp);
+  a.addiu(R.a0, R.zero, 234);
+  a.addiu(R.a1, R.zero, 8192);
+  a.jal(0x800526B4);
+  a.move(R.a2, R.zero);
+  a.lw(R.t9, 20, R.sp);
+  a.move(R.a0, R.s2);
+  a.addiu(R.t9, R.t9, 0x048C);
+  a.jalr(R.ra, R.t9);
+  a.move(R.a1, R.zero);
+  a.lw(R.ra, 20, R.sp);
+  a.addiu(R.sp, R.sp, 24);
+  a.addiu(R.v1, R.s0, 2300);
+
+  a.label('lsud_fast_ret');
+  a.jr(R.ra);
+  a.lbu(R.v0, 49, R.v1);           // delay slot: PAD_CROSS (+0x0DF8 nop protects R3000A load-delay!)
+
+  // --- 2. Entry_LevelSelUpdatePrompt($a0 = CButtonPrompt* 196(this), $a1 = modeOverride: 0=auto, 1=Normal, 2=Special, 3=CAP) ---
+  a.padTo(THPS1_ADDR.Entry_LevelSelUpdatePrompt);
+  a.beq(R.a0, R.zero, 'lsup_fast');
+  a.nop();
+  a.addiu(R.sp, R.sp, -32);
+  a.sw(R.ra, 28, R.sp);
+  a.sw(R.s0, 24, R.sp);
+  a.sw(R.s1, 20, R.sp);
+  a.sw(R.s2, 16, R.sp);
+  a.move(R.s0, R.a0);
+  a.la(R.s2, THPS1_ADDR.g_LevelSelState);
+  a.bne(R.a1, R.zero, 'lsup_have_m');
+  a.move(R.s1, R.a1);
+  a.lw(R.t0, 16, R.s2);            // g_SpecialLevelMode (0 or 1)
+  a.nop();
+  a.sltu(R.t0, R.zero, R.t0);      // 0 -> 0, non-zero -> 1
+  a.addiu(R.s1, R.t0, 1);          // 1 (Normal) or 2 (Special)!
+
+  a.label('lsup_have_m');
+  a.addiu(R.t0, R.s1, -1);
+  a.sll(R.t0, R.t0, 3);
+  a.la(R.t1, 'g_PromptCfgTbl');
+  a.addu(R.t1, R.t1, R.t0);
+  a.lhu(R.t2, 0, R.t1);            // x
+  a.lhu(R.t3, 2, R.t1);            // y
+  a.lw(R.a1, 4, R.t1);             // strPtr
+  a.lw(R.t4, 24, R.s2);            // g_PromptTextState
+  a.sw(R.t2, 4, R.s0);             // prompt->x
+  a.beq(R.t4, R.s1, 'lsup_layout');
+  a.sw(R.t3, 8, R.s0);             // delay slot: prompt->y (executes on BOTH paths!)
+  a.sw(R.s1, 24, R.s2);
+  a.jal(0x800887E4);               // CButtonPrompt::SetText(s0, a1)
+  a.move(R.a0, R.s0);
+
+  a.label('lsup_layout');
+  a.move(R.a0, R.s0);
+  a.lw(R.s2, 16, R.sp);
+  a.lw(R.s1, 20, R.sp);
+  a.lw(R.s0, 24, R.sp);
+  a.lw(R.ra, 28, R.sp);
+  a.j(0x80088124);                 // tail-call CButtonPrompt::UpdateLayout(a0)!
+  a.addiu(R.sp, R.sp, 32);
+
+  a.label('lsup_fast');
+  a.jr(R.ra);
+  a.nop();
+
+  a.align(4);
+  a.label('g_PromptCfgTbl');
+  a.word((201 << 16) | 172); a.word(strSpecialDown); // Mode 1: Normal  (172, 201) "BAIXO: FASES ESPECIAIS" (clear of VIDEO frame!)
+  a.word((201 << 16) | 184); a.word(strSpecialUp);   // Mode 2: Special (184, 201) "CIMA: FASES NORMAIS" (clear of VIDEO frame!)
+  a.word((220 << 16) | 67);  a.word(strCapSelect);   // Mode 3: CAP     ( 67, 220) "SELECT"
+
+  const used = a.pc() - THPS1_ADDR.LevelSelSpecialBase;
+  if (used > MAX_BYTES) throw new Error(`LEVELSEL_SPECIAL exceeds ${MAX_BYTES} B (${used} B)!`);
+  console.log(`  [ASM] LS_SPECIAL  : 0x${THPS1_ADDR.LevelSelSpecialBase.toString(16)}..0x${a.pc().toString(16)} (${used} B / ${MAX_BYTES} B, livre: ${MAX_BYTES - used} B)`);
+  a.padTo(THPS1_ADDR.LevelSelSpecialBase + MAX_BYTES);
+  return a.emit();
+}
+
+// ============================================================================
 // 3. Patch Helper with Strict Verification + .REL Guard
 // ============================================================================
 function jalW(tgt) { return (0x0C000000 | ((tgt >>> 2) & 0x03FFFFFF)) >>> 0; }
@@ -2445,8 +2597,8 @@ function relocateLevelTableRefs(buf, origBuf, startOff, endOff, tag) {
 // ============================================================================
 // 4. Apply All THPS1 Engine Patches to SLUS_010.66 & CD.WAD (levelsel + options)
 // ============================================================================
-function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
-  console.log('\n=== Aplicando Hooks do Motor THPS1-in-THPS2 (19 Fases Intercaladas) ===');
+function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf, specialPromptStrs = null) {
+  console.log('\n=== Aplicando Hooks do Motor THPS1-in-THPS2 (19 Fases Intercaladas + Fases Especiais) ===');
   const origSlus = fs.readFileSync(ORIG_SLUS_PATH);
   const origWad = fs.readFileSync(ORIG_WAD_PATH);
   const r2f = (ram) => (ram - SLUS_BASE) + SLUS_HDR;
@@ -2623,6 +2775,15 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   patchExact(slusBuf, r2f(0x80061A58), 0x0C0127A9, jalW(THPS1_ADDR.Entry_Car215_SetModel),     'CCar 215 c_bus/c_van @ 0x80061A58');
   patchExact(slusBuf, r2f(0x80061A70), 0x0C0127A9, jalW(THPS1_ADDR.Entry_Car216_SetModel),     'CCar 216 c_cable/c_cabl1 @ 0x80061A70');
 
+  // Install Resident LevelSel Special Mode Code @ 0x800B92C0..0x800B943F (384 B in SLUS_010.66!)
+  if (!specialPromptStrs) specialPromptStrs = buildThps1ResidentBlock().specialPromptStrs;
+  const lsSpecialBuf = assembleLevelSelSpecialCode(specialPromptStrs);
+  lsSpecialBuf.copy(slusBuf, r2f(THPS1_ADDR.LevelSelSpecialBase));
+  // Hook PowerUp_Spawn Secret Tape (subtype 16) @ 0x80035E34 -> Entry_SecretGemSpawn (Tomb Time 20 -> o[20] Green Gem 0x5120A108!)
+  // AND PowerUp_Collect Secret Tape @ 0x800367E4 -> Entry_SecretGemCollect (0x800E2FB4 -> Crash 3 Gem Fanfare SFX #02 GSh2A!)
+  patchExact(slusBuf, r2f(0x80035E34), 0x0C0199EF, jalW(THPS1_ADDR.Entry_SecretGemSpawn),      'PowerUp_Spawn Secret Green Gem @ 0x80035E34');
+  patchExact(slusBuf, r2f(0x800367E4), 0x0C009149, jalW(0x800E2FB4),                            'PowerUp_Collect Secret Green Gem SFX @ 0x800367E4');
+
   // Switch g_GapList (0x800D70A8) to g_Thps1GapList (0x800E7E60) on THPS1 levels 11..19 & guard 11-level Gap Checklist!
   patchExact(slusBuf, r2f(0x80083848), 0x3C02800C, jalW(THPS1_ADDR.Entry_SetGapList),          'Game_StartLevel SetGapList jal @ 0x80083848');
   patchExact(slusBuf, r2f(0x8008384C), 0x2442C52C, 0x00000000,                                 'Game_StartLevel SetGapList delay nop @ 0x8008384C');
@@ -2736,13 +2897,25 @@ function applyThps1EnginePatches(slusBuf, wadBuf, hedBuf) {
   patchLs(0x3BBC, 0x8C4401E8, 0x8C440270, 'CLevelMap draw4 +488->+624');
   patchLs(0x3C00, 0x8C4401E8, 0x8C440270, 'CLevelMap draw5 +488->+624');
 
-  // 4. Hook MoveCursor (+0x12A8..+0x131C) -> interleaved DisplayOrder carousel!
+  // 4. Hook MoveCursor (+0x12A8..+0x131C) -> interleaved Normal carousel (0..19) + Special Levels Mode (20)!
   //    At +0x12A8: jal Entry_LevelSelMoveCursor; nop; beq zero, zero, +0x1320; nop
-  //    (Uses relative branch `beq zero, zero, +27` so ZERO overlay relocation needed!)
   patchLs(0x12A8, 0x3C02800E, jalW(THPS1_ADDR.Entry_LevelSelMoveCursor), 'MoveCursor interleaved jal');
   patchLs(0x12AC, 0x8C428278, 0x00000000, 'MoveCursor nop');
   patchLs(0x12B0, 0x00000000, 0x1000001B, 'MoveCursor b +0x1320 (relative +27 words)');
   patchLs(0x12B4, 0x00521021, 0x00000000, 'MoveCursor delay nop');
+
+  // 4B. Hook D-Pad DOWN/UP Special Levels toggle (+0x0DF0..+0x0DF8) + CAP sub-menu 196(s2) prompt restore (+0x10FC / +0x11E4)!
+  patchLs(0x0DF0, 0x260308FC, jalW(THPS1_ADDR.Entry_LevelSelUpDown),       'LevelSel PAD_DOWN/UP Special Levels jal');
+  patchLs(0x0DF4, 0x90620031, 0x260308FC,                                  'LevelSel delay addiu v1,s0,2300 (0x800C08FC)');
+  patchLs(0x0DF8, 0x00000000, 0x00000000,                                  'LevelSel R3000A load-delay nop for PAD_CROSS v0');
+  // CAP sub-menu enter (+0x10FC..+0x1104): restore 196(s2) -> (67, 220) + "SELECT"
+  patchLs(0x10FC, 0x8E4500C4, 0x8E4400C4,                                  'CAP enter lw a0,196(s2)');
+  patchLs(0x1100, 0x240300DC, jalW(THPS1_ADDR.Entry_LevelSelUpdatePrompt), 'CAP enter jal UpdatePrompt');
+  patchLs(0x1104, 0xACA30008, 0x24050003,                                  'CAP enter delay addiu a1,zero,3 (CAP SELECT)');
+  // CAP sub-menu exit (+0x11E4..+0x11EC): restore 196(s2) -> (140, 201) + "BAIXO: FASES ESPECIAIS"
+  patchLs(0x11E4, 0x8E4600C4, 0x8E4400C4,                                  'CAP exit lw a0,196(s2)');
+  patchLs(0x11E8, 0x24030104, jalW(THPS1_ADDR.Entry_LevelSelUpdatePrompt), 'CAP exit jal UpdatePrompt');
+  patchLs(0x11EC, 0xACC30008, 0x24050001,                                  'CAP exit delay addiu a1,zero,1 (Normal prompt)');
 
   // 5. Patch IsLevelUnlocked (+0x3128): route ALL levels 0..19 straight to Career_LevelIsOpen (0x8002597C)!
   patchLs(0x3124, 0x10400009, 0x00000000, 'IsLevelUnlocked skip loop1');

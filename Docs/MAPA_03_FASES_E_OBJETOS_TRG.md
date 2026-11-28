@@ -20,7 +20,7 @@ Este documento mapeia **todas as 11 fases** dentro de `SLUS_010.66` (`g_LevelTab
 | 7 | `0x800B8E70` | `0x0A9670` | **?** |  | `` | 1701576815 | `BULLRING.STR` |
 | 8 | `0x800B8FE4` | `0x0A97E4` | **Cristal de Poder Secreto** |  | `Formar C-R-A-S-H` | 2148431572 | `B1.STR` |
 | 9 | `0x800B9158` | `0x0A9958` | **?** |  | `` | 0 | `HEAVEN.STR` |
-| 10 | `0x800B92CC` | `0x0A9ACC` | **?** |  | `` | 0 | `EDITOR.STR` |
+| 10 | `0x800B92CC` | `0x0A9ACC` | **?** |  | `` | 2422866097 | `EDITOR.STR` |
 
 ### Objetivos, Dinheiro e Ponteiros de Gaps por Fase
 
@@ -33,7 +33,7 @@ Este documento mapeia **todas as 11 fases** dentro de `SLUS_010.66` (`g_LevelTab
 - **[6] ?** (`0x800B8CFC` | GapList `+0x170` = `0x716E7275`): 
 - **[7] ?** (`0x800B8E70` | GapList `+0x170` = `0x800E7434`): `+0x68`: "Direto da Ilha Wumpa" • `+0x6c`: "para o skate mundial!" • `+0x70`: "Criado pelo Dr. Cortex," • `+0x74`: "Crash escapou do" • `+0x78`: "castelo girando tudo" • `+0x7c`: "e trouxe Aku Aku para" • `+0x80`: "proteger seus combos." • `+0x84`: "Domina todas manobras" • `+0x88`: "e especiais do Bob" • `+0x8c`: "Burnquist, além do" • `+0x90`: "lendário Casper to 360" • `+0x94`: "Flip de Rodney Mullen." • `+0x98`: "Pegue Frutas Wumpa," • `+0x9c`: "Cristais e Relíquias!"
 - **[8] Cristal de Poder Secreto** (`0x800B8FE4` | GapList `+0x170` = `0x00000000`): `+0x18`: "Cristal de Poder Secreto" • `+0x20`: "Formar C-R-A-S-H" • `+0x28`: "5 Mascaras Uka Uka" • `+0x30`: "Cristal de Poder Secreto" • `+0x38`: "Formar C-R-A-S-H" • `+0x40`: "5 Cristais de Poder" • `+0x48`: "Cristal de Poder Secreto" • `+0x50`: "Manga Wumpa +50!" • `+0x58`: "Cristal +100!" • `+0x60`: "Diamante +250!" • `+0x68`: "Todas Wumpas da Fase!" • `+0x70`: "Wumpas"
-- **[9] ?** (`0x800B9158` | GapList `+0x170` = `0x00000000`): 
+- **[9] ?** (`0x800B9158` | GapList `+0x170` = `0x8D090010`): 
 - **[10] ?** (`0x800B92CC` | GapList `+0x170` = `0x00000000`): 
 
 ---

@@ -45,8 +45,8 @@ const CRASH_ADDR = {
   SkaterStrings:     0x800B8CA0, // 656 B -> 0x800B8F30 (we use ~628 B)
   StrMapBase:        0x800B8F30, // 50 * 8 + 8 = 408 B -> 0x800B90C8 (max 50 pairs + {0,0})
   StrOrigBackup:     0x800B90C8, // 50 * 4 = 200 B     -> 0x800B9190
-  StrPoolBase:       0x800B9190, // 688 B              -> 0x800B9440 (we use ~295 B, 393 B free!)
-  RegionEnd:         0x800B9440,
+  StrPoolBase:       0x800B9190, // 304 B              -> 0x800B92C0 (we use 288 B; 0x800B92C0..0x800B943F reserved for LevelSelSpecialCode!)
+  RegionEnd:         0x800B92C0,
 
   // Fixed entry jump table @ 0x800B8970 (8 B per entry = j + nop)
   Entry_GetSkaterCareerData: 0x800B8970,

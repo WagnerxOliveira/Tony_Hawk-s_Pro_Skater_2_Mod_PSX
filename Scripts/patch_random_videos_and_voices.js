@@ -1437,6 +1437,39 @@ function assembleModCode() {
     25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
   ]));
 
+  // Fixed Entry @ 0x800E2F80 (52 B): Secret Crash 3 Emerald Green Gem Spawn Hook (SLUS 0x80035E34)!
+  // Delay slot @ 0x80035E38 already ran `ori a0, a0, 0x2C4A` -> a0 = 0x7C1B2C4A.
+  // If g_CurrentLevel == 20 (Tomb Time), swaps mesh -> o[20] (0x5120A108) in g_LevelObjBankIdx (0x800D70AD)
+  // and writes obj->bankIdx @ 27(s4)!
+  a.padTo(0x800E2F80);
+  a.lui(R.t8, 0x800D);
+  a.lw(R.t8, 25200, R.t8);         // g_CurrentLevel (0x800D6270)
+  a.addiu(R.t9, R.zero, 20);       // fills load delay!
+  a.bne(R.t8, R.t9, 'sgs_orig');
+  a.nop();
+  a.li(R.a0, 0x5120A108);          // o[20] Real Crash 3 Glowing Emerald Green Gem!
+  a.lui(R.a1, 0x800D);
+  a.lbu(R.a1, 28845, R.a1);        // g_LevelObjBankIdx (0x800D70AD)
+  a.nop();
+  a.sb(R.a1, 27, R.s4);            // obj->bankIdx = g_LevelObjBankIdx!
+  a.label('sgs_orig');
+  a.j(0x800667BC);                 // tail-call Mesh_FindByHash(a0, a1)
+  a.nop();
+
+  // Fixed Entry @ 0x800E2FB4 (32 B): Secret Emerald Green Gem Collect SFX Hook (SLUS 0x800367E4)!
+  // Delay slot @ 0x800367E8 already ran `addiu a0, zero, 6` (Career_GiveGoal(6) -> bit 0x0100).
+  // Fires Crash 3 Gem Fanfare SFX (#02 GSh2A, mode 6) when Crash B. (Slot 20) collects the Green Gem!
+  a.padTo(0x800E2FB4);
+  a.lui(R.t8, 0x800E);
+  a.lw(R.t9, ADDR.g_CrashSfxActive & 0xffff, R.t8);
+  a.addiu(R.t0, R.zero, 6);        // mode 6 -> slot 2 (Crash 3 Gem Fanfare GSh2A!) (fills load delay!)
+  a.beq(R.t9, R.zero, 'sgc_orig');
+  a.nop();
+  a.sw(R.t0, ADDR.g_CrashPendingMode & 0xffff, R.t8);
+  a.label('sgc_orig');
+  a.j(0x80024524);                 // tail-call original Career_GiveGoal(6)!
+  a.nop();
+
   const usedBytes = a.pc() - ADDR.ModCodeBase;
   if (usedBytes > 2048) throw new Error(`MODCODE excede 2048 B (${usedBytes} B)!`);
   console.log(`  [ASM] MODCODE: 0x${ADDR.ModCodeBase.toString(16)}..0x${a.pc().toString(16)} (${usedBytes} B / 2048 B, livre: ${2048 - usedBytes} B)`);
@@ -3475,18 +3508,19 @@ function assembleCrashSfxCode(gpMeta, L) {
   a.addiu(R.t1, R.zero, 24);             // $250 Cash -> Diamond ("Diamante") -> mode 6
   a.beq(R.t0, R.t1, 'cgp_fire');
   a.addiu(R.v1, R.zero, 6);
+  a.addiu(R.t1, R.zero, 16);             // Secret Emerald Green Gem (Tomb Time) / Crystal -> Gem Fanfare mode 6!
+  a.beq(R.t0, R.t1, 'cgp_fire');
+  a.addiu(R.v1, R.zero, 6);
   a.addiu(R.t1, R.zero, 33);             // G5 Collectible -> Hangar (0), School Miami (12) & Tomb Time Egito (20) -> Aku Aku mode 7!
   a.bne(R.t0, R.t1, 'cgp_not_crash');
   a.lw(R.t0, 14980, R.gp);               // delay slot: g_CurrentLevel
-  a.nop();
+  a.addiu(R.v1, R.zero, 7);              // fills load delay & sets mode 7 for all 3 branches!
   a.beq(R.t0, R.zero, 'cgp_fire');       // Level 0 = Hangar (5 Aku Aku!)
-  a.addiu(R.v1, R.zero, 7);
-  a.addiu(R.t1, R.zero, 12);             // Level 12 = School Miami (5 Aku Aku!)
+  a.addiu(R.t1, R.zero, 12);             // delay slot: 12 = School Miami
   a.beq(R.t0, R.t1, 'cgp_fire');
-  a.addiu(R.v1, R.zero, 7);
-  a.addiu(R.t1, R.zero, 20);             // Level 20 = Tomb Time Egito (5 Golden Scarabs -> Aku Aku!)
+  a.addiu(R.t1, R.zero, 20);             // delay slot: 20 = Tomb Time Egito
   a.beq(R.t0, R.t1, 'cgp_fire');
-  a.addiu(R.v1, R.zero, 7);
+  a.nop();
 
   a.label('cgp_not_crash');
   a.addiu(R.t0, R.zero, 316);            // subtype 33 G5 collectible SFX
@@ -3700,7 +3734,7 @@ function applyAll() {
   const slusTail = assembleSlusTailCompact();
   const modCode = assembleModCode();
   const bailHookCode = assembleBailHookCode();
-  const { block: thps1Block, manifest: thps1Manifest } = buildThps1ResidentBlock();
+  const { block: thps1Block, manifest: thps1Manifest, specialPromptStrs } = buildThps1ResidentBlock();
 
   // 2. Build/update VOICES.DAT (41 menu clips @ 11025 Hz + ring-doubled LULAO_GPBANK @ 6890.625 Hz)
   //    and assemble LULAO_CODE + LULAO_STRDATA with the exact finalized GPBANK startSector & ring tables!
@@ -3788,8 +3822,8 @@ function applyAll() {
   patchWord(wad, playselOff + 0x415C, 0x240400EC,                        0x240400EC,                         'playsel.bin Restore Fade arg +0x415C', [0x2404001C, 0x24040070]);
   patchWord(wad, playselOff + 0x4160, 0x0C0138C7,                        0x00000000,                         'playsel.bin NOP Fade_Start(PlaySel->LevelSel) -> ZERO black screen +0x4160');
 
-  // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin + frontend overlays)
-  applyThps1EnginePatches(slus, wad, hed);
+  // 5. Apply Complete THPS1-in-THPS2 Interleaved 19-Level + Special Levels Engine Patches (SLUS_010.66 + levelsel.bin + levelsel.pre + options.bin + frontend overlays)
+  applyThps1EnginePatches(slus, wad, hed, specialPromptStrs);
 
   // 6. Apply Crash Bandicoot ("Crash B.", Slot 20) Engine Integration (SLUS_010.66 + tricks.bin + playsel.bin + equipsel.bin + THPS1.HED!)
   applyCrashEnginePatches(slus, wad, hed, thps1Manifest);
